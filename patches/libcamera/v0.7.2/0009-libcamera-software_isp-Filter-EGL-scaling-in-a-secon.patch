@@ -1,0 +1,370 @@
+From 8f2320f1a31a398699e0c2f1a58b170720c6bfa3 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 21:39:17 +0100
+Subject: [PATCH 9/9] libcamera: software_isp: Filter EGL scaling in a second
+ pass
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/libcamera/shaders/meson.build          |   2 +
+ src/libcamera/shaders/rgb_scale.frag       |  22 +++
+ src/libcamera/shaders/rgb_scale.vert       |  14 ++
+ src/libcamera/software_isp/debayer_egl.cpp | 171 ++++++++++++++++-----
+ src/libcamera/software_isp/debayer_egl.h   |   9 ++
+ 5 files changed, 180 insertions(+), 38 deletions(-)
+ create mode 100644 src/libcamera/shaders/rgb_scale.frag
+ create mode 100644 src/libcamera/shaders/rgb_scale.vert
+
+diff --git a/src/libcamera/shaders/meson.build b/src/libcamera/shaders/meson.build
+index c409ff9..c7720c4 100644
+--- a/src/libcamera/shaders/meson.build
++++ b/src/libcamera/shaders/meson.build
+@@ -7,6 +7,8 @@ shader_files = files([
+     'bayer_unpacked.frag',
+     'bayer_unpacked.vert',
+     'identity.vert',
++    'rgb_scale.frag',
++    'rgb_scale.vert',
+ ])
+ 
+ # Generate header from shaders
+diff --git a/src/libcamera/shaders/rgb_scale.frag b/src/libcamera/shaders/rgb_scale.frag
+new file mode 100644
+index 0000000..758c275
+--- /dev/null
++++ b/src/libcamera/shaders/rgb_scale.frag
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Filtered RGB scaling pass for the EGL software ISP
++ */
++
++#ifdef GL_ES
++precision highp float;
++#endif
++
++varying vec2 textureOut;
++uniform sampler2D tex_rgb;
++
++void main(void)
++{
++	vec4 rgba = texture2D(tex_rgb, textureOut);
++
++#if defined(SWAP_BLUE)
++	gl_FragColor = rgba.bgra;
++#else
++	gl_FragColor = rgba;
++#endif
++}
+diff --git a/src/libcamera/shaders/rgb_scale.vert b/src/libcamera/shaders/rgb_scale.vert
+new file mode 100644
+index 0000000..8ca2650
+--- /dev/null
++++ b/src/libcamera/shaders/rgb_scale.vert
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Vertex shader for the filtered RGB scaling pass
++ */
++
++attribute vec4 vertexIn;
++attribute vec2 textureIn;
++varying vec2 textureOut;
++
++void main(void)
++{
++	gl_Position = vertexIn;
++	textureOut = textureIn;
++}
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 98ea4ae..ba7e750 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -156,22 +156,7 @@ int DebayerEGL::initBayerShaders(PixelFormat inputFormat, PixelFormat outputForm
+ 	/* Specify GL_OES_EGL_image_external */
+ 	egl_.pushEnv(shaderEnv, "#extension GL_OES_EGL_image_external: enable");
+ 
+-	/*
+-	 * Tell shaders how to re-order output taking account of how the pixels
+-	 * are actually stored by EGL.
+-	 */
+-	switch (outputFormat) {
+-	case formats::ARGB8888:
+-	case formats::XRGB8888:
+-		break;
+-	case formats::ABGR8888:
+-	case formats::XBGR8888:
+-		egl_.pushEnv(shaderEnv, "#define SWAP_BLUE");
+-		break;
+-	default:
+-		LOG(Debayer, Error) << "Unsupported output format";
+-		return -EINVAL;
+-	}
++	(void)outputFormat;
+ 
+ 	/* Pixel location parameters */
+ 	glFormat_ = GL_LUMINANCE;
+@@ -284,6 +269,52 @@ int DebayerEGL::initBayerShaders(PixelFormat inputFormat, PixelFormat outputForm
+ 	return getShaderVariableLocations();
+ }
+ 
++int DebayerEGL::initScaleShaders(PixelFormat outputFormat)
++{
++	std::vector<std::string> shaderEnv;
++	GLuint vertexShaderId = 0;
++	GLuint fragmentShaderId = 0;
++
++	egl_.pushEnv(shaderEnv, "#version 100");
++
++	switch (outputFormat) {
++	case formats::ARGB8888:
++	case formats::XRGB8888:
++		break;
++	case formats::ABGR8888:
++	case formats::XBGR8888:
++		egl_.pushEnv(shaderEnv, "#define SWAP_BLUE");
++		break;
++	default:
++		LOG(Debayer, Error) << "Unsupported output format";
++		return -EINVAL;
++	}
++
++	if (egl_.compileVertexShader(vertexShaderId, rgb_scale_vert, shaderEnv)) {
++		LOG(Debayer, Error) << "Compile scale vertex shader failed";
++		return -ENODEV;
++	}
++	utils::scope_exit vertexShaderGuard([&] { glDeleteShader(vertexShaderId); });
++
++	if (egl_.compileFragmentShader(fragmentShaderId, rgb_scale_frag,
++				       shaderEnv)) {
++		LOG(Debayer, Error) << "Compile scale fragment shader failed";
++		return -ENODEV;
++	}
++	utils::scope_exit fragmentShaderGuard([&] { glDeleteShader(fragmentShaderId); });
++
++	if (egl_.linkProgram(scaleProgramId_, vertexShaderId, fragmentShaderId)) {
++		LOG(Debayer, Error) << "Linking scale program failed";
++		return -ENODEV;
++	}
++
++	scaleAttributeVertex_ = glGetAttribLocation(scaleProgramId_, "vertexIn");
++	scaleAttributeTexture_ = glGetAttribLocation(scaleProgramId_, "textureIn");
++	scaleTextureUniformRgb_ = glGetUniformLocation(scaleProgramId_, "tex_rgb");
++
++	return 0;
++}
++
+ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
+ 			  [[maybe_unused]] bool ccmEnabled)
+@@ -340,17 +371,27 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	window_.height = outputCfg.size.height;
+ 
+ 	/*
+-	 * The EGL projection scales the native output while preserving its aspect
+-	 * ratio, then clips it against the output buffer. Calculate statistics over
+-	 * the same source region so AGC, AWB and AF describe the displayed image.
++	 * Crop the source in the centre to the output aspect ratio. The second
++	 * rendering pass scales this exact region, and statistics use it too.
+ 	 */
+-	float scale = std::max(static_cast<float>(outputSize_.width) /
+-			       nativeOutputSize_.width,
+-			       static_cast<float>(outputSize_.height) /
+-			       nativeOutputSize_.height);
+-	Size statsSize(std::min(width_, static_cast<unsigned int>(outputSize_.width / scale)),
+-		       std::min(height_, static_cast<unsigned int>(outputSize_.height / scale)));
+-	stats_->setWindow(Rectangle(statsSize));
++	unsigned int cropWidth = width_;
++	unsigned int cropHeight = height_;
++	if (static_cast<uint64_t>(width_) * outputSize_.height >
++	    static_cast<uint64_t>(height_) * outputSize_.width)
++		cropWidth = static_cast<uint64_t>(height_) * outputSize_.width /
++			    outputSize_.height;
++	else
++		cropHeight = static_cast<uint64_t>(width_) * outputSize_.height /
++			     outputSize_.width;
++
++	cropWidth &= ~(inputConfig_.patternSize.width - 1);
++	cropHeight &= ~(inputConfig_.patternSize.height - 1);
++	unsigned int cropX = ((width_ - cropWidth) / 2) &
++			     ~(inputConfig_.patternSize.width - 1);
++	unsigned int cropY = ((height_ - cropHeight) / 2) &
++			     ~(inputConfig_.patternSize.height - 1);
++	displayWindow_ = Rectangle(cropX, cropY, cropWidth, cropHeight);
++	stats_->setWindow(displayWindow_);
+ 
+ 	inputBufferCount_ = inputCfg.bufferCount;
+ 	outputBufferCount_ = outputCfg.bufferCount;
+@@ -411,19 +452,11 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+ 	GLfloat Step[] = { static_cast<float>(bytesPerPixel_) / (inputConfig_.stride - 1),
+ 			   1.0f / (height_ - 1) };
+ 	GLfloat Stride = (GLfloat)width_ / (shaderStridePixels_ / bytesPerPixel_);
+-	/*
+-	 * Scale the output size from the native size the algorithm produces for
+-	 * the input size. Keep the aspect ratio and prefer cropping over black
+-	 * bars.
+-	 */
+-	GLfloat scale = std::max((GLfloat)outputSize_.width / nativeOutputSize_.width,
+-				 (GLfloat)outputSize_.height / nativeOutputSize_.height);
+-	GLfloat trans = -(1.0f - scale);
+ 	GLfloat projMatrix[] = {
+-		scale, 0, 0, 0,
+-		0, scale, 0, 0,
++		1, 0, 0, 0,
++		0, 1, 0, 0,
+ 		0, 0, 1, 0,
+-		trans, trans, 0, 1
++		0, 0, 0, 1
+ 	};
+ 	/* Static const coordinates */
+ 	static const GLfloat vcoordinates[4][2] = {
+@@ -514,6 +547,42 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+ 	return;
+ }
+ 
++void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
++{
++	static const GLfloat vcoordinates[4][2] = {
++		{ -1.0f, -1.0f },
++		{ -1.0f, +1.0f },
++		{ +1.0f, +1.0f },
++		{ +1.0f, -1.0f },
++	};
++	const GLfloat left = static_cast<GLfloat>(displayWindow_.x) / width_;
++	const GLfloat top = static_cast<GLfloat>(displayWindow_.y) / height_;
++	const GLfloat right = static_cast<GLfloat>(displayWindow_.x +
++						    displayWindow_.width) /
++			      width_;
++	const GLfloat bottom = static_cast<GLfloat>(displayWindow_.y +
++						     displayWindow_.height) /
++			       height_;
++	scaleTextureCoordinates_[0][0] = left;
++	scaleTextureCoordinates_[0][1] = top;
++	scaleTextureCoordinates_[1][0] = left;
++	scaleTextureCoordinates_[1][1] = bottom;
++	scaleTextureCoordinates_[2][0] = right;
++	scaleTextureCoordinates_[2][1] = bottom;
++	scaleTextureCoordinates_[3][0] = right;
++	scaleTextureCoordinates_[3][1] = top;
++
++	glEnableVertexAttribArray(scaleAttributeVertex_);
++	glVertexAttribPointer(scaleAttributeVertex_, 2, GL_FLOAT, GL_TRUE,
++			      2 * sizeof(GLfloat), vcoordinates);
++	glEnableVertexAttribArray(scaleAttributeTexture_);
++	glVertexAttribPointer(scaleAttributeTexture_, 2, GL_FLOAT, GL_TRUE,
++			      2 * sizeof(GLfloat), scaleTextureCoordinates_);
++
++	egl_.activateBindTexture(eglImageIn);
++	glUniform1i(scaleTextureUniformRgb_, eglImageIn.texture_unit_uniform_id_);
++}
++
+ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
+ {
+ 	const SharedFD &fd = input->planes()[0].fd;
+@@ -611,12 +680,26 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	if (!eglImageOut)
+ 		return -ENOMEM;
+ 
+-	egl_.attachTextureToFBO(*eglImageOut);
++	egl_.activateBindTexture(*intermediateImage_);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++	egl_.useProgram(programId_);
++	egl_.attachTextureToFBO(*intermediateImage_);
+ 	setShaderVariableValues(*eglImageIn, params);
+ 
+ 	glViewport(0, 0, width_, height_);
+ 	glClear(GL_COLOR_BUFFER_BIT);
+ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
++	egl_.activateBindTexture(*intermediateImage_);
++	glGenerateMipmap(GL_TEXTURE_2D);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
++			GL_LINEAR_MIPMAP_LINEAR);
++
++	egl_.useProgram(scaleProgramId_);
++	egl_.attachTextureToFBO(*eglImageOut);
++	setScaleShaderVariableValues(*intermediateImage_);
++	glViewport(0, 0, outputSize_.width, outputSize_.height);
++	glClear(GL_COLOR_BUFFER_BIT);
++	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+ 
+ 	GLenum err = glGetError();
+ 	if (err != GL_NO_ERROR) {
+@@ -694,6 +777,15 @@ int DebayerEGL::start()
+ 
+ 	if (initBayerShaders(inputPixelFormat_, outputPixelFormat_))
+ 		return -EINVAL;
++	if (initScaleShaders(outputPixelFormat_))
++		return -EINVAL;
++
++	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
++						 width_ * 4, GL_TEXTURE2, 2);
++	egl_.createOutputTexture2D(*intermediateImage_);
++	egl_.activateBindTexture(*intermediateImage_);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+ 
+ 	return 0;
+ }
+@@ -702,9 +794,12 @@ void DebayerEGL::stop()
+ {
+ 	eglImageOutCache_.clear();
+ 	eglImageInCache_.clear();
++	intermediateImage_.reset();
+ 
+ 	if (programId_)
+ 		glDeleteProgram(programId_);
++	if (scaleProgramId_)
++		glDeleteProgram(scaleProgramId_);
+ }
+ 
+ SizeRange DebayerEGL::sizes(PixelFormat inputFormat, const Size &inputSize)
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index d6223f3..d608ce1 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -65,8 +65,10 @@ private:
+ 	static int getInputConfig(PixelFormat inputFormat, DebayerInputConfig &config);
+ 	static int getOutputConfig(PixelFormat outputFormat, DebayerOutputConfig &config);
+ 	int initBayerShaders(PixelFormat inputFormat, PixelFormat outputFormat);
++	int initScaleShaders(PixelFormat outputFormat);
+ 	int getShaderVariableLocations();
+ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
++	void setScaleShaderVariableValues(eGLImage &eGLImageIn);
+ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+@@ -76,10 +78,12 @@ private:
+ 	GLuint vertexShaderId_ = 0;
+ 	GLuint fragmentShaderId_ = 0;
+ 	GLuint programId_ = 0;
++	GLuint scaleProgramId_ = 0;
+ 
+ 	/* Pointer to object representing input texture */
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageInCache_;
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageOutCache_;
++	std::unique_ptr<eGLImage> intermediateImage_;
+ 	unsigned int inputBufferCount_;
+ 	unsigned int outputBufferCount_;
+ 
+@@ -95,6 +99,10 @@ private:
+ 	GLint textureUniformProjMatrix_;
+ 
+ 	GLint textureUniformBayerDataIn_;
++	GLint scaleAttributeVertex_;
++	GLint scaleAttributeTexture_;
++	GLint scaleTextureUniformRgb_;
++	GLfloat scaleTextureCoordinates_[4][2];
+ 
+ 	/* Per-frame AWB gains */
+ 	GLint awbUniformDataIn_;
+@@ -113,6 +121,7 @@ private:
+ 
+ 	Size nativeOutputSize_;
+ 	Rectangle window_;
++	Rectangle displayWindow_;
+ 	std::unique_ptr<SwStatsCpu> stats_;
+ 	eGL egl_;
+ 	uint32_t width_;
+-- 
+2.49.0
+

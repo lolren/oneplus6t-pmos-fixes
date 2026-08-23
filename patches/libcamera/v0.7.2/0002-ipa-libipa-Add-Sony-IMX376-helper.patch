@@ -1,0 +1,42 @@
+From fa7282a67ec74f347de75d33fcfd1e1f4a35773c Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 17:33:39 +0100
+Subject: [PATCH 2/9] ipa: libipa: Add Sony IMX376 helper
+
+The simple IPA currently treats IMX376 analogue gain register codes as linear gain factors. This makes AGC unstable and reports a raw code such as 170 as 170x gain.
+
+OnePlus OxygenOS sensor library com.qti.sensor.imx376k.so (SHA256 0722fef9d27b53d5abd2308d6bf616d214ed555f35b567422a4af0de37e2c5fb) converts gain with code = 1024 - 1024 / gain and clamps both the gain and code to 16x and 960 respectively.
+
+Register a helper with the corresponding inverse-linear model and the 10-bit 0x40 black pedestal used by the sensor tuning.
+
+Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index a912701..7fedee8 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -629,6 +629,18 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx371", CameraSensorHelperImx371)
+ 
++class CameraSensorHelperImx376 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx376()
++	{
++		/* The 10-bit black level is 0x40. */
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx376", CameraSensorHelperImx376)
++
+ class CameraSensorHelperImx415 : public CameraSensorHelper
+ {
+ public:
+-- 
+2.49.0
+

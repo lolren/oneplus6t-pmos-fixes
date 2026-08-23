@@ -1,0 +1,40 @@
+From 2c83011639d8d9ad4435bfbcedf94045a5a7d8a4 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 17:33:58 +0100
+Subject: [PATCH 3/9] ipa: libipa: Add Sony IMX519 helper
+
+The simple IPA currently treats IMX519 analogue gain register codes as linear gain factors, producing unstable exposure behaviour.
+
+The existing Raspberry Pi IMX519 camera helper implements gain as 1024 / (1024 - code), and the existing Raspberry Pi IMX519 tuning data specifies a 10-bit black level of 0x40. Add the equivalent generic CameraSensorHelper for use by the simple IPA and other pipelines.
+
+Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index 7fedee8..1b20ffc 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -666,6 +666,18 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx477", CameraSensorHelperImx477)
+ 
++class CameraSensorHelperImx519 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx519()
++	{
++		/* From the Raspberry Pi tuning data: 0x40 at 10 bits. */
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx519", CameraSensorHelperImx519)
++
+ class CameraSensorHelperImx678 : public CameraSensorHelper
+ {
+ public:
+-- 
+2.49.0
+

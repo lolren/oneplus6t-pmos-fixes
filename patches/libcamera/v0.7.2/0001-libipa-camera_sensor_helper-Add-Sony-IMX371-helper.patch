@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 4f723ae8885702d9d4cb8198f6b32fc58962c741 Mon Sep 17 00:00:00 2001
 From: Lolren <loren.bufanu@gmail.com>
 Date: Sun, 23 Aug 2026 15:56:03 +0100
-Subject: [PATCH] libipa: camera_sensor_helper: Add Sony IMX371 helper
+Subject: [PATCH 1/9] libipa: camera_sensor_helper: Add Sony IMX371 helper
 
 The IMX371 analogue gain follows 1024 / (1024 - code), and its 10-bit
 black level is 0x40. Register a helper so IPAs operate in real gain units
@@ -9,6 +9,9 @@ and use the correct black level instead of treating the register code as
 a linear gain multiplier.
 
 Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
 diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
 index 9457d62..a912701 100644

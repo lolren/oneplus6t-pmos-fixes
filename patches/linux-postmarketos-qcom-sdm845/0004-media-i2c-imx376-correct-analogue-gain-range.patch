@@ -1,0 +1,30 @@
+From 64fcf07f8a69b01488e524a7a0b2ba4b991111ee Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 17:35:49 +0100
+Subject: [PATCH] media: i2c: imx376: correct analogue gain range
+
+The IMX376 gain register at 0x0204 uses code = 1024 - 1024 / gain. The OnePlus OxygenOS sensor library clamps the requested gain to 16x and the resulting register code to 960.
+
+Raise the V4L2 control maximum from 480, which only exposes about 1.88x gain, to the sensor library limit of 960, which exposes the intended 16x range.
+
+Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
+---
+ drivers/media/i2c/imx376.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/imx376.c b/drivers/media/i2c/imx376.c
+index 21d539878..656333524 100644
+--- a/drivers/media/i2c/imx376.c
++++ b/drivers/media/i2c/imx376.c
+@@ -42,7 +42,7 @@
+ /* Analog gain control */
+ #define IMX376_REG_ANALOG_GAIN		CCI_REG16(0x0204)
+ #define IMX376_ANA_GAIN_MIN		0
+-#define IMX376_ANA_GAIN_MAX		480
++#define IMX376_ANA_GAIN_MAX		960
+ #define IMX376_ANA_GAIN_STEP		1
+ #define IMX376_ANA_GAIN_DEFAULT		0x0
+ 
+-- 
+2.49.0
+

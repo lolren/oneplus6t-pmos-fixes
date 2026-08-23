@@ -1,0 +1,2459 @@
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..da53bd8209f42b223098bd4b813c6f7866c32a35
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
+@@ -0,0 +1,213 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:46:58 +0100
++Subject: [PATCH 1/2] media: i2c: imx371: add 2304x1728 binned mode
++
++The IMX371 used by the OnePlus 6 and 6T has a Quad Bayer colour filter,
++but the driver currently exposes only its full-resolution readout as a
++regular Bayer frame. A conventional Bayer demosaic therefore produces a
++nearly monochrome image with a four-pixel grid.
++
++Add the sensor's 2x2 binned mode. It combines each physical same-colour
++2x2 block in hardware and outputs a conventional 2304x1728 RGGB frame.
++Include the matching line timing, PLL configuration and 399 MHz link
++frequency while retaining the full-resolution mode for raw users.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/drivers/media/i2c/imx371.c b/drivers/media/i2c/imx371.c
++index c2a6ce243..bf28829af 100644
++--- a/drivers/media/i2c/imx371.c
+++++ b/drivers/media/i2c/imx371.c
++@@ -26,10 +26,12 @@
++ 
++ /* V_TIMING internal */
++ #define IMX371_VTS_30FPS		3552
+++#define IMX371_VTS_BINNED		2544
++ #define IMX371_VTS_MAX			65525
++ 
++ /* HBLANK control - read only */
++ #define IMX371_PPL_DEFAULT		6032
+++#define IMX371_PPL_BINNED		3488
++ 
++ /* Exposure control */
++ #define IMX371_REG_EXPOSURE		CCI_REG16(0x0202)
++@@ -177,6 +179,21 @@ static const struct cci_reg_sequence mipi_1308mbps_24mhz_4l[] = {
++ 	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_L, 0 },
++ };
++ 
+++static const struct cci_reg_sequence mipi_798mbps_24mhz_4l[] = {
+++	{ IMX371_REG_EXCK_FREQ, 0x1800 },
+++	{ IMX371_REG_IVTPXCK_DIV, 5 },
+++	{ IMX371_REG_IVTSYCK_DIV, 4 },
+++	{ IMX371_REG_PREPLLCK_VT_DIV, 4 },
+++	{ IMX371_REG_PLL_IVT_MPY, 222 },
+++	{ IMX371_REG_IOPSYCK_DIV, 2 },
+++	{ IMX371_REG_PREPLLCK_OP_DIV, 4 },
+++	{ IMX371_REG_PLL_IOP_MPY, 266 },
+++	{ IMX371_REG_PLL_MULT_DRIV, 1 },
+++	{ IMX371_REG_CSI_LANE_MODE, 3 },
+++	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_H, 798 * 4 },
+++	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_L, 0 },
+++};
+++
++ static const struct cci_reg_sequence mode_common_regs[] = {
++ 	{CCI_REG8(0x3C7D), 0x28},
++ 	{CCI_REG8(0x3C7E), 0x01},
++@@ -412,6 +429,98 @@ static const struct cci_reg_sequence mode_4656x3496_regs[] = {
++ 	{CCI_REG8(0x020F), 0x00},
++ };
++ 
+++/*
+++ * The IMX371 uses a Quad Bayer colour filter. In the full-resolution mode
+++ * each 2x2 block has the same colour, so exposing it as regular RGGB produces
+++ * a monochrome-looking image with a four-pixel grid. The sensor's 2x2 binned
+++ * mode combines each same-colour block in hardware and outputs regular RGGB.
+++ */
+++static const struct cci_reg_sequence mode_2304x1728_regs[] = {
+++	{CCI_REG8(0x0112), 0x0A},
+++	{CCI_REG8(0x0113), 0x0A},
+++	{CCI_REG8(0x0114), 0x03},
+++	{CCI_REG8(0x0342), 0x0D},
+++	{CCI_REG8(0x0343), 0xA0},
+++	{CCI_REG8(0x0340), 0x09},
+++	{CCI_REG8(0x0341), 0xF0},
+++	{CCI_REG8(0x0344), 0x00},
+++	{CCI_REG8(0x0345), 0x00},
+++	{CCI_REG8(0x0346), 0x00},
+++	{CCI_REG8(0x0347), 0x00},
+++	{CCI_REG8(0x0348), 0x12},
+++	{CCI_REG8(0x0349), 0x2F},
+++	{CCI_REG8(0x034A), 0x0D},
+++	{CCI_REG8(0x034B), 0xA7},
+++	{CCI_REG8(0x0381), 0x01},
+++	{CCI_REG8(0x0383), 0x01},
+++	{CCI_REG8(0x0385), 0x01},
+++	{CCI_REG8(0x0387), 0x01},
+++	{CCI_REG8(0x0900), 0x01},
+++	{CCI_REG8(0x0901), 0x22},
+++	{CCI_REG8(0x0902), 0x08},
+++	{CCI_REG8(0x3F4C), 0x81},
+++	{CCI_REG8(0x3F4D), 0x81},
+++	{CCI_REG8(0x4254), 0x7F},
+++	{CCI_REG8(0x0401), 0x00},
+++	{CCI_REG8(0x0404), 0x00},
+++	{CCI_REG8(0x0405), 0x10},
+++	{CCI_REG8(0x0408), 0x00},
+++	{CCI_REG8(0x0409), 0x0C},
+++	{CCI_REG8(0x040A), 0x00},
+++	{CCI_REG8(0x040B), 0x0A},
+++	{CCI_REG8(0x040C), 0x09},
+++	{CCI_REG8(0x040D), 0x00},
+++	{CCI_REG8(0x040E), 0x06},
+++	{CCI_REG8(0x040F), 0xC0},
+++	{CCI_REG8(0x034C), 0x09},
+++	{CCI_REG8(0x034D), 0x00},
+++	{CCI_REG8(0x034E), 0x06},
+++	{CCI_REG8(0x034F), 0xC0},
+++	{CCI_REG8(0x0301), 0x05},
+++	{CCI_REG8(0x0303), 0x04},
+++	{CCI_REG8(0x0305), 0x04},
+++	{CCI_REG8(0x0306), 0x00},
+++	{CCI_REG8(0x0307), 0xDE},
+++	{CCI_REG8(0x030B), 0x02},
+++	{CCI_REG8(0x030D), 0x04},
+++	{CCI_REG8(0x030E), 0x01},
+++	{CCI_REG8(0x030F), 0x0A},
+++	{CCI_REG8(0x0310), 0x01},
+++	{CCI_REG8(0x0820), 0x0C},
+++	{CCI_REG8(0x0821), 0x78},
+++	{CCI_REG8(0x0822), 0x00},
+++	{CCI_REG8(0x0823), 0x00},
+++	{CCI_REG8(0xBC41), 0x01},
+++	{CCI_REG8(0x0106), 0x00},
+++	{CCI_REG8(0x0B00), 0x00},
+++	{CCI_REG8(0x0B05), 0x01},
+++	{CCI_REG8(0x0B06), 0x01},
+++	{CCI_REG8(0x3230), 0x00},
+++	{CCI_REG8(0x3602), 0x01},
+++	{CCI_REG8(0x3C00), 0x7B},
+++	{CCI_REG8(0x3C01), 0x69},
+++	{CCI_REG8(0x3C02), 0x77},
+++	{CCI_REG8(0x3C03), 0x66},
+++	{CCI_REG8(0x3C04), 0x00},
+++	{CCI_REG8(0x3C05), 0x9C},
+++	{CCI_REG8(0x3C06), 0x14},
+++	{CCI_REG8(0x3C07), 0x00},
+++	{CCI_REG8(0x3C08), 0x01},
+++	{CCI_REG8(0x3F14), 0x00},
+++	{CCI_REG8(0x3F17), 0x00},
+++	{CCI_REG8(0x3F3C), 0x00},
+++	{CCI_REG8(0x3F78), 0x02},
+++	{CCI_REG8(0x3F79), 0x44},
+++	{CCI_REG8(0x3F7C), 0x00},
+++	{CCI_REG8(0x3F7D), 0x00},
+++	{CCI_REG8(0x0202), 0x09},
+++	{CCI_REG8(0x0203), 0xDC},
+++	{CCI_REG8(0x0204), 0x00},
+++	{CCI_REG8(0x0205), 0x00},
+++	{CCI_REG8(0x020E), 0x01},
+++	{CCI_REG8(0x020F), 0x00},
+++};
+++
++ /*
++  * The supported formats.
++  * This table MUST contain 4 entries per format, to cover the various flip
++@@ -449,6 +558,7 @@ static const char * const imx371_supply_name[] = {
++ 
++ enum {
++ 	IMX371_LINK_FREQ_1308MBPS,
+++	IMX371_LINK_FREQ_798MBPS,
++ };
++ 
++ /*
++@@ -475,6 +585,7 @@ static u64 link_freq_to_pixel_rate(u64 f, const struct imx371_link_cfg *link_cfg
++ 
++ static const s64 link_freq_menu_items_24[] = {
++ 	654000000ULL,
+++	399000000ULL,
++ };
++ 
++ #define REGS(_list) { .num_of_regs = ARRAY_SIZE(_list), .regs = _list, }
++@@ -489,6 +600,15 @@ static const struct imx371_link_freq_config link_freq_configs_24[] = {
++ 			},
++ 		}
++ 	},
+++	[IMX371_LINK_FREQ_798MBPS] = {
+++		.pixels_per_line = IMX371_PPL_BINNED,
+++		.link_cfg = {
+++			[IMX371_4_LANE_MODE] = {
+++				.lf_to_pix_rate_factor = 4,
+++				.reg_list = REGS(mipi_798mbps_24mhz_4l),
+++			},
+++		}
+++	},
++ };
++ 
++ /* Mode configs */
++@@ -510,6 +630,23 @@ static const struct imx371_mode supported_modes[] = {
++ 			.height = IMX371_PIXEL_ARRAY_HEIGHT,
++ 		},
++ 	},
+++	{
+++		.width = 2304,
+++		.height = 1728,
+++		.vts_def = IMX371_VTS_BINNED,
+++		.vts_min = IMX371_VTS_BINNED,
+++		.reg_list = {
+++			.num_of_regs = ARRAY_SIZE(mode_2304x1728_regs),
+++			.regs = mode_2304x1728_regs,
+++		},
+++		.link_freq_index = IMX371_LINK_FREQ_798MBPS,
+++		.crop = {
+++			.left = 24,
+++			.top = 20,
+++			.width = 4608,
+++			.height = 3456,
+++		},
+++	},
++ };
++ 
++ struct imx371 {
++-- 
++2.49.0
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..3712f5da4b4da863898170b273dd4d7bacc5c747
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
+@@ -0,0 +1,27 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:46:58 +0100
++Subject: [PATCH 2/2] arm64: dts: qcom: sdm845-oneplus: add IMX371 binned link
++ rate
++
++The IMX371 2304x1728 binned mode uses a 399 MHz link frequency. Advertise
++it alongside the existing 654 MHz full-resolution frequency so the sensor
++driver can select either mode on the OnePlus 6 and 6T.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
++index 948a0dd18..ebee7e471 100644
++--- a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
+++++ b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
++@@ -651,7 +651,7 @@ port {
++ 			imx371_ep: endpoint {
++ 				remote-endpoint = <&csiphy2_ep>;
++ 				data-lanes = <1 2 3 4>;
++-				link-frequencies = /bits/ 64 <654000000>;
+++				link-frequencies = /bits/ 64 <654000000 399000000>;
++ 			};
++ 		};
++ 	};
++-- 
++2.49.0
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
+@@ -0,0 +1,27 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:54:32 +0100
++Subject: [PATCH] media: i2c: imx371: correct analogue gain range
++
++The IMX371 analogue gain is 1024 / (1024 - code). A maximum code of 480
++limits the sensor to about 1.88x gain, while the supported 16x maximum
++maps to code 960. Use the full sensor range.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/drivers/media/i2c/imx371.c b/drivers/media/i2c/imx371.c
++index bf28829af..062bb4f68 100644
++--- a/drivers/media/i2c/imx371.c
+++++ b/drivers/media/i2c/imx371.c
++@@ -44,7 +44,7 @@
++ /* Analog gain control */
++ #define IMX371_REG_ANALOG_GAIN		CCI_REG16(0x0204)
++ #define IMX371_ANA_GAIN_MIN		0
++-#define IMX371_ANA_GAIN_MAX		480
+++#define IMX371_ANA_GAIN_MAX		960
++ #define IMX371_ANA_GAIN_STEP		1
++ #define IMX371_ANA_GAIN_DEFAULT		0x0
++ 
++-- 
++2.49.0
++
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..9cc55fdbf44c0f6437c9f44623aa9e7921fa40c1
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
+@@ -0,0 +1,30 @@
++From 64fcf07f8a69b01488e524a7a0b2ba4b991111ee Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 17:35:49 +0100
++Subject: [PATCH] media: i2c: imx376: correct analogue gain range
++
++The IMX376 gain register at 0x0204 uses code = 1024 - 1024 / gain. The OnePlus OxygenOS sensor library clamps the requested gain to 16x and the resulting register code to 960.
++
++Raise the V4L2 control maximum from 480, which only exposes about 1.88x gain, to the sensor library limit of 960, which exposes the intended 16x range.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++---
++ drivers/media/i2c/imx376.c | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/drivers/media/i2c/imx376.c b/drivers/media/i2c/imx376.c
++index 21d539878..656333524 100644
++--- a/drivers/media/i2c/imx376.c
+++++ b/drivers/media/i2c/imx376.c
++@@ -42,7 +42,7 @@
++ /* Analog gain control */
++ #define IMX376_REG_ANALOG_GAIN		CCI_REG16(0x0204)
++ #define IMX376_ANA_GAIN_MIN		0
++-#define IMX376_ANA_GAIN_MAX		480
+++#define IMX376_ANA_GAIN_MAX		960
++ #define IMX376_ANA_GAIN_STEP		1
++ #define IMX376_ANA_GAIN_DEFAULT		0x0
++ 
++-- 
++2.49.0
++
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..d45679a9acf83c5952017e4de56f139dbce0ee9f
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
+@@ -0,0 +1,53 @@
++From ccbddbea7f09f63be5dfcfb7bb44672670b666a5 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 22:03:09 +0100
++Subject: [PATCH] media: i2c: imx519: default preview modes to 30 fps
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ drivers/media/i2c/imx519.c | 8 ++++----
++ 1 file changed, 4 insertions(+), 4 deletions(-)
++
++diff --git a/drivers/media/i2c/imx519.c b/drivers/media/i2c/imx519.c
++index 4834d687a..36ae19af8 100644
++--- a/drivers/media/i2c/imx519.c
+++++ b/drivers/media/i2c/imx519.c
++@@ -835,7 +835,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
++ 		}
++ 	},
++ 	{
++-		/* 1080p 60fps */
+++		/* 1080p, 60fps maximum, 30fps default */
++ 		.width = 1920,
++ 		.height = 1080,
++ 		.line_length_pix = 0x25D9,
++@@ -851,7 +851,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
++ 		},
++ 		.timeperframe_default = {
++ 			.numerator = 100,
++-			.denominator = 6000
+++			.denominator = 3000
++ 		},
++ 		.reg_list = {
++ 			.num_of_regs = ARRAY_SIZE(mode_1920x1080_cphy_regs),
++@@ -859,7 +859,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
++ 		}
++ 	},
++ 	{
++-		/* 720p 120fps */
+++		/* 720p, 120fps maximum, 30fps default */
++ 		.width = 1280,
++ 		.height = 720,
++ 		.line_length_pix = 0x1B3B,
++@@ -875,7 +875,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
++ 		},
++ 		.timeperframe_default = {
++ 			.numerator = 100,
++-			.denominator = 12000
+++			.denominator = 3000
++ 		},
++ 		.reg_list = {
++ 			.num_of_regs = ARRAY_SIZE(mode_1280x720_cphy_regs),
++-- 
++2.49.0
++
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
+index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..b38ed5a7c7f3e37597927eb3fb7f9e1fca951c19 100644
+--- a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
++++ b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
+@@ -5,7 +5,7 @@ maintainer="Casey Connolly <kcxt@postmarketos.org>"
+ _flavor="postmarketos-qcom-sdm845"
+ pkgname=linux-$_flavor
+ pkgver=7.1_rc1
+-pkgrel=4
++pkgrel=8
+ pkgdesc="Mainline Kernel fork for SDM845 devices"
+ arch="aarch64"
+ _carch="arm64"
+@@ -44,6 +44,11 @@ source="
+ 	config-postmarketos-qcom-sdm845.aarch64
+ 	libbpf-Fix-UAF-in-strset__add_str.patch
+ 	enable-dynamic-ftrace.patch
++	0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
++	0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
++	0003-media-i2c-imx371-correct-analogue-gain-range.patch
++	0004-media-i2c-imx376-correct-analogue-gain-range.patch
++	0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
+ "
+ builddir="$srcdir/linux-$_tag"
+ 
+@@ -96,4 +101,9 @@ sha512sums="
+ 0da9864ae972e81db443b58e990f62bb84bcd721f073c0b947725a7d7c1e630bde1395fa9108ce8264e6b88a6c92f3f52b551b0cd373e6bde54ea56a13a48e9b  config-postmarketos-qcom-sdm845.aarch64
+ e2555390d48cbbdc32a7d3f0c27599ff88f2fe3e786d1d0086caaa5b092cc3edcb6e95e2fb07034edb3793f6dc954da0662c723202eb7e2c4956c99b50919b12  libbpf-Fix-UAF-in-strset__add_str.patch
+ e8b595f3e076896dc38f249c8908d58e2e6a858eaa77fe1e680f27db0e76d3d74c0b5dfebb7a4c57d546fee0b0f6eb81a38b20dfd72f985c9d02f28d79a5eceb  enable-dynamic-ftrace.patch
++c13afccb8a38f080520d8f4758e73166846f90595e6d446ef61270ea262e37775da9b0e58da86db292741b4cc49ae76a28a86d86c0b2178064779a93119ad06c  0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
++a5bb80eb3e27c145ce24dcffcb4487988966dde1bb5544162ad8a26182aacf29a205ff90b3e19c3aa82caa37ba7657da411c8aa5fa219162a3aa67902015abf9  0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
++f0cfcdf2f8e8dc00f54c2d5e581bbf897613b533f85bee1469371410fff34401a5f6093edaff6b2e7eecd77c57d29c2f08b99fc08cbd672dd3d1b4283f0ec5c3  0003-media-i2c-imx371-correct-analogue-gain-range.patch
++3f7b466fff0febc7a0e467ce5b44de23c7e27f3c32beaaa256aebee8c0cc8b2062f58ec218e0cff4476e247ecffe00e9a322d30fe3a33d11269f666802826765  0004-media-i2c-imx376-correct-analogue-gain-range.patch
++898faaab8040dbfe40ea20250d9907276376a59d7275b648ce67b5a53a1667fd36ec58d1a17f99b514155f7e8d9cac7942fd5663901f2961ed0207c0da5c8c84  0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
+ "
+diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..ffbd5a9ccdd3924584d8d55a16185aaba9b62554
+--- /dev/null
++++ b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+@@ -0,0 +1,41 @@
++From 4f723ae8885702d9d4cb8198f6b32fc58962c741 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:56:03 +0100
++Subject: [PATCH 03/11] libipa: camera_sensor_helper: Add Sony IMX371 helper
++
++The IMX371 analogue gain follows 1024 / (1024 - code), and its 10-bit
++black level is 0x40. Register a helper so IPAs operate in real gain units
++and use the correct black level instead of treating the register code as
++a linear gain multiplier.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
++ 1 file changed, 12 insertions(+)
++
++diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
++index 9457d62..a912701 100644
++--- a/src/ipa/libipa/camera_sensor_helper.cpp
+++++ b/src/ipa/libipa/camera_sensor_helper.cpp
++@@ -617,6 +617,18 @@ public:
++ };
++ REGISTER_CAMERA_SENSOR_HELPER("imx335", CameraSensorHelperImx335)
++ 
+++class CameraSensorHelperImx371 : public CameraSensorHelper
+++{
+++public:
+++	CameraSensorHelperImx371()
+++	{
+++		/* The 10-bit black level is 0x40. */
+++		blackLevel_ = 4096;
+++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+++	}
+++};
+++REGISTER_CAMERA_SENSOR_HELPER("imx371", CameraSensorHelperImx371)
+++
++ class CameraSensorHelperImx415 : public CameraSensorHelper
++ {
++ public:
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..85127939677c83597e7dfb563d7f3c814cc67f8b
+--- /dev/null
++++ b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
+@@ -0,0 +1,42 @@
++From fa7282a67ec74f347de75d33fcfd1e1f4a35773c Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 17:33:39 +0100
++Subject: [PATCH 04/11] ipa: libipa: Add Sony IMX376 helper
++
++The simple IPA currently treats IMX376 analogue gain register codes as linear gain factors. This makes AGC unstable and reports a raw code such as 170 as 170x gain.
++
++OnePlus OxygenOS sensor library com.qti.sensor.imx376k.so (SHA256 0722fef9d27b53d5abd2308d6bf616d214ed555f35b567422a4af0de37e2c5fb) converts gain with code = 1024 - 1024 / gain and clamps both the gain and code to 16x and 960 respectively.
++
++Register a helper with the corresponding inverse-linear model and the 10-bit 0x40 black pedestal used by the sensor tuning.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++---
++ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
++ 1 file changed, 12 insertions(+)
++
++diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
++index a912701..7fedee8 100644
++--- a/src/ipa/libipa/camera_sensor_helper.cpp
+++++ b/src/ipa/libipa/camera_sensor_helper.cpp
++@@ -629,6 +629,18 @@ public:
++ };
++ REGISTER_CAMERA_SENSOR_HELPER("imx371", CameraSensorHelperImx371)
++ 
+++class CameraSensorHelperImx376 : public CameraSensorHelper
+++{
+++public:
+++	CameraSensorHelperImx376()
+++	{
+++		/* The 10-bit black level is 0x40. */
+++		blackLevel_ = 4096;
+++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+++	}
+++};
+++REGISTER_CAMERA_SENSOR_HELPER("imx376", CameraSensorHelperImx376)
+++
++ class CameraSensorHelperImx415 : public CameraSensorHelper
++ {
++ public:
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ca52b765fcdf1792c30a09f6edabab38dbcd848
+--- /dev/null
++++ b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
+@@ -0,0 +1,40 @@
++From 2c83011639d8d9ad4435bfbcedf94045a5a7d8a4 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 17:33:58 +0100
++Subject: [PATCH 05/11] ipa: libipa: Add Sony IMX519 helper
++
++The simple IPA currently treats IMX519 analogue gain register codes as linear gain factors, producing unstable exposure behaviour.
++
++The existing Raspberry Pi IMX519 camera helper implements gain as 1024 / (1024 - code), and the existing Raspberry Pi IMX519 tuning data specifies a 10-bit black level of 0x40. Add the equivalent generic CameraSensorHelper for use by the simple IPA and other pipelines.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++---
++ src/ipa/libipa/camera_sensor_helper.cpp | 12 ++++++++++++
++ 1 file changed, 12 insertions(+)
++
++diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
++index 7fedee8..1b20ffc 100644
++--- a/src/ipa/libipa/camera_sensor_helper.cpp
+++++ b/src/ipa/libipa/camera_sensor_helper.cpp
++@@ -666,6 +666,18 @@ public:
++ };
++ REGISTER_CAMERA_SENSOR_HELPER("imx477", CameraSensorHelperImx477)
++ 
+++class CameraSensorHelperImx519 : public CameraSensorHelper
+++{
+++public:
+++	CameraSensorHelperImx519()
+++	{
+++		/* From the Raspberry Pi tuning data: 0x40 at 10 bits. */
+++		blackLevel_ = 4096;
+++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+++	}
+++};
+++REGISTER_CAMERA_SENSOR_HELPER("imx519", CameraSensorHelperImx519)
+++
++ class CameraSensorHelperImx678 : public CameraSensorHelper
++ {
++ public:
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..8fd15b86b7e0208fadd16b1d3fe770733a46e872
+--- /dev/null
++++ b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
+@@ -0,0 +1,50 @@
++From 8d2801778fa00b7c786d078aec783f52532c17d0 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 17:34:36 +0100
++Subject: [PATCH 06/11] libcamera: sensor: Add IMX371 and IMX376 properties
++
++Both sensors use 1.0 micrometre unit cells and expose the same five test-pattern modes through their Linux drivers. Add those static properties so applications receive correct pixel metadata and test-pattern mappings.
++
++Keep sensor delays empty because they have not yet been measured; CameraSensorLegacy will continue to use its explicitly warned defaults.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++---
++ .../sensor/camera_sensor_properties.cpp       | 22 +++++++++++++++++++
++ 1 file changed, 22 insertions(+)
++
++diff --git a/src/libcamera/sensor/camera_sensor_properties.cpp b/src/libcamera/sensor/camera_sensor_properties.cpp
++index 2804315..ce86246 100644
++--- a/src/libcamera/sensor/camera_sensor_properties.cpp
+++++ b/src/libcamera/sensor/camera_sensor_properties.cpp
++@@ -261,6 +261,28 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
++ 			.testPatternModes = {},
++ 			.sensorDelays = { },
++ 		} },
+++		{ "imx371", {
+++			.unitCellSize = { 1000, 1000 },
+++			.testPatternModes = {
+++				{ controls::draft::TestPatternModeOff, 0 },
+++				{ controls::draft::TestPatternModeSolidColor, 1 },
+++				{ controls::draft::TestPatternModeColorBars, 2 },
+++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
+++				{ controls::draft::TestPatternModePn9, 4 },
+++			},
+++			.sensorDelays = { },
+++		} },
+++		{ "imx376", {
+++			.unitCellSize = { 1000, 1000 },
+++			.testPatternModes = {
+++				{ controls::draft::TestPatternModeOff, 0 },
+++				{ controls::draft::TestPatternModeSolidColor, 1 },
+++				{ controls::draft::TestPatternModeColorBars, 2 },
+++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
+++				{ controls::draft::TestPatternModePn9, 4 },
+++			},
+++			.sensorDelays = { },
+++		} },
++ 		{ "imx415", {
++ 			.unitCellSize = { 1450, 1450 },
++ 			.testPatternModes = {},
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..5bf300075d47a3d79c266aff9b9495fc7f260420
+--- /dev/null
++++ b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
+@@ -0,0 +1,105 @@
++From d86411806a3fbaff2ff221628dc8c0495908d681 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 17:35:33 +0100
++Subject: [PATCH 07/11] ipa: simple: Make the AGC exposure target configurable
++
++The simple IPA currently hard-codes the mean-sample-value target to the centre of its five-bin histogram. That can clip highlights on sensors and modules whose uncalibrated tuning needs a lower scene brightness.
++
++Read an optional target value from the Agc tuning dictionary while preserving 2.5 as the default. Reject targets outside the histogram range so malformed tuning cannot silently drive exposure in the wrong direction.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++---
++ src/ipa/simple/algorithms/agc.cpp | 31 +++++++++++++++++++++++++++----
++ src/ipa/simple/algorithms/agc.h   |  4 ++++
++ 2 files changed, 31 insertions(+), 4 deletions(-)
++
++diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
++index a13a755..c0993f2 100644
++--- a/src/ipa/simple/algorithms/agc.cpp
+++++ b/src/ipa/simple/algorithms/agc.cpp
++@@ -9,6 +9,7 @@
++ 
++ #include <algorithm>
++ #include <cmath>
+++#include <errno.h>
++ #include <stdint.h>
++ 
++ #include <libcamera/base/log.h>
++@@ -27,10 +28,10 @@ namespace ipa::soft::algorithms {
++ static constexpr unsigned int kExposureBinsCount = 5;
++ 
++ /*
++- * The exposure is optimal when the mean sample value of the histogram is
++- * in the middle of the range.
+++ * By default, exposure is optimal when the mean sample value of the histogram
+++ * is in the middle of the range.
++  */
++-static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
+++static constexpr double kDefaultExposureOptimal = kExposureBinsCount / 2.0;
++ 
++ /*
++  * This implements the hysteresis for the exposure adjustment.
++@@ -62,15 +63,37 @@ static constexpr float kExpProportionalGain = 0.04;
++ static constexpr float kExpMaxStep = 0.15;
++ 
++ Agc::Agc()
+++	: exposureOptimal_(kDefaultExposureOptimal)
++ {
++ }
++ 
+++int Agc::init([[maybe_unused]] IPAContext &context,
+++	      const ValueNode &tuningData)
+++{
+++	exposureOptimal_ =
+++		tuningData["target"].get<double>(kDefaultExposureOptimal);
+++
+++	if (exposureOptimal_ < 1.0 ||
+++	    exposureOptimal_ > kExposureBinsCount) {
+++		LOG(IPASoftExposure, Error)
+++			<< "Invalid exposure target " << exposureOptimal_
+++			<< ", expected a value in the range [1, "
+++			<< kExposureBinsCount << "]";
+++		return -EINVAL;
+++	}
+++
+++	LOG(IPASoftExposure, Debug)
+++		<< "Exposure target " << exposureOptimal_;
+++
+++	return 0;
+++}
+++
++ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
++ {
++ 	int32_t &exposure = frameContext.sensor.exposure;
++ 	double &again = frameContext.sensor.gain;
++ 
++-	double error = kExposureOptimal - exposureMSV;
+++	double error = exposureOptimal_ - exposureMSV;
++ 
++ 	if (std::abs(error) <= kExposureSatisfactory)
++ 		return;
++diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
++index 112d9f5..0bd4b0f 100644
++--- a/src/ipa/simple/algorithms/agc.h
+++++ b/src/ipa/simple/algorithms/agc.h
++@@ -19,6 +19,8 @@ public:
++ 	Agc();
++ 	~Agc() = default;
++ 
+++	int init(IPAContext &context, const ValueNode &tuningData) override;
+++
++ 	void process(IPAContext &context, const uint32_t frame,
++ 		     IPAFrameContext &frameContext,
++ 		     const SwIspStats *stats,
++@@ -26,6 +28,8 @@ public:
++ 
++ private:
++ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
+++
+++	double exposureOptimal_;
++ };
++ 
++ } /* namespace ipa::soft::algorithms */
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..635f8a376e444069c2fcd5c30ebb9ba203d2ab58
+--- /dev/null
++++ b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
+@@ -0,0 +1,383 @@
++From 2640ef83ced8be1363b967f095dd3522b7343a89 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 18:35:32 +0100
++Subject: [PATCH 08/11] ipa: simple: Add a central contrast focus statistic
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ .../internal/software_isp/swisp_stats.h       |  20 ++++
++ .../internal/software_isp/swstats_cpu.h       |  46 +++++--
++ src/ipa/simple/soft_simple.cpp                |  13 ++
++ src/libcamera/software_isp/swstats_cpu.cpp    | 112 ++++++++++++++++--
++ 4 files changed, 169 insertions(+), 22 deletions(-)
++
++diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
++index d9d0d9b..24c333c 100644
++--- a/include/libcamera/internal/software_isp/swisp_stats.h
+++++ b/include/libcamera/internal/software_isp/swisp_stats.h
++@@ -43,6 +43,26 @@ struct SwIspStats {
++ 	 * \brief A histogram of luminance values of all the sampled pixels
++ 	 */
++ 	Histogram yHistogram;
+++	/**
+++	 * \brief Sum of squared Sobel gradients in the focus window
+++	 *
+++	 * A two-dimensional Sobel operator smooths perpendicular to each gradient
+++	 * before measuring it. This suppresses sensor noise while retaining image
+++	 * detail in both orientations.
+++	 */
+++	uint64_t focusContrast;
+++	/**
+++	 * \brief Sum of luminance values in the focus window
+++	 */
+++	uint64_t focusLuminance;
+++	/**
+++	 * \brief Number of differences accumulated in focusContrast
+++	 */
+++	uint32_t focusSamples;
+++	/**
+++	 * \brief Number of samples accumulated in focusLuminance
+++	 */
+++	uint32_t focusLuminanceSamples;
++ };
++ 
++ } /* namespace libcamera */
++diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
++index 5518709..659611f 100644
++--- a/include/libcamera/internal/software_isp/swstats_cpu.h
+++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
++@@ -11,6 +11,7 @@
++ 
++ #pragma once
++ 
+++#include <array>
++ #include <stdint.h>
++ #include <vector>
++ 
++@@ -67,7 +68,10 @@ public:
++ 		    y >= (window_.y + window_.height))
++ 			return;
++ 
++-		(this->*stats0_)(src, stats_[statsBufferIndex]);
+++		bool measureFocus = y >= window_.y + window_.height / 4 &&
+++				    y < window_.y + window_.height * 3 / 4;
+++		(this->*stats0_)(src, stats_[statsBufferIndex],
+++				 focusStates_[statsBufferIndex], measureFocus);
++ 	}
++ 
++ 	void processLine2(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
++@@ -79,28 +83,49 @@ public:
++ 		    y >= (window_.y + window_.height))
++ 			return;
++ 
++-		(this->*stats2_)(src, stats_[statsBufferIndex]);
+++		bool measureFocus = y >= window_.y + window_.height / 4 &&
+++				    y < window_.y + window_.height * 3 / 4;
+++		(this->*stats2_)(src, stats_[statsBufferIndex],
+++				 focusStates_[statsBufferIndex], measureFocus);
++ 	}
++ 
++ 	Signal<uint32_t, uint32_t> statsReady;
++ 
++ private:
++-	using statsProcessFn = void (SwStatsCpu::*)(const uint8_t *src[], SwIspStats &stats);
+++	struct FocusState {
+++		std::array<std::vector<uint16_t>, 3> lines;
+++		unsigned int lineIndex = 0;
+++		unsigned int validLines = 0;
+++	};
+++
+++	using statsProcessFn = void (SwStatsCpu::*)(const uint8_t *src[],
+++					      SwIspStats &stats,
+++					      FocusState &focusState,
+++					      bool measureFocus);
++ 	using processFrameFn = void (SwStatsCpu::*)(MappedFrameBuffer &in);
+++	void finishFocusLine(SwIspStats &stats, FocusState &focusState,
+++			     unsigned int sampleCount);
++ 
++ 	int setupStandardBayerOrder(BayerFormat::Order order);
++ 	/* Bayer 8 bpp unpacked */
++-	void statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats);
+++	void statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats,
+++			FocusState &focusState, bool measureFocus);
++ 	/* Bayer 10 bpp unpacked */
++-	void statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats);
+++	void statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats,
+++			 FocusState &focusState, bool measureFocus);
++ 	/* Bayer 12 bpp unpacked */
++-	void statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats);
+++	void statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats,
+++			 FocusState &focusState, bool measureFocus);
++ 	/* Bayer 10 bpp packed */
++-	void statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats);
++-	void statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats);
+++	void statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats,
+++			  FocusState &focusState, bool measureFocus);
+++	void statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats,
+++			  FocusState &focusState, bool measureFocus);
++ 	/* Bayer 12 bpp packed */
++-	void statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats);
++-	void statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats);
+++	void statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats,
+++			  FocusState &focusState, bool measureFocus);
+++	void statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats,
+++			  FocusState &focusState, bool measureFocus);
++ 
++ 	void processBayerFrame2(MappedFrameBuffer &in);
++ 
++@@ -122,6 +147,7 @@ private:
++ 	unsigned int sumShift_;
++ 
++ 	std::vector<SwIspStats> stats_;
+++	std::vector<FocusState> focusStates_;
++ 	SharedMemObject<SwIspStats> sharedStats_;
++ 	Benchmark bench_;
++ };
++diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
++index 629e1a3..21444b2 100644
++--- a/src/ipa/simple/soft_simple.cpp
+++++ b/src/ipa/simple/soft_simple.cpp
++@@ -301,6 +301,19 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ {
++ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
++ 
+++	if (stats_->valid && stats_->focusSamples && stats_->focusLuminanceSamples) {
+++		double contrast = static_cast<double>(stats_->focusContrast) /
+++				  stats_->focusSamples;
+++		double luminance = static_cast<double>(stats_->focusLuminance) /
+++				   stats_->focusLuminanceSamples;
+++		double normalized = contrast / std::max(luminance * luminance, 1.0);
+++
+++		LOG(IPASoft, Debug)
+++			<< "Focus contrast " << contrast
+++			<< ", mean luminance " << luminance
+++			<< ", normalized " << normalized;
+++	}
+++
++ 	frameContext.sensor.exposure =
++ 		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
++ 	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
++index 7fb77ce..55361a9 100644
++--- a/src/libcamera/software_isp/swstats_cpu.cpp
+++++ b/src/libcamera/software_isp/swstats_cpu.cpp
++@@ -171,13 +171,53 @@ static constexpr unsigned int kRedYMul = 77; /* 0.299 * 256 */
++ static constexpr unsigned int kGreenYMul = 150; /* 0.587 * 256 */
++ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
++ 
+++void SwStatsCpu::finishFocusLine(SwIspStats &stats, FocusState &focusState,
+++				 unsigned int sampleCount)
+++{
+++	if (focusState.validLines >= 2) {
+++		const std::vector<uint16_t> &top =
+++			focusState.lines[(focusState.lineIndex + 1) % 3];
+++		const std::vector<uint16_t> &middle =
+++			focusState.lines[(focusState.lineIndex + 2) % 3];
+++		const std::vector<uint16_t> &bottom =
+++			focusState.lines[focusState.lineIndex];
+++
+++		for (unsigned int x = 1; x + 1 < sampleCount; x++) {
+++			int32_t gradientX =
+++				-static_cast<int32_t>(top[x - 1]) + top[x + 1] -
+++				2 * static_cast<int32_t>(middle[x - 1]) +
+++				2 * middle[x + 1] - bottom[x - 1] + bottom[x + 1];
+++			int32_t gradientY =
+++				-static_cast<int32_t>(top[x - 1]) - 2 * top[x] -
+++				top[x + 1] + bottom[x - 1] + 2 * bottom[x] +
+++				bottom[x + 1];
+++
+++			stats.focusContrast +=
+++				static_cast<uint64_t>(gradientX * gradientX) +
+++				static_cast<uint64_t>(gradientY * gradientY);
+++			stats.focusSamples++;
+++		}
+++	}
+++
+++	focusState.lineIndex = (focusState.lineIndex + 1) % 3;
+++	focusState.validLines = std::min(focusState.validLines + 1, 3U);
+++}
+++
++ #define SWSTATS_START_LINE_STATS(pixel_t) \
++ 	pixel_t r, g, g2, b;              \
++ 	uint64_t yVal;                    \
++                                           \
++ 	uint64_t sumR = 0;                \
++ 	uint64_t sumG = 0;                \
++-	uint64_t sumB = 0;
+++	uint64_t sumB = 0;                \
+++	uint64_t focusLuminance = 0;      \
+++	uint32_t focusLuminanceSamples = 0; \
+++	unsigned int focusLineSamples = 0; \
+++	unsigned int sampleIndex = 0;     \
+++	const unsigned int focusStart = window_.width / 16; \
+++	const unsigned int focusEnd = window_.width * 3 / 16; \
+++	std::vector<uint16_t> &focusLine = \
+++		focusState.lines[focusState.lineIndex];
++ 
++ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
++ 	sumR += r;                         \
++@@ -187,14 +227,27 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
++ 	yVal = r * kRedYMul;               \
++ 	yVal += g * kGreenYMul;            \
++ 	yVal += b * kBlueYMul;             \
++-	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
+++	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++; \
+++                                           \
+++	if (measureFocus && sampleIndex >= focusStart && sampleIndex < focusEnd) { \
+++		uint32_t focusLuma = yVal / (256 * (div)); \
+++		focusLine[focusLineSamples++] = focusLuma; \
+++		focusLuminance += focusLuma; \
+++		focusLuminanceSamples++; \
+++	} \
+++	sampleIndex++;
++ 
++ #define SWSTATS_FINISH_LINE_STATS() \
++ 	stats.sum_.r() += sumR;     \
++ 	stats.sum_.g() += sumG;     \
++-	stats.sum_.b() += sumB;
++-
++-void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
+++	stats.sum_.b() += sumB;     \
+++	stats.focusLuminance += focusLuminance; \
+++	stats.focusLuminanceSamples += focusLuminanceSamples; \
+++	if (measureFocus) \
+++		finishFocusLine(stats, focusState, focusLineSamples);
+++
+++void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats,
+++				 FocusState &focusState, bool measureFocus)
++ {
++ 	const uint8_t *src0 = src[1] + window_.x;
++ 	const uint8_t *src1 = src[2] + window_.x;
++@@ -219,7 +272,8 @@ void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats,
+++				  FocusState &focusState, bool measureFocus)
++ {
++ 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
++ 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
++@@ -245,7 +299,8 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats,
+++				  FocusState &focusState, bool measureFocus)
++ {
++ 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
++ 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
++@@ -271,7 +326,8 @@ void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats,
+++				   FocusState &focusState, bool measureFocus)
++ {
++ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
++ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
++@@ -297,7 +353,8 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats,
+++				   FocusState &focusState, bool measureFocus)
++ {
++ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
++ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
++@@ -323,7 +380,8 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats,
+++				   FocusState &focusState, bool measureFocus)
++ {
++ 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
++ 	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
++@@ -349,7 +407,8 @@ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
++ 	SWSTATS_FINISH_LINE_STATS()
++ }
++ 
++-void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats)
+++void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats,
+++				   FocusState &focusState, bool measureFocus)
++ {
++ 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
++ 	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
++@@ -392,6 +451,15 @@ void SwStatsCpu::startFrame(uint32_t frame)
++ 	for (auto &s : stats_) {
++ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
++ 		s.yHistogram.fill(0);
+++		s.focusContrast = 0;
+++		s.focusLuminance = 0;
+++		s.focusSamples = 0;
+++		s.focusLuminanceSamples = 0;
+++	}
+++
+++	for (FocusState &state : focusStates_) {
+++		state.lineIndex = 0;
+++		state.validLines = 0;
++ 	}
++ }
++ 
++@@ -409,10 +477,18 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
++ 	if (valid) {
++ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
++ 		sharedStats_->yHistogram.fill(0);
+++		sharedStats_->focusContrast = 0;
+++		sharedStats_->focusLuminance = 0;
+++		sharedStats_->focusSamples = 0;
+++		sharedStats_->focusLuminanceSamples = 0;
++ 		for (const auto &s : stats_) {
++ 			sharedStats_->sum_ += s.sum_;
++ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
++ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+++			sharedStats_->focusContrast += s.focusContrast;
+++			sharedStats_->focusLuminance += s.focusLuminance;
+++			sharedStats_->focusSamples += s.focusSamples;
+++			sharedStats_->focusLuminanceSamples += s.focusLuminanceSamples;
++ 		}
++ 
++ 		sharedStats_->sum_ >>= sumShift_;
++@@ -469,6 +545,7 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int stat
++ {
++ 	stride_ = inputCfg.stride;
++ 	stats_.resize(statsBufferCount);
+++	focusStates_.resize(statsBufferCount);
++ 
++ 	BayerFormat bayerFormat =
++ 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
++@@ -570,6 +647,14 @@ void SwStatsCpu::setWindow(const Rectangle &window)
++ 	window_.width = (window_.width > xShift_ ? window_.width - xShift_ : 0);
++ 	window_.width &= ~(patternSize_.width - 1);
++ 	window_.height &= ~(patternSize_.height - 1);
+++
+++	unsigned int focusLineSize = window_.width / 8 + 1;
+++	for (FocusState &state : focusStates_) {
+++		for (std::vector<uint16_t> &line : state.lines)
+++			line.resize(focusLineSize);
+++		state.lineIndex = 0;
+++		state.validLines = 0;
+++	}
++ }
++ 
++ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
++@@ -589,7 +674,10 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
++ 		/* linePointers[0] is not used by any stats0_ functions */
++ 		linePointers[1] = src;
++ 		linePointers[2] = src + stride_;
++-		(this->*stats0_)(linePointers, stats_[0]);
+++		bool measureFocus = y >= window_.height / 4 &&
+++				    y < window_.height * 3 / 4;
+++		(this->*stats0_)(linePointers, stats_[0], focusStates_[0],
+++				 measureFocus);
++ 		src += stride_ * 2;
++ 	}
++ }
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f47da3c341d7c7830c2e0299798a75c4f3083ec
+--- /dev/null
++++ b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
+@@ -0,0 +1,753 @@
++From df337e4be0d1f97425e4eca55163418d501ed0ca Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 19:42:41 +0100
++Subject: [PATCH 09/11] ipa: simple: Add contrast-detect autofocus
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ .../internal/software_isp/software_isp.h      |   2 +
++ include/libcamera/ipa/soft.mojom              |   2 +
++ src/ipa/simple/algorithms/af.cpp              | 383 ++++++++++++++++++
++ src/ipa/simple/algorithms/af.h                |  94 +++++
++ src/ipa/simple/algorithms/meson.build         |   1 +
++ src/ipa/simple/ipa_context.h                  |   4 +
++ src/ipa/simple/soft_simple.cpp                |  30 +-
++ src/libcamera/pipeline/simple/simple.cpp      |  20 +
++ src/libcamera/software_isp/software_isp.cpp   |  12 +
++ 9 files changed, 535 insertions(+), 13 deletions(-)
++ create mode 100644 src/ipa/simple/algorithms/af.cpp
++ create mode 100644 src/ipa/simple/algorithms/af.h
++
++diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
++index 4f72dce..4c4d5e9 100644
++--- a/include/libcamera/internal/software_isp/software_isp.h
+++++ b/include/libcamera/internal/software_isp/software_isp.h
++@@ -87,10 +87,12 @@ public:
++ 	Signal<uint32_t, uint32_t> ispStatsReady;
++ 	Signal<uint32_t, const ControlList &> metadataReady;
++ 	Signal<const ControlList &> setSensorControls;
+++	Signal<const ControlList &> setLensControls;
++ 
++ private:
++ 	void saveIspParams();
++ 	void setSensorCtrls(const ControlList &sensorControls);
+++	void setLensCtrls(const ControlList &lensControls);
++ 	void statsReady(uint32_t frame, uint32_t bufferId);
++ 	void inputReady(FrameBuffer *input);
++ 	void outputReady(FrameBuffer *output);
++diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
++index 77328c5..304b5fe 100644
++--- a/include/libcamera/ipa/soft.mojom
+++++ b/include/libcamera/ipa/soft.mojom
++@@ -10,6 +10,7 @@ import "include/libcamera/ipa/core.mojom";
++ 
++ struct IPAConfigInfo {
++ 	libcamera.ControlInfoMap sensorControls;
+++	libcamera.ControlInfoMap lensControls;
++ };
++ 
++ interface IPASoftInterface {
++@@ -33,6 +34,7 @@ interface IPASoftInterface {
++ 
++ interface IPASoftEventInterface {
++ 	setSensorControls(libcamera.ControlList sensorControls);
+++	setLensControls(libcamera.ControlList lensControls);
++ 	setIspParams();
++ 	metadataReady(uint32 frame, libcamera.ControlList metadata);
++ };
++diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
++new file mode 100644
++index 0000000..cdbab4c
++--- /dev/null
+++++ b/src/ipa/simple/algorithms/af.cpp
++@@ -0,0 +1,383 @@
+++/* SPDX-License-Identifier: LGPL-2.1-or-later */
+++/*
+++ * Contrast-detect autofocus
+++ */
+++
+++#include "af.h"
+++
+++#include <algorithm>
+++#include <cmath>
+++#include <errno.h>
+++#include <limits>
+++
+++#include <linux/v4l2-controls.h>
+++
+++#include <libcamera/base/log.h>
+++
+++#include <libcamera/control_ids.h>
+++
+++#include "simple/ipa_context.h"
+++
+++namespace libcamera {
+++
+++LOG_DEFINE_CATEGORY(IPASoftAf)
+++
+++namespace ipa::soft::algorithms {
+++
+++int Af::init(IPAContext &context, const ValueNode &tuningData)
+++{
+++	configuredMin_ = tuningData["minPosition"].get<int32_t>(400);
+++	configuredMax_ = tuningData["maxPosition"].get<int32_t>(800);
+++	coarseStep_ = tuningData["coarseStep"].get<int32_t>(100);
+++	fineStep_ = tuningData["fineStep"].get<int32_t>(25);
+++	settleTimeMs_ = tuningData["settleTimeMs"].get<unsigned int>(200);
+++	startupDelayMs_ = tuningData["startupDelayMs"].get<unsigned int>(2000);
+++	measureTimeMs_ = tuningData["measureTimeMs"].get<unsigned int>(100);
+++	measureSamples_ = tuningData["measureSamples"].get<unsigned int>(2);
+++	focusTolerance_ =
+++		tuningData["focusTolerance"].get<double>(0.03);
+++	restartRatio_ = tuningData["restartRatio"].get<double>(0.7);
+++	monitorWindowMs_ = tuningData["monitorWindowMs"].get<unsigned int>(250);
+++	restartHoldMs_ = tuningData["restartHoldMs"].get<unsigned int>(1000);
+++	restartDelayMs_ = tuningData["restartDelayMs"].get<unsigned int>(2000);
+++	bool continuous = tuningData["continuous"].get<bool>(true);
+++
+++	if (configuredMin_ < 0 || configuredMax_ <= configuredMin_ ||
+++	    coarseStep_ <= 0 || fineStep_ <= 0 ||
+++	    fineStep_ > coarseStep_ || !settleTimeMs_ || !measureTimeMs_ ||
+++	    !measureSamples_ || !monitorWindowMs_ || !restartHoldMs_ ||
+++	    focusTolerance_ < 0.0 || focusTolerance_ >= 1.0 ||
+++	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0) {
+++		LOG(IPASoftAf, Error) << "Invalid autofocus tuning data";
+++		return -EINVAL;
+++	}
+++
+++	defaultMode_ = continuous ? controls::AfModeContinuous
+++				  : controls::AfModeAuto;
+++	context.ctrlMap[&controls::AfMode] =
+++		ControlInfo(controls::AfModeAuto, controls::AfModeContinuous,
+++			    defaultMode_);
+++	context.ctrlMap[&controls::AfTrigger] =
+++		ControlInfo(controls::AfTriggerValues);
+++
+++	return 0;
+++}
+++
+++int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
+++{
+++	auto focus = configInfo.lensControls.find(V4L2_CID_FOCUS_ABSOLUTE);
+++	if (focus == configInfo.lensControls.end()) {
+++		LOG(IPASoftAf, Error)
+++			<< "Autofocus tuning is present but the lens has no focus control";
+++		return -EINVAL;
+++	}
+++
+++	int32_t lensMin = focus->second.min().get<int32_t>();
+++	int32_t lensMax = focus->second.max().get<int32_t>();
+++	minPosition_ = std::clamp(configuredMin_, lensMin, lensMax);
+++	maxPosition_ = std::clamp(configuredMax_, lensMin, lensMax);
+++	if (minPosition_ >= maxPosition_) {
+++		LOG(IPASoftAf, Error)
+++			<< "Autofocus range " << configuredMin_ << "-"
+++			<< configuredMax_ << " does not overlap lens range "
+++			<< lensMin << "-" << lensMax;
+++		return -EINVAL;
+++	}
+++
+++	mode_ = defaultMode_;
+++	state_ = controls::AfStateIdle;
+++	phase_ = ScanPhase::Idle;
+++	currentPosition_ = minPosition_;
+++	bestPosition_ = minPosition_;
+++	bestMetric_ = 0.0;
+++	positionMetrics_.clear();
+++	focusedMetric_ = 0.0;
+++	monitorMetricSum_ = 0.0;
+++	monitorSamples_ = 0;
+++	lowContrast_ = false;
+++	firstScan_ = true;
+++
+++	if (mode_ == controls::AfModeContinuous)
+++		startScan(context);
+++	else
+++		requestPosition(context, minPosition_);
+++
+++	LOG(IPASoftAf, Info)
+++		<< "Autofocus range " << minPosition_ << "-" << maxPosition_
+++		<< ", coarse step " << coarseStep_
+++		<< ", fine step " << fineStep_;
+++
+++	return 0;
+++}
+++
+++void Af::queueRequest(IPAContext &context,
+++		      [[maybe_unused]] const uint32_t frame,
+++		      [[maybe_unused]] IPAFrameContext &frameContext,
+++		      const ControlList &requestControls)
+++{
+++	const auto &mode = requestControls.get(controls::AfMode);
+++	if (mode && *mode != mode_) {
+++		if (*mode != controls::AfModeAuto &&
+++		    *mode != controls::AfModeContinuous) {
+++			LOG(IPASoftAf, Warning)
+++				<< "Ignoring unsupported autofocus mode " << *mode;
+++		} else {
+++			mode_ = *mode;
+++			phase_ = ScanPhase::Idle;
+++			state_ = controls::AfStateIdle;
+++			if (mode_ == controls::AfModeContinuous)
+++				startScan(context);
+++		}
+++	}
+++
+++	const auto &trigger = requestControls.get(controls::AfTrigger);
+++	if (!trigger || mode_ != controls::AfModeAuto)
+++		return;
+++
+++	if (*trigger == controls::AfTriggerStart) {
+++		if (phase_ == ScanPhase::Idle)
+++			startScan(context);
+++	} else if (*trigger == controls::AfTriggerCancel) {
+++		phase_ = ScanPhase::Idle;
+++		state_ = controls::AfStateIdle;
+++	}
+++}
+++
+++void Af::buildCoarsePositions()
+++{
+++	positions_.clear();
+++	positions_.push_back(minPosition_);
+++	for (int32_t position = minPosition_ + coarseStep_;
+++	     position < maxPosition_; position += coarseStep_)
+++		positions_.push_back(position);
+++	if (positions_.back() != maxPosition_)
+++		positions_.push_back(maxPosition_);
+++}
+++
+++void Af::buildFinePositions()
+++{
+++	int32_t start = std::max(minPosition_, bestPosition_ - coarseStep_);
+++	int32_t end = std::min(maxPosition_, bestPosition_ + coarseStep_);
+++
+++	positions_.clear();
+++	positions_.push_back(start);
+++	for (int32_t position = start + fineStep_;
+++	     position < end; position += fineStep_)
+++		positions_.push_back(position);
+++	if (positions_.back() != end)
+++		positions_.push_back(end);
+++	positions_.push_back(bestPosition_);
+++	std::sort(positions_.begin(), positions_.end());
+++	positions_.erase(std::unique(positions_.begin(), positions_.end()),
+++			 positions_.end());
+++}
+++
+++void Af::requestPosition(IPAContext &context, int32_t position)
+++{
+++	currentPosition_ = position;
+++	context.activeState.af.lensPosition = position;
+++	settleUntil_ = std::chrono::steady_clock::now() +
+++		std::chrono::milliseconds(settleTimeMs_);
+++	measurementStarted_ = false;
+++	samples_ = 0;
+++	metricSum_ = 0.0;
+++
+++	LOG(IPASoftAf, Debug) << "Requesting lens position " << position;
+++}
+++
+++void Af::startScan(IPAContext &context)
+++{
+++	buildCoarsePositions();
+++	positionIndex_ = 0;
+++	bestPosition_ = minPosition_;
+++	bestMetric_ = -std::numeric_limits<double>::infinity();
+++	positionMetrics_.clear();
+++	phase_ = ScanPhase::Coarse;
+++	state_ = controls::AfStateScanning;
+++	lowContrast_ = false;
+++	monitorMetricSum_ = 0.0;
+++	monitorSamples_ = 0;
+++	scanNotBefore_ = std::chrono::steady_clock::now() +
+++		std::chrono::milliseconds(firstScan_ ? startupDelayMs_ : 0);
+++	requestPosition(context, positions_.front());
+++}
+++
+++void Af::selectBestPosition()
+++{
+++	auto maxMetric = std::max_element(positionMetrics_.begin(),
+++					  positionMetrics_.end());
+++	if (maxMetric == positionMetrics_.end())
+++		return;
+++
+++	bestMetric_ = *maxMetric;
+++	double plateauMinimum = bestMetric_ * (1.0 - focusTolerance_);
+++	int64_t positionSum = 0;
+++	unsigned int plateauSamples = 0;
+++
+++	for (std::size_t i = 0; i < positionMetrics_.size(); ++i) {
+++		if (positionMetrics_[i] < plateauMinimum)
+++			continue;
+++
+++		positionSum += positions_[i];
+++		plateauSamples++;
+++	}
+++
+++	if (plateauSamples) {
+++		bestPosition_ = std::lround(static_cast<double>(positionSum) /
+++					 plateauSamples);
+++	} else {
+++		bestPosition_ = positions_[maxMetric - positionMetrics_.begin()];
+++	}
+++
+++	LOG(IPASoftAf, Debug)
+++		<< "Focus plateau selected lens position " << bestPosition_
+++		<< " from " << plateauSamples << " near-peak measurements"
+++		<< " (peak metric " << bestMetric_ << ")";
+++}
+++
+++void Af::finishPosition(IPAContext &context, double metric)
+++{
+++	LOG(IPASoftAf, Debug)
+++		<< "Lens position " << currentPosition_
+++		<< " focus metric " << metric;
+++
+++	positionMetrics_.push_back(metric);
+++
+++	positionIndex_++;
+++	if (positionIndex_ < positions_.size()) {
+++		requestPosition(context, positions_[positionIndex_]);
+++		return;
+++	}
+++
+++	if (phase_ == ScanPhase::Coarse) {
+++		selectBestPosition();
+++		buildFinePositions();
+++		positionIndex_ = 0;
+++		bestMetric_ = -std::numeric_limits<double>::infinity();
+++		positionMetrics_.clear();
+++		phase_ = ScanPhase::Fine;
+++		requestPosition(context, positions_.front());
+++		return;
+++	}
+++
+++	selectBestPosition();
+++	phase_ = ScanPhase::FinalSettle;
+++	requestPosition(context, bestPosition_);
+++}
+++
+++double Af::focusMetric(const SwIspStats *stats)
+++{
+++	if (!stats->valid || !stats->focusSamples ||
+++	    !stats->focusLuminanceSamples)
+++		return -1.0;
+++
+++	double contrast = static_cast<double>(stats->focusContrast) /
+++			  stats->focusSamples;
+++	double luminance = static_cast<double>(stats->focusLuminance) /
+++			   stats->focusLuminanceSamples;
+++
+++	return contrast / std::max(luminance * luminance, 1.0);
+++}
+++
+++void Af::process(IPAContext &context,
+++		 [[maybe_unused]] const uint32_t frame,
+++		 [[maybe_unused]] IPAFrameContext &frameContext,
+++		 const SwIspStats *stats, ControlList &metadata)
+++{
+++	double metric = focusMetric(stats);
+++	auto now = std::chrono::steady_clock::now();
+++
+++	if (metric >= 0.0 && phase_ == ScanPhase::FinalSettle) {
+++		if (now >= settleUntil_) {
+++			if (!measurementStarted_) {
+++				measurementStarted_ = true;
+++				measureUntil_ = now +
+++					std::chrono::milliseconds(measureTimeMs_);
+++			}
+++
+++			metricSum_ += metric;
+++			samples_++;
+++			if (now >= measureUntil_ && samples_ >= measureSamples_) {
+++				phase_ = ScanPhase::Idle;
+++				focusedMetric_ = metricSum_ / samples_;
+++				state_ = std::isfinite(focusedMetric_) &&
+++						 focusedMetric_ > 0.0
+++						 ? controls::AfStateFocused
+++						 : controls::AfStateFailed;
+++				restartNotBefore_ = now +
+++					std::chrono::milliseconds(restartDelayMs_);
+++				monitorWindowStart_ = now;
+++				monitorMetricSum_ = 0.0;
+++				monitorSamples_ = 0;
+++				lowContrast_ = false;
+++
+++				LOG(IPASoftAf, Debug)
+++					<< "Autofocus settled at lens position "
+++					<< currentPosition_ << " with focus metric "
+++					<< focusedMetric_;
+++			}
+++		}
+++	} else if (metric >= 0.0 &&
+++		   (phase_ == ScanPhase::Coarse ||
+++		    phase_ == ScanPhase::Fine)) {
+++		if (now >= scanNotBefore_ && now >= settleUntil_) {
+++			if (!measurementStarted_) {
+++				firstScan_ = false;
+++				measurementStarted_ = true;
+++				measureUntil_ = now +
+++					std::chrono::milliseconds(measureTimeMs_);
+++			}
+++
+++			metricSum_ += metric;
+++			samples_++;
+++			if (now >= measureUntil_ && samples_ >= measureSamples_)
+++				finishPosition(context, metricSum_ / samples_);
+++		}
+++	} else if (metric >= 0.0 &&
+++		   mode_ == controls::AfModeContinuous &&
+++		   state_ == controls::AfStateFocused) {
+++		monitorMetricSum_ += metric;
+++		monitorSamples_++;
+++
+++		if (now - monitorWindowStart_ >=
+++		    std::chrono::milliseconds(monitorWindowMs_)) {
+++			double monitorMetric = monitorMetricSum_ / monitorSamples_;
+++			monitorWindowStart_ = now;
+++			monitorMetricSum_ = 0.0;
+++			monitorSamples_ = 0;
+++
+++			LOG(IPASoftAf, Debug)
+++				<< "Continuous focus metric " << monitorMetric
+++				<< ", reference " << focusedMetric_;
+++
+++			if (monitorMetric > focusedMetric_)
+++				focusedMetric_ = monitorMetric;
+++
+++			if (now >= restartNotBefore_ &&
+++			    monitorMetric < focusedMetric_ * restartRatio_) {
+++				if (!lowContrast_) {
+++					lowContrast_ = true;
+++					lowContrastSince_ = now;
+++				} else if (now - lowContrastSince_ >=
+++					   std::chrono::milliseconds(restartHoldMs_)) {
+++					LOG(IPASoftAf, Debug)
+++						<< "Restarting continuous autofocus: metric "
+++						<< monitorMetric << " fell below "
+++						<< focusedMetric_ * restartRatio_;
+++					startScan(context);
+++				}
+++			} else {
+++				lowContrast_ = false;
+++			}
+++		}
+++	}
+++
+++	metadata.set(controls::AfMode, mode_);
+++	metadata.set(controls::AfState, state_);
+++}
+++
+++REGISTER_IPA_ALGORITHM(Af, "Af")
+++
+++} /* namespace ipa::soft::algorithms */
+++
+++} /* namespace libcamera */
++diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
++new file mode 100644
++index 0000000..cc30dfb
++--- /dev/null
+++++ b/src/ipa/simple/algorithms/af.h
++@@ -0,0 +1,94 @@
+++/* SPDX-License-Identifier: LGPL-2.1-or-later */
+++/*
+++ * Contrast-detect autofocus
+++ */
+++
+++#pragma once
+++
+++#include <chrono>
+++#include <stddef.h>
+++#include <stdint.h>
+++#include <vector>
+++
+++#include "algorithm.h"
+++
+++namespace libcamera {
+++
+++namespace ipa::soft::algorithms {
+++
+++class Af : public Algorithm
+++{
+++public:
+++	Af() = default;
+++	~Af() = default;
+++
+++	int init(IPAContext &context, const ValueNode &tuningData) override;
+++	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+++	void queueRequest(IPAContext &context, const uint32_t frame,
+++			  IPAFrameContext &frameContext,
+++			  const ControlList &controls) override;
+++	void process(IPAContext &context, const uint32_t frame,
+++		     IPAFrameContext &frameContext, const SwIspStats *stats,
+++		     ControlList &metadata) override;
+++
+++private:
+++	enum class ScanPhase {
+++		Idle,
+++		Coarse,
+++		Fine,
+++		FinalSettle,
+++	};
+++
+++	void startScan(IPAContext &context);
+++	void requestPosition(IPAContext &context, int32_t position);
+++	void finishPosition(IPAContext &context, double metric);
+++	void selectBestPosition();
+++	void buildCoarsePositions();
+++	void buildFinePositions();
+++	static double focusMetric(const SwIspStats *stats);
+++
+++	int32_t configuredMin_ = 400;
+++	int32_t configuredMax_ = 800;
+++	int32_t coarseStep_ = 100;
+++	int32_t fineStep_ = 25;
+++	unsigned int settleTimeMs_ = 200;
+++	unsigned int startupDelayMs_ = 2000;
+++	unsigned int measureTimeMs_ = 100;
+++	unsigned int measureSamples_ = 2;
+++	double focusTolerance_ = 0.03;
+++	double restartRatio_ = 0.7;
+++	unsigned int monitorWindowMs_ = 250;
+++	unsigned int restartHoldMs_ = 1000;
+++	unsigned int restartDelayMs_ = 2000;
+++	int32_t defaultMode_ = 0;
+++
+++	int32_t minPosition_ = 0;
+++	int32_t maxPosition_ = 0;
+++	int32_t mode_ = 0;
+++	int32_t state_ = 0;
+++	int32_t currentPosition_ = 0;
+++	int32_t bestPosition_ = 0;
+++	ScanPhase phase_ = ScanPhase::Idle;
+++	std::vector<int32_t> positions_;
+++	std::vector<double> positionMetrics_;
+++	std::size_t positionIndex_ = 0;
+++	std::chrono::steady_clock::time_point settleUntil_;
+++	std::chrono::steady_clock::time_point measureUntil_;
+++	std::chrono::steady_clock::time_point scanNotBefore_;
+++	std::chrono::steady_clock::time_point monitorWindowStart_;
+++	std::chrono::steady_clock::time_point restartNotBefore_;
+++	std::chrono::steady_clock::time_point lowContrastSince_;
+++	bool firstScan_ = true;
+++	bool measurementStarted_ = false;
+++	unsigned int samples_ = 0;
+++	double metricSum_ = 0.0;
+++	double bestMetric_ = 0.0;
+++	double focusedMetric_ = 0.0;
+++	double monitorMetricSum_ = 0.0;
+++	unsigned int monitorSamples_ = 0;
+++	bool lowContrast_ = false;
+++};
+++
+++} /* namespace ipa::soft::algorithms */
+++
+++} /* namespace libcamera */
++diff --git a/src/ipa/simple/algorithms/meson.build b/src/ipa/simple/algorithms/meson.build
++index 73c6372..1cd58d5 100644
++--- a/src/ipa/simple/algorithms/meson.build
+++++ b/src/ipa/simple/algorithms/meson.build
++@@ -2,6 +2,7 @@
++ 
++ soft_simple_ipa_algorithms = files([
++     'adjust.cpp',
+++    'af.cpp',
++     'awb.cpp',
++     'agc.cpp',
++     'blc.cpp',
++diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
++index 8ccfacb..045421d 100644
++--- a/src/ipa/simple/ipa_context.h
+++++ b/src/ipa/simple/ipa_context.h
++@@ -53,6 +53,10 @@ struct IPAActiveState {
++ 		unsigned int temperatureK;
++ 	} awb;
++ 
+++	struct {
+++		std::optional<int32_t> lensPosition;
+++	} af;
+++
++ 	Matrix<float, 3, 3> combinedMatrix;
++ 
++ 	struct {
++diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
++index 21444b2..6027553 100644
++--- a/src/ipa/simple/soft_simple.cpp
+++++ b/src/ipa/simple/soft_simple.cpp
++@@ -73,11 +73,13 @@ protected:
++ 
++ private:
++ 	void updateExposure(double exposureMSV);
+++	void emitLensControls();
++ 
++ 	DebayerParams *params_;
++ 	SwIspStats *stats_;
++ 	std::unique_ptr<CameraSensorHelper> camHelper_;
++ 	ControlInfoMap sensorInfoMap_;
+++	ControlInfoMap lensInfoMap_;
++ 
++ 	/* Local parameter storage */
++ 	struct IPAContext context_;
++@@ -202,6 +204,7 @@ int IPASoftSimple::init(const IPASettings &settings,
++ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
++ {
++ 	sensorInfoMap_ = configInfo.sensorControls;
+++	lensInfoMap_ = configInfo.lensControls;
++ 
++ 	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;
++ 	const ControlInfo &gainInfo = sensorInfoMap_.find(V4L2_CID_ANALOGUE_GAIN)->second;
++@@ -267,6 +270,7 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
++ 
++ int IPASoftSimple::start()
++ {
+++	emitLensControls();
++ 	return 0;
++ }
++ 
++@@ -301,19 +305,6 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ {
++ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
++ 
++-	if (stats_->valid && stats_->focusSamples && stats_->focusLuminanceSamples) {
++-		double contrast = static_cast<double>(stats_->focusContrast) /
++-				  stats_->focusSamples;
++-		double luminance = static_cast<double>(stats_->focusLuminance) /
++-				   stats_->focusLuminanceSamples;
++-		double normalized = contrast / std::max(luminance * luminance, 1.0);
++-
++-		LOG(IPASoft, Debug)
++-			<< "Focus contrast " << contrast
++-			<< ", mean luminance " << luminance
++-			<< ", normalized " << normalized;
++-	}
++-
++ 	frameContext.sensor.exposure =
++ 		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
++ 	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++@@ -322,6 +313,7 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ 	ControlList metadata(controls::controls);
++ 	for (const auto &algo : algorithms())
++ 		algo->process(context_, frame, frameContext, stats_, metadata);
+++	emitLensControls();
++ 	metadataReady.emit(frame, metadata);
++ 
++ 	/* Sanity check */
++@@ -341,6 +333,18 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ 	setSensorControls.emit(ctrls);
++ }
++ 
+++void IPASoftSimple::emitLensControls()
+++{
+++	auto &position = context_.activeState.af.lensPosition;
+++	if (!position || lensInfoMap_.empty())
+++		return;
+++
+++	ControlList ctrls(lensInfoMap_);
+++	ctrls.set(V4L2_CID_FOCUS_ABSOLUTE, *position);
+++	setLensControls.emit(ctrls);
+++	position.reset();
+++}
+++
++ std::string IPASoftSimple::logPrefix() const
++ {
++ 	return "IPASoft";
++diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
++index e26f438..7bd87b9 100644
++--- a/src/libcamera/pipeline/simple/simple.cpp
+++++ b/src/libcamera/pipeline/simple/simple.cpp
++@@ -33,6 +33,7 @@
++ #include <libcamera/stream.h>
++ 
++ #include "libcamera/internal/camera.h"
+++#include "libcamera/internal/camera_lens.h"
++ #include "libcamera/internal/camera_manager.h"
++ #include "libcamera/internal/camera_sensor.h"
++ #include "libcamera/internal/camera_sensor_properties.h"
++@@ -372,6 +373,7 @@ private:
++ 	void ispStatsReady(uint32_t frame, uint32_t bufferId);
++ 	void metadataReady(uint32_t frame, const ControlList &metadata);
++ 	void setSensorControls(const ControlList &sensorControls);
+++	void setLensControls(const ControlList &lensControls);
++ };
++ 
++ class SimpleCameraConfiguration : public CameraConfiguration
++@@ -626,6 +628,7 @@ int SimpleCameraData::init()
++ 			swIsp_->ispStatsReady.connect(this, &SimpleCameraData::ispStatsReady);
++ 			swIsp_->metadataReady.connect(this, &SimpleCameraData::metadataReady);
++ 			swIsp_->setSensorControls.connect(this, &SimpleCameraData::setSensorControls);
+++			swIsp_->setLensControls.connect(this, &SimpleCameraData::setLensControls);
++ 		}
++ 	}
++ 
++@@ -1058,6 +1061,20 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
++ 	}
++ }
++ 
+++void SimpleCameraData::setLensControls(const ControlList &lensControls)
+++{
+++	CameraLens *lens = sensor_->focusLens();
+++	if (!lens || !lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE))
+++		return;
+++
+++	int32_t position =
+++		lensControls.get(V4L2_CID_FOCUS_ABSOLUTE).get<int32_t>();
+++	int ret = lens->setFocusPosition(position);
+++	if (ret)
+++		LOG(SimplePipeline, Error)
+++			<< "Failed to set lens focus position " << position;
+++}
+++
++ /* Retrieve all source pads connected to a sink pad through active routes. */
++ std::vector<const MediaPad *> SimpleCameraData::routedSourcePads(MediaPad *sink)
++ {
++@@ -1605,6 +1622,9 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
++ 	} else {
++ 		ipa::soft::IPAConfigInfo configInfo;
++ 		configInfo.sensorControls = data->sensor_->controls();
+++		CameraLens *lens = data->sensor_->focusLens();
+++		if (lens)
+++			configInfo.lensControls = lens->controls();
++ 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
++ 	}
++ }
++diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
++index c73a16c..bafa1f2 100644
++--- a/src/libcamera/software_isp/software_isp.cpp
+++++ b/src/libcamera/software_isp/software_isp.cpp
++@@ -72,6 +72,12 @@ LOG_DEFINE_CATEGORY(SoftwareIsp)
++  * ready
++  */
++ 
+++/**
+++ * \var SoftwareIsp::setLensControls
+++ * \brief A signal emitted when the values to write to the lens controls are
+++ * ready
+++ */
+++
++ /**
++  * \brief Constructs SoftwareIsp object
++  * \param[in] pipe The pipeline handler in use
++@@ -176,6 +182,7 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
++ 					    metadataReady.emit(frame, metadata);
++ 				    });
++ 	ipa_->setSensorControls.connect(this, &SoftwareIsp::setSensorCtrls);
+++	ipa_->setLensControls.connect(this, &SoftwareIsp::setLensCtrls);
++ 
++ 	debayer_->moveToThread(&ispWorkerThread_);
++ }
++@@ -441,6 +448,11 @@ void SoftwareIsp::setSensorCtrls(const ControlList &sensorControls)
++ 	setSensorControls.emit(sensorControls);
++ }
++ 
+++void SoftwareIsp::setLensCtrls(const ControlList &lensControls)
+++{
+++	setLensControls.emit(lensControls);
+++}
+++
++ void SoftwareIsp::statsReady(uint32_t frame, uint32_t bufferId)
++ {
++ 	ispStatsReady.emit(frame, bufferId);
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..06e25c0d491c40f5e72c0fd33b32097df459b553
+--- /dev/null
++++ b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
+@@ -0,0 +1,39 @@
++From 48f3e3d4d3f45fc22441b4d48dc0233f308160a3 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 20:43:21 +0100
++Subject: [PATCH 10/11] libcamera: software_isp: Align EGL statistics with
++ output crop
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/libcamera/software_isp/debayer_egl.cpp | 13 ++++++++++---
++ 1 file changed, 10 insertions(+), 3 deletions(-)
++
++diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
++index 02651fe..98ea4ae 100644
++--- a/src/libcamera/software_isp/debayer_egl.cpp
+++++ b/src/libcamera/software_isp/debayer_egl.cpp
++@@ -340,10 +340,17 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
++ 	window_.height = outputCfg.size.height;
++ 
++ 	/*
++-	 * Don't pass x,y from window_ since process() already adjusts for it.
++-	 * But crop the window to 2/3 of its width and height for speedup.
+++	 * The EGL projection scales the native output while preserving its aspect
+++	 * ratio, then clips it against the output buffer. Calculate statistics over
+++	 * the same source region so AGC, AWB and AF describe the displayed image.
++ 	 */
++-	stats_->setWindow(Rectangle(window_.size()));
+++	float scale = std::max(static_cast<float>(outputSize_.width) /
+++			       nativeOutputSize_.width,
+++			       static_cast<float>(outputSize_.height) /
+++			       nativeOutputSize_.height);
+++	Size statsSize(std::min(width_, static_cast<unsigned int>(outputSize_.width / scale)),
+++		       std::min(height_, static_cast<unsigned int>(outputSize_.height / scale)));
+++	stats_->setWindow(Rectangle(statsSize));
++ 
++ 	inputBufferCount_ = inputCfg.bufferCount;
++ 	outputBufferCount_ = outputCfg.bufferCount;
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..f25b8746b07c57a232fb0d4c83e88cceaae95a6c
+--- /dev/null
++++ b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
+@@ -0,0 +1,370 @@
++From 8f2320f1a31a398699e0c2f1a58b170720c6bfa3 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 21:39:17 +0100
++Subject: [PATCH 11/11] libcamera: software_isp: Filter EGL scaling in a second
++ pass
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/libcamera/shaders/meson.build          |   2 +
++ src/libcamera/shaders/rgb_scale.frag       |  22 +++
++ src/libcamera/shaders/rgb_scale.vert       |  14 ++
++ src/libcamera/software_isp/debayer_egl.cpp | 171 ++++++++++++++++-----
++ src/libcamera/software_isp/debayer_egl.h   |   9 ++
++ 5 files changed, 180 insertions(+), 38 deletions(-)
++ create mode 100644 src/libcamera/shaders/rgb_scale.frag
++ create mode 100644 src/libcamera/shaders/rgb_scale.vert
++
++diff --git a/src/libcamera/shaders/meson.build b/src/libcamera/shaders/meson.build
++index c409ff9..c7720c4 100644
++--- a/src/libcamera/shaders/meson.build
+++++ b/src/libcamera/shaders/meson.build
++@@ -7,6 +7,8 @@ shader_files = files([
++     'bayer_unpacked.frag',
++     'bayer_unpacked.vert',
++     'identity.vert',
+++    'rgb_scale.frag',
+++    'rgb_scale.vert',
++ ])
++ 
++ # Generate header from shaders
++diff --git a/src/libcamera/shaders/rgb_scale.frag b/src/libcamera/shaders/rgb_scale.frag
++new file mode 100644
++index 0000000..758c275
++--- /dev/null
+++++ b/src/libcamera/shaders/rgb_scale.frag
++@@ -0,0 +1,22 @@
+++/* SPDX-License-Identifier: LGPL-2.1-or-later */
+++/*
+++ * Filtered RGB scaling pass for the EGL software ISP
+++ */
+++
+++#ifdef GL_ES
+++precision highp float;
+++#endif
+++
+++varying vec2 textureOut;
+++uniform sampler2D tex_rgb;
+++
+++void main(void)
+++{
+++	vec4 rgba = texture2D(tex_rgb, textureOut);
+++
+++#if defined(SWAP_BLUE)
+++	gl_FragColor = rgba.bgra;
+++#else
+++	gl_FragColor = rgba;
+++#endif
+++}
++diff --git a/src/libcamera/shaders/rgb_scale.vert b/src/libcamera/shaders/rgb_scale.vert
++new file mode 100644
++index 0000000..8ca2650
++--- /dev/null
+++++ b/src/libcamera/shaders/rgb_scale.vert
++@@ -0,0 +1,14 @@
+++/* SPDX-License-Identifier: LGPL-2.1-or-later */
+++/*
+++ * Vertex shader for the filtered RGB scaling pass
+++ */
+++
+++attribute vec4 vertexIn;
+++attribute vec2 textureIn;
+++varying vec2 textureOut;
+++
+++void main(void)
+++{
+++	gl_Position = vertexIn;
+++	textureOut = textureIn;
+++}
++diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
++index 98ea4ae..ba7e750 100644
++--- a/src/libcamera/software_isp/debayer_egl.cpp
+++++ b/src/libcamera/software_isp/debayer_egl.cpp
++@@ -156,22 +156,7 @@ int DebayerEGL::initBayerShaders(PixelFormat inputFormat, PixelFormat outputForm
++ 	/* Specify GL_OES_EGL_image_external */
++ 	egl_.pushEnv(shaderEnv, "#extension GL_OES_EGL_image_external: enable");
++ 
++-	/*
++-	 * Tell shaders how to re-order output taking account of how the pixels
++-	 * are actually stored by EGL.
++-	 */
++-	switch (outputFormat) {
++-	case formats::ARGB8888:
++-	case formats::XRGB8888:
++-		break;
++-	case formats::ABGR8888:
++-	case formats::XBGR8888:
++-		egl_.pushEnv(shaderEnv, "#define SWAP_BLUE");
++-		break;
++-	default:
++-		LOG(Debayer, Error) << "Unsupported output format";
++-		return -EINVAL;
++-	}
+++	(void)outputFormat;
++ 
++ 	/* Pixel location parameters */
++ 	glFormat_ = GL_LUMINANCE;
++@@ -284,6 +269,52 @@ int DebayerEGL::initBayerShaders(PixelFormat inputFormat, PixelFormat outputForm
++ 	return getShaderVariableLocations();
++ }
++ 
+++int DebayerEGL::initScaleShaders(PixelFormat outputFormat)
+++{
+++	std::vector<std::string> shaderEnv;
+++	GLuint vertexShaderId = 0;
+++	GLuint fragmentShaderId = 0;
+++
+++	egl_.pushEnv(shaderEnv, "#version 100");
+++
+++	switch (outputFormat) {
+++	case formats::ARGB8888:
+++	case formats::XRGB8888:
+++		break;
+++	case formats::ABGR8888:
+++	case formats::XBGR8888:
+++		egl_.pushEnv(shaderEnv, "#define SWAP_BLUE");
+++		break;
+++	default:
+++		LOG(Debayer, Error) << "Unsupported output format";
+++		return -EINVAL;
+++	}
+++
+++	if (egl_.compileVertexShader(vertexShaderId, rgb_scale_vert, shaderEnv)) {
+++		LOG(Debayer, Error) << "Compile scale vertex shader failed";
+++		return -ENODEV;
+++	}
+++	utils::scope_exit vertexShaderGuard([&] { glDeleteShader(vertexShaderId); });
+++
+++	if (egl_.compileFragmentShader(fragmentShaderId, rgb_scale_frag,
+++				       shaderEnv)) {
+++		LOG(Debayer, Error) << "Compile scale fragment shader failed";
+++		return -ENODEV;
+++	}
+++	utils::scope_exit fragmentShaderGuard([&] { glDeleteShader(fragmentShaderId); });
+++
+++	if (egl_.linkProgram(scaleProgramId_, vertexShaderId, fragmentShaderId)) {
+++		LOG(Debayer, Error) << "Linking scale program failed";
+++		return -ENODEV;
+++	}
+++
+++	scaleAttributeVertex_ = glGetAttribLocation(scaleProgramId_, "vertexIn");
+++	scaleAttributeTexture_ = glGetAttribLocation(scaleProgramId_, "textureIn");
+++	scaleTextureUniformRgb_ = glGetUniformLocation(scaleProgramId_, "tex_rgb");
+++
+++	return 0;
+++}
+++
++ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
++ 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
++ 			  [[maybe_unused]] bool ccmEnabled)
++@@ -340,17 +371,27 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
++ 	window_.height = outputCfg.size.height;
++ 
++ 	/*
++-	 * The EGL projection scales the native output while preserving its aspect
++-	 * ratio, then clips it against the output buffer. Calculate statistics over
++-	 * the same source region so AGC, AWB and AF describe the displayed image.
+++	 * Crop the source in the centre to the output aspect ratio. The second
+++	 * rendering pass scales this exact region, and statistics use it too.
++ 	 */
++-	float scale = std::max(static_cast<float>(outputSize_.width) /
++-			       nativeOutputSize_.width,
++-			       static_cast<float>(outputSize_.height) /
++-			       nativeOutputSize_.height);
++-	Size statsSize(std::min(width_, static_cast<unsigned int>(outputSize_.width / scale)),
++-		       std::min(height_, static_cast<unsigned int>(outputSize_.height / scale)));
++-	stats_->setWindow(Rectangle(statsSize));
+++	unsigned int cropWidth = width_;
+++	unsigned int cropHeight = height_;
+++	if (static_cast<uint64_t>(width_) * outputSize_.height >
+++	    static_cast<uint64_t>(height_) * outputSize_.width)
+++		cropWidth = static_cast<uint64_t>(height_) * outputSize_.width /
+++			    outputSize_.height;
+++	else
+++		cropHeight = static_cast<uint64_t>(width_) * outputSize_.height /
+++			     outputSize_.width;
+++
+++	cropWidth &= ~(inputConfig_.patternSize.width - 1);
+++	cropHeight &= ~(inputConfig_.patternSize.height - 1);
+++	unsigned int cropX = ((width_ - cropWidth) / 2) &
+++			     ~(inputConfig_.patternSize.width - 1);
+++	unsigned int cropY = ((height_ - cropHeight) / 2) &
+++			     ~(inputConfig_.patternSize.height - 1);
+++	displayWindow_ = Rectangle(cropX, cropY, cropWidth, cropHeight);
+++	stats_->setWindow(displayWindow_);
++ 
++ 	inputBufferCount_ = inputCfg.bufferCount;
++ 	outputBufferCount_ = outputCfg.bufferCount;
++@@ -411,19 +452,11 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
++ 	GLfloat Step[] = { static_cast<float>(bytesPerPixel_) / (inputConfig_.stride - 1),
++ 			   1.0f / (height_ - 1) };
++ 	GLfloat Stride = (GLfloat)width_ / (shaderStridePixels_ / bytesPerPixel_);
++-	/*
++-	 * Scale the output size from the native size the algorithm produces for
++-	 * the input size. Keep the aspect ratio and prefer cropping over black
++-	 * bars.
++-	 */
++-	GLfloat scale = std::max((GLfloat)outputSize_.width / nativeOutputSize_.width,
++-				 (GLfloat)outputSize_.height / nativeOutputSize_.height);
++-	GLfloat trans = -(1.0f - scale);
++ 	GLfloat projMatrix[] = {
++-		scale, 0, 0, 0,
++-		0, scale, 0, 0,
+++		1, 0, 0, 0,
+++		0, 1, 0, 0,
++ 		0, 0, 1, 0,
++-		trans, trans, 0, 1
+++		0, 0, 0, 1
++ 	};
++ 	/* Static const coordinates */
++ 	static const GLfloat vcoordinates[4][2] = {
++@@ -514,6 +547,42 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
++ 	return;
++ }
++ 
+++void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
+++{
+++	static const GLfloat vcoordinates[4][2] = {
+++		{ -1.0f, -1.0f },
+++		{ -1.0f, +1.0f },
+++		{ +1.0f, +1.0f },
+++		{ +1.0f, -1.0f },
+++	};
+++	const GLfloat left = static_cast<GLfloat>(displayWindow_.x) / width_;
+++	const GLfloat top = static_cast<GLfloat>(displayWindow_.y) / height_;
+++	const GLfloat right = static_cast<GLfloat>(displayWindow_.x +
+++						    displayWindow_.width) /
+++			      width_;
+++	const GLfloat bottom = static_cast<GLfloat>(displayWindow_.y +
+++						     displayWindow_.height) /
+++			       height_;
+++	scaleTextureCoordinates_[0][0] = left;
+++	scaleTextureCoordinates_[0][1] = top;
+++	scaleTextureCoordinates_[1][0] = left;
+++	scaleTextureCoordinates_[1][1] = bottom;
+++	scaleTextureCoordinates_[2][0] = right;
+++	scaleTextureCoordinates_[2][1] = bottom;
+++	scaleTextureCoordinates_[3][0] = right;
+++	scaleTextureCoordinates_[3][1] = top;
+++
+++	glEnableVertexAttribArray(scaleAttributeVertex_);
+++	glVertexAttribPointer(scaleAttributeVertex_, 2, GL_FLOAT, GL_TRUE,
+++			      2 * sizeof(GLfloat), vcoordinates);
+++	glEnableVertexAttribArray(scaleAttributeTexture_);
+++	glVertexAttribPointer(scaleAttributeTexture_, 2, GL_FLOAT, GL_TRUE,
+++			      2 * sizeof(GLfloat), scaleTextureCoordinates_);
+++
+++	egl_.activateBindTexture(eglImageIn);
+++	glUniform1i(scaleTextureUniformRgb_, eglImageIn.texture_unit_uniform_id_);
+++}
+++
++ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
++ {
++ 	const SharedFD &fd = input->planes()[0].fd;
++@@ -611,12 +680,26 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
++ 	if (!eglImageOut)
++ 		return -ENOMEM;
++ 
++-	egl_.attachTextureToFBO(*eglImageOut);
+++	egl_.activateBindTexture(*intermediateImage_);
+++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+++	egl_.useProgram(programId_);
+++	egl_.attachTextureToFBO(*intermediateImage_);
++ 	setShaderVariableValues(*eglImageIn, params);
++ 
++ 	glViewport(0, 0, width_, height_);
++ 	glClear(GL_COLOR_BUFFER_BIT);
++ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+++	egl_.activateBindTexture(*intermediateImage_);
+++	glGenerateMipmap(GL_TEXTURE_2D);
+++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+++			GL_LINEAR_MIPMAP_LINEAR);
+++
+++	egl_.useProgram(scaleProgramId_);
+++	egl_.attachTextureToFBO(*eglImageOut);
+++	setScaleShaderVariableValues(*intermediateImage_);
+++	glViewport(0, 0, outputSize_.width, outputSize_.height);
+++	glClear(GL_COLOR_BUFFER_BIT);
+++	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
++ 
++ 	GLenum err = glGetError();
++ 	if (err != GL_NO_ERROR) {
++@@ -694,6 +777,15 @@ int DebayerEGL::start()
++ 
++ 	if (initBayerShaders(inputPixelFormat_, outputPixelFormat_))
++ 		return -EINVAL;
+++	if (initScaleShaders(outputPixelFormat_))
+++		return -EINVAL;
+++
+++	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
+++						 width_ * 4, GL_TEXTURE2, 2);
+++	egl_.createOutputTexture2D(*intermediateImage_);
+++	egl_.activateBindTexture(*intermediateImage_);
+++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+++	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++ 
++ 	return 0;
++ }
++@@ -702,9 +794,12 @@ void DebayerEGL::stop()
++ {
++ 	eglImageOutCache_.clear();
++ 	eglImageInCache_.clear();
+++	intermediateImage_.reset();
++ 
++ 	if (programId_)
++ 		glDeleteProgram(programId_);
+++	if (scaleProgramId_)
+++		glDeleteProgram(scaleProgramId_);
++ }
++ 
++ SizeRange DebayerEGL::sizes(PixelFormat inputFormat, const Size &inputSize)
++diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
++index d6223f3..d608ce1 100644
++--- a/src/libcamera/software_isp/debayer_egl.h
+++++ b/src/libcamera/software_isp/debayer_egl.h
++@@ -65,8 +65,10 @@ private:
++ 	static int getInputConfig(PixelFormat inputFormat, DebayerInputConfig &config);
++ 	static int getOutputConfig(PixelFormat outputFormat, DebayerOutputConfig &config);
++ 	int initBayerShaders(PixelFormat inputFormat, PixelFormat outputFormat);
+++	int initScaleShaders(PixelFormat outputFormat);
++ 	int getShaderVariableLocations();
++ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
+++	void setScaleShaderVariableValues(eGLImage &eGLImageIn);
++ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
++ 
++ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
++@@ -76,10 +78,12 @@ private:
++ 	GLuint vertexShaderId_ = 0;
++ 	GLuint fragmentShaderId_ = 0;
++ 	GLuint programId_ = 0;
+++	GLuint scaleProgramId_ = 0;
++ 
++ 	/* Pointer to object representing input texture */
++ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageInCache_;
++ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageOutCache_;
+++	std::unique_ptr<eGLImage> intermediateImage_;
++ 	unsigned int inputBufferCount_;
++ 	unsigned int outputBufferCount_;
++ 
++@@ -95,6 +99,10 @@ private:
++ 	GLint textureUniformProjMatrix_;
++ 
++ 	GLint textureUniformBayerDataIn_;
+++	GLint scaleAttributeVertex_;
+++	GLint scaleAttributeTexture_;
+++	GLint scaleTextureUniformRgb_;
+++	GLfloat scaleTextureCoordinates_[4][2];
++ 
++ 	/* Per-frame AWB gains */
++ 	GLint awbUniformDataIn_;
++@@ -113,6 +121,7 @@ private:
++ 
++ 	Size nativeOutputSize_;
++ 	Rectangle window_;
+++	Rectangle displayWindow_;
++ 	std::unique_ptr<SwStatsCpu> stats_;
++ 	eGL egl_;
++ 	uint32_t width_;
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
+index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865bd25a3b8 100644
+--- a/temp/libcamera/APKBUILD
++++ b/temp/libcamera/APKBUILD
+@@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
+ pkgname=libcamera
+ _pkgver=0.7.2
+ pkgver=9999$_pkgver
+-pkgrel=2
++pkgrel=18
+ pkgdesc="Linux camera framework"
+ url="https://libcamera.org/"
+ arch="all"
+@@ -59,6 +59,15 @@ _tuning_files="
+ source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
+ 	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+ 	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
++	0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
++	0004-ipa-libipa-Add-Sony-IMX376-helper.patch
++	0005-ipa-libipa-Add-Sony-IMX519-helper.patch
++	0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
++	0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
++	0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
++	0009-ipa-simple-Add-contrast-detect-autofocus.patch
++	0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
++	0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
+ 	qcam.desktop
+ 	$_tuning_files
+ 	"
+@@ -175,13 +184,22 @@ sha512sums="
+ b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
+ eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+ 191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
++f6375b30fe8a1e2a9071f969ee0646ccbdd81a88cc1151fdc2ba3a25dd9aa4934e26a229d2ffea500484c8f5a47bea817cd8a38d15ed33e075b24e39a7ba087e  0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
++dba46c9abbb033620476967118a9f6ad27230b76733725b66b5eba5da1fb6dd3678d2ca2b7a6922d3537d1bb75e1c8b4ff14b0cbf023fe7775331d494bd710f8  0004-ipa-libipa-Add-Sony-IMX376-helper.patch
++0762c1073455a5ecbdc23ae7c88f6e89a67d31719707e0ff4402b1ddd2949236b8c8bf30d5b2624c72f55793ef3713a399d212144d114c8b86058bc0cc5cf52a  0005-ipa-libipa-Add-Sony-IMX519-helper.patch
++f2893d2915dc163cfc303cbc9941792e37915e50c0462567db2fb728a7a82f70d4f3f2c97d2e45de852a5063ca2fa83e29a921413dbf9b6d34bb876414c9f319  0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
++4669b1d5f859fa10beb4e7996abeb58b38c86c2751ec54cb6cfd48610881ec6abcaabaa0fc9b92ad6dd66fe58de34a4bd4aa45024402aa0b11f516a78ba3d1de  0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
++dfdaeedda3d06dcd1348186501ddba63c69ea41ae3e1d1ac288e0f973629a89c27679a014a4e82b666b87e22451e033007f8892f9205e4a55c784046747d6ecb  0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
++065c1e119969bdf2a43db87b488b0714d0367f60246d47e41cc6a5c5afc048ca7ef58c587e3e6357cde7ae4fe47cf21a63684b738648aaa4ffe9eda24160aeb3  0009-ipa-simple-Add-contrast-detect-autofocus.patch
++2cb721d8668a6b7ed34099d7bab564dbfe92f8e54ed67119e4a37b48e790d14237c196a1fca0c6b18715fadb9672319a66cc54c5558953acb33135f394ffa062  0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
++025f38abacbb7a7982b58c4453055c75a55516cc4a5759e788d65056081389e20dcc04cfd3358a10f1721eb5b6ac2d530b04c645d75a0076fe6d0facc8c1f512  0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
+ 22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
+ 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
+ 55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
+ 285c6d0d712df341c0117c3762ddc139f53f44e6be36c3388d1a62696429175e2916f392163131e21f410c3676f02f5d125f375171f45f8d82ad278aa5076c62  imx363.yaml
+-2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
+-55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
+-2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
++2735fac0cde893b4c014651dffbb6122f6cd5ba7ecffbce8c8a177e4037d1a03a53442585b7f3456f5fde8adb8bc8c564e078ab51e26e09e1c452364ed0e5e46  imx371.yaml
++322a2e89ee14bcf8c1c1d9cc64a178e4386280ee0b0ec5c14790d7e54cf788dbd3e2f0e019cd58b61370fe5ae0048e73c016dca38b52db9a4614a8763d2c9d4a  imx376.yaml
++322a2e89ee14bcf8c1c1d9cc64a178e4386280ee0b0ec5c14790d7e54cf788dbd3e2f0e019cd58b61370fe5ae0048e73c016dca38b52db9a4614a8763d2c9d4a  imx519.yaml
+ 55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
+ 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
+ d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
+diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..242e74f9e3e71a56c9ada08cf510690ee32c0a2a 100644
+--- a/temp/libcamera/imx371.yaml
++++ b/temp/libcamera/imx371.yaml
+@@ -6,6 +6,13 @@ algorithms:
+   - BlackLevel:
+       blackLevel: 4096
+   - Awb:
++  - Ccm:
++      ccms:
++        - ct: 6500
++          ccm: [ 1, 0, 0,
++                 0, 1, 0,
++                 0, 0, 1 ]
+   - Adjust:
+   - Agc:
++      target: 2.0
+ ...
+diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..019795397f0f6036163963cf4e10645cd605a882 100644
+--- a/temp/libcamera/imx376.yaml
++++ b/temp/libcamera/imx376.yaml
+@@ -7,36 +7,27 @@ algorithms:
+       blackLevel: 4096
+   - Awb:
+   - Ccm:
+-      # copied from s5kjn1.yaml
+       ccms:
+-        - ct: 2676
+-          ccm: [ 2.02152, -0.41859, -0.60292,
+-                -0.59481,  2.21509, -0.62029,
+-                -0.44029, -1.16865,  2.60894 ]
+-        - ct: 2710
+-          ccm: [ 2.01597, -0.46478, -0.55119,
+-                -0.59047,  2.14717, -0.55671,
+-                -0.40793, -1.19946,  2.60739 ]
+-        - ct: 2719
+-          ccm: [ 1.99894, -0.41626, -0.58268,
+-                -0.59321,  2.18167, -0.58846,
+-                -0.42518, -1.21384,  2.63903 ]
+-        - ct: 2867
+-          ccm: [ 1.95177, -0.35904, -0.59274,
+-                -0.44282,  1.97362, -0.53079,
+-                -0.49059, -1.35379,  2.84439 ]
+-        - ct: 3474
+-          ccm: [ 1.97712, -0.60854, -0.36858,
+-                -0.47723,  1.91142, -0.43418,
+-                -0.23092, -0.72246,  1.95339 ]
+-        - ct: 3761
+-          ccm: [ 2.29903, -0.94652, -0.35251,
+-                -0.51661,  1.90311, -0.38651,
+-                -0.25114, -0.67501,  1.92615 ]
+-        - ct: 6890
+-          ccm: [ 1.93867, -0.67486, -0.26381,
+-                -0.43049,  2.00702, -0.57652,
+-                -0.15696, -0.51345,  1.67041 ]
++        - ct: 6500
++          ccm: [ 1, 0, 0,
++                 0, 1, 0,
++                 0, 0, 1 ]
++  - Af:
++      minPosition: 400
++      maxPosition: 800
++      coarseStep: 100
++      fineStep: 25
++      settleTimeMs: 200
++      startupDelayMs: 2000
++      measureTimeMs: 100
++      measureSamples: 2
++      focusTolerance: 0.10
++      restartRatio: 0.7
++      monitorWindowMs: 250
++      restartHoldMs: 1000
++      restartDelayMs: 2000
++      continuous: true
+   - Adjust:
+   - Agc:
++      target: 2.0
+ ...
+diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..019795397f0f6036163963cf4e10645cd605a882 100644
+--- a/temp/libcamera/imx519.yaml
++++ b/temp/libcamera/imx519.yaml
+@@ -6,6 +6,28 @@ algorithms:
+   - BlackLevel:
+       blackLevel: 4096
+   - Awb:
++  - Ccm:
++      ccms:
++        - ct: 6500
++          ccm: [ 1, 0, 0,
++                 0, 1, 0,
++                 0, 0, 1 ]
++  - Af:
++      minPosition: 400
++      maxPosition: 800
++      coarseStep: 100
++      fineStep: 25
++      settleTimeMs: 200
++      startupDelayMs: 2000
++      measureTimeMs: 100
++      measureSamples: 2
++      focusTolerance: 0.10
++      restartRatio: 0.7
++      monitorWindowMs: 250
++      restartHoldMs: 1000
++      restartDelayMs: 2000
++      continuous: true
+   - Adjust:
+   - Agc:
++      target: 2.0
+ ...

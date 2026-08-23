@@ -1,0 +1,105 @@
+From d86411806a3fbaff2ff221628dc8c0495908d681 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 17:35:33 +0100
+Subject: [PATCH 5/9] ipa: simple: Make the AGC exposure target configurable
+
+The simple IPA currently hard-codes the mean-sample-value target to the centre of its five-bin histogram. That can clip highlights on sensors and modules whose uncalibrated tuning needs a lower scene brightness.
+
+Read an optional target value from the Agc tuning dictionary while preserving 2.5 as the default. Reject targets outside the histogram range so malformed tuning cannot silently drive exposure in the wrong direction.
+
+Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
+---
+ src/ipa/simple/algorithms/agc.cpp | 31 +++++++++++++++++++++++++++----
+ src/ipa/simple/algorithms/agc.h   |  4 ++++
+ 2 files changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index a13a755..c0993f2 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <errno.h>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -27,10 +28,10 @@ namespace ipa::soft::algorithms {
+ static constexpr unsigned int kExposureBinsCount = 5;
+ 
+ /*
+- * The exposure is optimal when the mean sample value of the histogram is
+- * in the middle of the range.
++ * By default, exposure is optimal when the mean sample value of the histogram
++ * is in the middle of the range.
+  */
+-static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
++static constexpr double kDefaultExposureOptimal = kExposureBinsCount / 2.0;
+ 
+ /*
+  * This implements the hysteresis for the exposure adjustment.
+@@ -62,15 +63,37 @@ static constexpr float kExpProportionalGain = 0.04;
+ static constexpr float kExpMaxStep = 0.15;
+ 
+ Agc::Agc()
++	: exposureOptimal_(kDefaultExposureOptimal)
+ {
+ }
+ 
++int Agc::init([[maybe_unused]] IPAContext &context,
++	      const ValueNode &tuningData)
++{
++	exposureOptimal_ =
++		tuningData["target"].get<double>(kDefaultExposureOptimal);
++
++	if (exposureOptimal_ < 1.0 ||
++	    exposureOptimal_ > kExposureBinsCount) {
++		LOG(IPASoftExposure, Error)
++			<< "Invalid exposure target " << exposureOptimal_
++			<< ", expected a value in the range [1, "
++			<< kExposureBinsCount << "]";
++		return -EINVAL;
++	}
++
++	LOG(IPASoftExposure, Debug)
++		<< "Exposure target " << exposureOptimal_;
++
++	return 0;
++}
++
+ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+ {
+ 	int32_t &exposure = frameContext.sensor.exposure;
+ 	double &again = frameContext.sensor.gain;
+ 
+-	double error = kExposureOptimal - exposureMSV;
++	double error = exposureOptimal_ - exposureMSV;
+ 
+ 	if (std::abs(error) <= kExposureSatisfactory)
+ 		return;
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index 112d9f5..0bd4b0f 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -19,6 +19,8 @@ public:
+ 	Agc();
+ 	~Agc() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+@@ -26,6 +28,8 @@ public:
+ 
+ private:
+ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++
++	double exposureOptimal_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+-- 
+2.49.0
+

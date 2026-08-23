@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: CC0-1.0
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 4096
+  - Awb:
+  - Ccm:
+      ccms:
+        - ct: 6500
+          ccm: [ 1, 0, 0,
+                 0, 1, 0,
+                 0, 0, 1 ]
+  - Af:
+      minPosition: 400
+      maxPosition: 800
+      coarseStep: 100
+      fineStep: 25
+      settleTimeMs: 200
+      startupDelayMs: 2000
+      measureTimeMs: 100
+      measureSamples: 2
+      focusTolerance: 0.10
+      restartRatio: 0.7
+      monitorWindowMs: 250
+      restartHoldMs: 1000
+      restartDelayMs: 2000
+      continuous: true
+  - Adjust:
+  - Agc:
+      target: 2.0
+...

@@ -1,0 +1,39 @@
+From 48f3e3d4d3f45fc22441b4d48dc0233f308160a3 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 20:43:21 +0100
+Subject: [PATCH 8/9] libcamera: software_isp: Align EGL statistics with output
+ crop
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/libcamera/software_isp/debayer_egl.cpp | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 02651fe..98ea4ae 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -340,10 +340,17 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	window_.height = outputCfg.size.height;
+ 
+ 	/*
+-	 * Don't pass x,y from window_ since process() already adjusts for it.
+-	 * But crop the window to 2/3 of its width and height for speedup.
++	 * The EGL projection scales the native output while preserving its aspect
++	 * ratio, then clips it against the output buffer. Calculate statistics over
++	 * the same source region so AGC, AWB and AF describe the displayed image.
+ 	 */
+-	stats_->setWindow(Rectangle(window_.size()));
++	float scale = std::max(static_cast<float>(outputSize_.width) /
++			       nativeOutputSize_.width,
++			       static_cast<float>(outputSize_.height) /
++			       nativeOutputSize_.height);
++	Size statsSize(std::min(width_, static_cast<unsigned int>(outputSize_.width / scale)),
++		       std::min(height_, static_cast<unsigned int>(outputSize_.height / scale)));
++	stats_->setWindow(Rectangle(statsSize));
+ 
+ 	inputBufferCount_ = inputCfg.bufferCount;
+ 	outputBufferCount_ = outputCfg.bufferCount;
+-- 
+2.49.0
+

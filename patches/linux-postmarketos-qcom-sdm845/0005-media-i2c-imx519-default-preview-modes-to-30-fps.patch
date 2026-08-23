@@ -1,0 +1,53 @@
+From ccbddbea7f09f63be5dfcfb7bb44672670b666a5 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 22:03:09 +0100
+Subject: [PATCH] media: i2c: imx519: default preview modes to 30 fps
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ drivers/media/i2c/imx519.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/imx519.c b/drivers/media/i2c/imx519.c
+index 4834d687a..36ae19af8 100644
+--- a/drivers/media/i2c/imx519.c
++++ b/drivers/media/i2c/imx519.c
+@@ -835,7 +835,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
+ 		}
+ 	},
+ 	{
+-		/* 1080p 60fps */
++		/* 1080p, 60fps maximum, 30fps default */
+ 		.width = 1920,
+ 		.height = 1080,
+ 		.line_length_pix = 0x25D9,
+@@ -851,7 +851,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
+ 		},
+ 		.timeperframe_default = {
+ 			.numerator = 100,
+-			.denominator = 6000
++			.denominator = 3000
+ 		},
+ 		.reg_list = {
+ 			.num_of_regs = ARRAY_SIZE(mode_1920x1080_cphy_regs),
+@@ -859,7 +859,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
+ 		}
+ 	},
+ 	{
+-		/* 720p 120fps */
++		/* 720p, 120fps maximum, 30fps default */
+ 		.width = 1280,
+ 		.height = 720,
+ 		.line_length_pix = 0x1B3B,
+@@ -875,7 +875,7 @@ static const struct imx519_mode imx519_modes_cphy[] = {
+ 		},
+ 		.timeperframe_default = {
+ 			.numerator = 100,
+-			.denominator = 12000
++			.denominator = 3000
+ 		},
+ 		.reg_list = {
+ 			.num_of_regs = ARRAY_SIZE(mode_1280x720_cphy_regs),
+-- 
+2.49.0
+
