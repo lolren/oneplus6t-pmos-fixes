@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 15:46:58 +0100
+Subject: [PATCH 2/2] arm64: dts: qcom: sdm845-oneplus: add IMX371 binned link
+ rate
+
+The IMX371 2304x1728 binned mode uses a 399 MHz link frequency. Advertise
+it alongside the existing 654 MHz full-resolution frequency so the sensor
+driver can select either mode on the OnePlus 6 and 6T.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
+index 948a0dd18..ebee7e471 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
+@@ -651,7 +651,7 @@ port {
+ 			imx371_ep: endpoint {
+ 				remote-endpoint = <&csiphy2_ep>;
+ 				data-lanes = <1 2 3 4>;
+-				link-frequencies = /bits/ 64 <654000000>;
++				link-frequencies = /bits/ 64 <654000000 399000000>;
+ 			};
+ 		};
+ 	};
+-- 
+2.49.0

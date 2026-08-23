@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 15:54:32 +0100
+Subject: [PATCH] media: i2c: imx371: correct analogue gain range
+
+The IMX371 analogue gain is 1024 / (1024 - code). A maximum code of 480
+limits the sensor to about 1.88x gain, while the supported 16x maximum
+maps to code 960. Use the full sensor range.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/drivers/media/i2c/imx371.c b/drivers/media/i2c/imx371.c
+index bf28829af..062bb4f68 100644
+--- a/drivers/media/i2c/imx371.c
++++ b/drivers/media/i2c/imx371.c
+@@ -44,7 +44,7 @@
+ /* Analog gain control */
+ #define IMX371_REG_ANALOG_GAIN		CCI_REG16(0x0204)
+ #define IMX371_ANA_GAIN_MIN		0
+-#define IMX371_ANA_GAIN_MAX		480
++#define IMX371_ANA_GAIN_MAX		960
+ #define IMX371_ANA_GAIN_STEP		1
+ #define IMX371_ANA_GAIN_DEFAULT		0x0
+ 
+-- 
+2.49.0
+

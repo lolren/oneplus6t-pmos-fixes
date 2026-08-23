@@ -1,0 +1,389 @@
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..da53bd8209f42b223098bd4b813c6f7866c32a35
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
+@@ -0,0 +1,213 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:46:58 +0100
++Subject: [PATCH 1/2] media: i2c: imx371: add 2304x1728 binned mode
++
++The IMX371 used by the OnePlus 6 and 6T has a Quad Bayer colour filter,
++but the driver currently exposes only its full-resolution readout as a
++regular Bayer frame. A conventional Bayer demosaic therefore produces a
++nearly monochrome image with a four-pixel grid.
++
++Add the sensor's 2x2 binned mode. It combines each physical same-colour
++2x2 block in hardware and outputs a conventional 2304x1728 RGGB frame.
++Include the matching line timing, PLL configuration and 399 MHz link
++frequency while retaining the full-resolution mode for raw users.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/drivers/media/i2c/imx371.c b/drivers/media/i2c/imx371.c
++index c2a6ce243..bf28829af 100644
++--- a/drivers/media/i2c/imx371.c
+++++ b/drivers/media/i2c/imx371.c
++@@ -26,10 +26,12 @@
++ 
++ /* V_TIMING internal */
++ #define IMX371_VTS_30FPS		3552
+++#define IMX371_VTS_BINNED		2544
++ #define IMX371_VTS_MAX			65525
++ 
++ /* HBLANK control - read only */
++ #define IMX371_PPL_DEFAULT		6032
+++#define IMX371_PPL_BINNED		3488
++ 
++ /* Exposure control */
++ #define IMX371_REG_EXPOSURE		CCI_REG16(0x0202)
++@@ -177,6 +179,21 @@ static const struct cci_reg_sequence mipi_1308mbps_24mhz_4l[] = {
++ 	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_L, 0 },
++ };
++ 
+++static const struct cci_reg_sequence mipi_798mbps_24mhz_4l[] = {
+++	{ IMX371_REG_EXCK_FREQ, 0x1800 },
+++	{ IMX371_REG_IVTPXCK_DIV, 5 },
+++	{ IMX371_REG_IVTSYCK_DIV, 4 },
+++	{ IMX371_REG_PREPLLCK_VT_DIV, 4 },
+++	{ IMX371_REG_PLL_IVT_MPY, 222 },
+++	{ IMX371_REG_IOPSYCK_DIV, 2 },
+++	{ IMX371_REG_PREPLLCK_OP_DIV, 4 },
+++	{ IMX371_REG_PLL_IOP_MPY, 266 },
+++	{ IMX371_REG_PLL_MULT_DRIV, 1 },
+++	{ IMX371_REG_CSI_LANE_MODE, 3 },
+++	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_H, 798 * 4 },
+++	{ IMX371_REG_REQ_LINK_BIT_RATE_MBPS_L, 0 },
+++};
+++
++ static const struct cci_reg_sequence mode_common_regs[] = {
++ 	{CCI_REG8(0x3C7D), 0x28},
++ 	{CCI_REG8(0x3C7E), 0x01},
++@@ -412,6 +429,98 @@ static const struct cci_reg_sequence mode_4656x3496_regs[] = {
++ 	{CCI_REG8(0x020F), 0x00},
++ };
++ 
+++/*
+++ * The IMX371 uses a Quad Bayer colour filter. In the full-resolution mode
+++ * each 2x2 block has the same colour, so exposing it as regular RGGB produces
+++ * a monochrome-looking image with a four-pixel grid. The sensor's 2x2 binned
+++ * mode combines each same-colour block in hardware and outputs regular RGGB.
+++ */
+++static const struct cci_reg_sequence mode_2304x1728_regs[] = {
+++	{CCI_REG8(0x0112), 0x0A},
+++	{CCI_REG8(0x0113), 0x0A},
+++	{CCI_REG8(0x0114), 0x03},
+++	{CCI_REG8(0x0342), 0x0D},
+++	{CCI_REG8(0x0343), 0xA0},
+++	{CCI_REG8(0x0340), 0x09},
+++	{CCI_REG8(0x0341), 0xF0},
+++	{CCI_REG8(0x0344), 0x00},
+++	{CCI_REG8(0x0345), 0x00},
+++	{CCI_REG8(0x0346), 0x00},
+++	{CCI_REG8(0x0347), 0x00},
+++	{CCI_REG8(0x0348), 0x12},
+++	{CCI_REG8(0x0349), 0x2F},
+++	{CCI_REG8(0x034A), 0x0D},
+++	{CCI_REG8(0x034B), 0xA7},
+++	{CCI_REG8(0x0381), 0x01},
+++	{CCI_REG8(0x0383), 0x01},
+++	{CCI_REG8(0x0385), 0x01},
+++	{CCI_REG8(0x0387), 0x01},
+++	{CCI_REG8(0x0900), 0x01},
+++	{CCI_REG8(0x0901), 0x22},
+++	{CCI_REG8(0x0902), 0x08},
+++	{CCI_REG8(0x3F4C), 0x81},
+++	{CCI_REG8(0x3F4D), 0x81},
+++	{CCI_REG8(0x4254), 0x7F},
+++	{CCI_REG8(0x0401), 0x00},
+++	{CCI_REG8(0x0404), 0x00},
+++	{CCI_REG8(0x0405), 0x10},
+++	{CCI_REG8(0x0408), 0x00},
+++	{CCI_REG8(0x0409), 0x0C},
+++	{CCI_REG8(0x040A), 0x00},
+++	{CCI_REG8(0x040B), 0x0A},
+++	{CCI_REG8(0x040C), 0x09},
+++	{CCI_REG8(0x040D), 0x00},
+++	{CCI_REG8(0x040E), 0x06},
+++	{CCI_REG8(0x040F), 0xC0},
+++	{CCI_REG8(0x034C), 0x09},
+++	{CCI_REG8(0x034D), 0x00},
+++	{CCI_REG8(0x034E), 0x06},
+++	{CCI_REG8(0x034F), 0xC0},
+++	{CCI_REG8(0x0301), 0x05},
+++	{CCI_REG8(0x0303), 0x04},
+++	{CCI_REG8(0x0305), 0x04},
+++	{CCI_REG8(0x0306), 0x00},
+++	{CCI_REG8(0x0307), 0xDE},
+++	{CCI_REG8(0x030B), 0x02},
+++	{CCI_REG8(0x030D), 0x04},
+++	{CCI_REG8(0x030E), 0x01},
+++	{CCI_REG8(0x030F), 0x0A},
+++	{CCI_REG8(0x0310), 0x01},
+++	{CCI_REG8(0x0820), 0x0C},
+++	{CCI_REG8(0x0821), 0x78},
+++	{CCI_REG8(0x0822), 0x00},
+++	{CCI_REG8(0x0823), 0x00},
+++	{CCI_REG8(0xBC41), 0x01},
+++	{CCI_REG8(0x0106), 0x00},
+++	{CCI_REG8(0x0B00), 0x00},
+++	{CCI_REG8(0x0B05), 0x01},
+++	{CCI_REG8(0x0B06), 0x01},
+++	{CCI_REG8(0x3230), 0x00},
+++	{CCI_REG8(0x3602), 0x01},
+++	{CCI_REG8(0x3C00), 0x7B},
+++	{CCI_REG8(0x3C01), 0x69},
+++	{CCI_REG8(0x3C02), 0x77},
+++	{CCI_REG8(0x3C03), 0x66},
+++	{CCI_REG8(0x3C04), 0x00},
+++	{CCI_REG8(0x3C05), 0x9C},
+++	{CCI_REG8(0x3C06), 0x14},
+++	{CCI_REG8(0x3C07), 0x00},
+++	{CCI_REG8(0x3C08), 0x01},
+++	{CCI_REG8(0x3F14), 0x00},
+++	{CCI_REG8(0x3F17), 0x00},
+++	{CCI_REG8(0x3F3C), 0x00},
+++	{CCI_REG8(0x3F78), 0x02},
+++	{CCI_REG8(0x3F79), 0x44},
+++	{CCI_REG8(0x3F7C), 0x00},
+++	{CCI_REG8(0x3F7D), 0x00},
+++	{CCI_REG8(0x0202), 0x09},
+++	{CCI_REG8(0x0203), 0xDC},
+++	{CCI_REG8(0x0204), 0x00},
+++	{CCI_REG8(0x0205), 0x00},
+++	{CCI_REG8(0x020E), 0x01},
+++	{CCI_REG8(0x020F), 0x00},
+++};
+++
++ /*
++  * The supported formats.
++  * This table MUST contain 4 entries per format, to cover the various flip
++@@ -449,6 +558,7 @@ static const char * const imx371_supply_name[] = {
++ 
++ enum {
++ 	IMX371_LINK_FREQ_1308MBPS,
+++	IMX371_LINK_FREQ_798MBPS,
++ };
++ 
++ /*
++@@ -475,6 +585,7 @@ static u64 link_freq_to_pixel_rate(u64 f, const struct imx371_link_cfg *link_cfg
++ 
++ static const s64 link_freq_menu_items_24[] = {
++ 	654000000ULL,
+++	399000000ULL,
++ };
++ 
++ #define REGS(_list) { .num_of_regs = ARRAY_SIZE(_list), .regs = _list, }
++@@ -489,6 +600,15 @@ static const struct imx371_link_freq_config link_freq_configs_24[] = {
++ 			},
++ 		}
++ 	},
+++	[IMX371_LINK_FREQ_798MBPS] = {
+++		.pixels_per_line = IMX371_PPL_BINNED,
+++		.link_cfg = {
+++			[IMX371_4_LANE_MODE] = {
+++				.lf_to_pix_rate_factor = 4,
+++				.reg_list = REGS(mipi_798mbps_24mhz_4l),
+++			},
+++		}
+++	},
++ };
++ 
++ /* Mode configs */
++@@ -510,6 +630,23 @@ static const struct imx371_mode supported_modes[] = {
++ 			.height = IMX371_PIXEL_ARRAY_HEIGHT,
++ 		},
++ 	},
+++	{
+++		.width = 2304,
+++		.height = 1728,
+++		.vts_def = IMX371_VTS_BINNED,
+++		.vts_min = IMX371_VTS_BINNED,
+++		.reg_list = {
+++			.num_of_regs = ARRAY_SIZE(mode_2304x1728_regs),
+++			.regs = mode_2304x1728_regs,
+++		},
+++		.link_freq_index = IMX371_LINK_FREQ_798MBPS,
+++		.crop = {
+++			.left = 24,
+++			.top = 20,
+++			.width = 4608,
+++			.height = 3456,
+++		},
+++	},
++ };
++ 
++ struct imx371 {
++-- 
++2.49.0
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..3712f5da4b4da863898170b273dd4d7bacc5c747
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
+@@ -0,0 +1,27 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:46:58 +0100
++Subject: [PATCH 2/2] arm64: dts: qcom: sdm845-oneplus: add IMX371 binned link
++ rate
++
++The IMX371 2304x1728 binned mode uses a 399 MHz link frequency. Advertise
++it alongside the existing 654 MHz full-resolution frequency so the sensor
++driver can select either mode on the OnePlus 6 and 6T.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
++index 948a0dd18..ebee7e471 100644
++--- a/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
+++++ b/arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi
++@@ -651,7 +651,7 @@ port {
++ 			imx371_ep: endpoint {
++ 				remote-endpoint = <&csiphy2_ep>;
++ 				data-lanes = <1 2 3 4>;
++-				link-frequencies = /bits/ 64 <654000000>;
+++				link-frequencies = /bits/ 64 <654000000 399000000>;
++ 			};
++ 		};
++ 	};
++-- 
++2.49.0
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
+@@ -0,0 +1,27 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:54:32 +0100
++Subject: [PATCH] media: i2c: imx371: correct analogue gain range
++
++The IMX371 analogue gain is 1024 / (1024 - code). A maximum code of 480
++limits the sensor to about 1.88x gain, while the supported 16x maximum
++maps to code 960. Use the full sensor range.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/drivers/media/i2c/imx371.c b/drivers/media/i2c/imx371.c
++index bf28829af..062bb4f68 100644
++--- a/drivers/media/i2c/imx371.c
+++++ b/drivers/media/i2c/imx371.c
++@@ -44,7 +44,7 @@
++ /* Analog gain control */
++ #define IMX371_REG_ANALOG_GAIN		CCI_REG16(0x0204)
++ #define IMX371_ANA_GAIN_MIN		0
++-#define IMX371_ANA_GAIN_MAX		480
+++#define IMX371_ANA_GAIN_MAX		960
++ #define IMX371_ANA_GAIN_STEP		1
++ #define IMX371_ANA_GAIN_DEFAULT		0x0
++ 
++-- 
++2.49.0
++
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
+index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..aca2c85122e54b8330e20fbe7edb8e9474e45cda 100644
+--- a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
++++ b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
+@@ -5,7 +5,7 @@ maintainer="Casey Connolly <kcxt@postmarketos.org>"
+ _flavor="postmarketos-qcom-sdm845"
+ pkgname=linux-$_flavor
+ pkgver=7.1_rc1
+-pkgrel=4
++pkgrel=5
+ pkgdesc="Mainline Kernel fork for SDM845 devices"
+ arch="aarch64"
+ _carch="arm64"
+@@ -44,6 +44,9 @@ source="
+ 	config-postmarketos-qcom-sdm845.aarch64
+ 	libbpf-Fix-UAF-in-strset__add_str.patch
+ 	enable-dynamic-ftrace.patch
++	0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
++	0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
++	0003-media-i2c-imx371-correct-analogue-gain-range.patch
+ "
+ builddir="$srcdir/linux-$_tag"
+ 
+@@ -96,4 +99,7 @@ sha512sums="
+ 0da9864ae972e81db443b58e990f62bb84bcd721f073c0b947725a7d7c1e630bde1395fa9108ce8264e6b88a6c92f3f52b551b0cd373e6bde54ea56a13a48e9b  config-postmarketos-qcom-sdm845.aarch64
+ e2555390d48cbbdc32a7d3f0c27599ff88f2fe3e786d1d0086caaa5b092cc3edcb6e95e2fb07034edb3793f6dc954da0662c723202eb7e2c4956c99b50919b12  libbpf-Fix-UAF-in-strset__add_str.patch
+ e8b595f3e076896dc38f249c8908d58e2e6a858eaa77fe1e680f27db0e76d3d74c0b5dfebb7a4c57d546fee0b0f6eb81a38b20dfd72f985c9d02f28d79a5eceb  enable-dynamic-ftrace.patch
++c13afccb8a38f080520d8f4758e73166846f90595e6d446ef61270ea262e37775da9b0e58da86db292741b4cc49ae76a28a86d86c0b2178064779a93119ad06c  0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
++a5bb80eb3e27c145ce24dcffcb4487988966dde1bb5544162ad8a26182aacf29a205ff90b3e19c3aa82caa37ba7657da411c8aa5fa219162a3aa67902015abf9  0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
++f0cfcdf2f8e8dc00f54c2d5e581bbf897613b533f85bee1469371410fff34401a5f6093edaff6b2e7eecd77c57d29c2f08b99fc08cbd672dd3d1b4283f0ec5c3  0003-media-i2c-imx371-correct-analogue-gain-range.patch
+ "
+diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..927176662ccb13cb32c92b2e3662479d2ed056c0
+--- /dev/null
++++ b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+@@ -0,0 +1,38 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 23 Aug 2026 15:56:03 +0100
++Subject: [PATCH] libipa: camera_sensor_helper: Add Sony IMX371 helper
++
++The IMX371 analogue gain follows 1024 / (1024 - code), and its 10-bit
++black level is 0x40. Register a helper so IPAs operate in real gain units
++and use the correct black level instead of treating the register code as
++a linear gain multiplier.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
++index 9457d62..a912701 100644
++--- a/src/ipa/libipa/camera_sensor_helper.cpp
+++++ b/src/ipa/libipa/camera_sensor_helper.cpp
++@@ -617,6 +617,18 @@ public:
++ };
++ REGISTER_CAMERA_SENSOR_HELPER("imx335", CameraSensorHelperImx335)
++ 
+++class CameraSensorHelperImx371 : public CameraSensorHelper
+++{
+++public:
+++	CameraSensorHelperImx371()
+++	{
+++		/* The 10-bit black level is 0x40. */
+++		blackLevel_ = 4096;
+++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+++	}
+++};
+++REGISTER_CAMERA_SENSOR_HELPER("imx371", CameraSensorHelperImx371)
+++
++ class CameraSensorHelperImx415 : public CameraSensorHelper
++ {
++ public:
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
+index 3857ef249404bfe701331b3833b5caf9421d087e..bc9119faeb48b2606417d1d4712b7076ebfa86fe 100644
+--- a/temp/libcamera/APKBUILD
++++ b/temp/libcamera/APKBUILD
+@@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
+ pkgname=libcamera
+ _pkgver=0.7.2
+ pkgver=9999$_pkgver
+-pkgrel=2
++pkgrel=3
+ pkgdesc="Linux camera framework"
+ url="https://libcamera.org/"
+ arch="all"
+@@ -59,6 +59,7 @@ _tuning_files="
+ source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
+ 	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+ 	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
++	0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+ 	qcam.desktop
+ 	$_tuning_files
+ 	"
+@@ -175,6 +176,7 @@ sha512sums="
+ b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
+ eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+ 191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
++533ac2b7a0c2755742e0692101334bf8347976d01afd2f3af6295a791328e9a4463988d3b40ab35708f9217645c954cff573c7b61efe74267933cefb889b5115  0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
+ 22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
+ 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
+ 55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml

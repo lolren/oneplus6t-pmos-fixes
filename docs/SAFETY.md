@@ -8,8 +8,10 @@ The current scripts may:
 
 - inspect ModemManager and NetworkManager state;
 - create or delete a NetworkManager profile that they own;
-- enable normal system time synchronization; and
-- perform bounded connectivity tests.
+- enable normal system time synchronization;
+- perform bounded connectivity tests;
+- inspect camera/media state and private captures without publishing them; and
+- build kernel or userspace packages on the host without installing them.
 
 ## Prohibited scope
 
@@ -22,6 +24,13 @@ These scripts must never:
 - flash bootloader or firmware partitions;
 - write through EDL; or
 - reboot while storage or flashing operations are active.
+
+Do not unload the live `imx371` module for camera testing. On the tested stock
+kernel its remove path warned in the Qualcomm camera-clock driver, and lockdown
+rejects an unsigned trial module. Test camera kernel changes through a normal,
+signed postmarketOS kernel package. Installing that package and rebooting into
+it each require explicit approval after the stock APK and rollback command have
+been recorded.
 
 Any future low-level change requires verified stock recovery material, a
 device-specific backup, an explicit rollback procedure, and separate user

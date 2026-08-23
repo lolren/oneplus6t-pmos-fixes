@@ -54,3 +54,28 @@ window in under 0.3 seconds, and the user confirmed touchscreen launch. See
 `MESSAGES.md` for the separate Phoc/DRM presentation evidence. Do not submit a
 Chatty issue unless a future recurrence first proves whether the window is
 absent or merely not presented.
+
+## Front camera
+
+The camera fix is split by upstream ownership:
+
+- `patches/linux-postmarketos-qcom-sdm845/0001-*` adds the IMX371 hardware-
+  binned mode to the SDM845 kernel fork;
+- `0002-*` adds its link rate to the shared OnePlus 6/6T device tree;
+- `0003-*` corrects the sensor driver's analogue-gain range; and
+- `patches/libcamera/upstream/0001-*` registers the matching IMX371 gain and
+  black-level helper in libcamera.
+
+The version-specific libcamera patch is only for the current postmarketOS
+package. The `upstream/` form should be proposed to libcamera. Kernel changes
+should first be reviewed by the SDM845 mainline maintainers, then routed to the
+Linux media and Qualcomm device-tree maintainers as appropriate. The combined
+pmaports recipe change is available at
+`packaging/pmaports/0001-oneplus6t-front-camera.patch`.
+
+Before submission, record live evidence from the signed package: selected
+2304x1728 sensor mode, colour recovery, absence of the four-pixel grid, bounded
+gain metadata, clean kernel logs, still/video operation and repeated camera
+open/close. Do not attach the user's test photographs or proprietary camera
+libraries. The numeric binned-mode table can be reviewed independently against
+sensor documentation; no vendor binary is included in these patches.

@@ -104,6 +104,18 @@ privacy-safe diagnostic or request a fallback activation as the login user:
 See [docs/MESSAGES.md](docs/MESSAGES.md) for the measured result, display-driver
 evidence and the completed touchscreen confirmation.
 
+## Front camera
+
+The front IMX371 is a Quad Bayer sensor, while the current kernel exposes only
+its full readout as ordinary Bayer. Reproducible kernel and libcamera patches
+add the sensor's 2304x1728 hardware-binned mode, correct its analogue-gain
+range and teach libcamera the gain conversion.
+
+The diagnosis, private-data boundary, package test route and full-resolution
+limitation are documented in [docs/CAMERA.md](docs/CAMERA.md). The offline raw
+proof and signed kernel/libcamera package builds pass; live validation of the
+patched kernel still needs an explicitly approved installation and reboot.
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
@@ -111,6 +123,8 @@ evidence and the completed touchscreen confirmation.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
+- Front camera: Quad Bayer root cause confirmed; signed binned-mode, gain and
+  libcamera packages built, with live patched-kernel validation pending.
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements: not yet included here.
 
