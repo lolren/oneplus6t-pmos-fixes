@@ -1,10 +1,34 @@
-# Front camera
+# Camera stack
 
-## Root cause
+This repository contains a reproducible camera stack for the OnePlus 6T
+(`oneplus-fajita`) on postmarketOS. It covers all three sensors, both rear
+focus actuators, software-ISP scaling, exposure defaults and the controls that
+the current open pipeline can implement honestly.
 
-The OnePlus 6T front camera is a Sony IMX371 with a Quad Bayer colour
-filter. Its full sensor readout repeats each colour over a physical 2x2
-block:
+The final packages were built and tested from an isolated user-owned runtime.
+They have not been installed system-wide. Nothing in this work flashes a
+partition, changes a boot slot or reboots the phone.
+
+## Hardware map
+
+Use the stable media-path camera IDs in scripts. `/dev/v4l-subdev*` numbers can
+change after a kernel or media-graph change.
+
+| Camera | Stable libcamera ID | Focus hardware |
+| --- | --- | --- |
+| Rear main, IMX519 | `/base/soc@0/cci@ac4a000/i2c-bus@0/camera@1a` | LC898217XC actuator |
+| Rear secondary, IMX376 | `/base/soc@0/cci@ac4a000/i2c-bus@1/camera@10` | LC898217XC actuator |
+| Front, IMX371 | `/base/soc@0/cci@ac4a000/i2c-bus@0/camera@10` | Fixed focus; no actuator |
+
+The tested actuator control range is `0..2047`. The useful contrast-focus
+range for the reference phone is approximately `400..800`; raw DAC units are
+not calibrated optical dioptres.
+
+## Included fixes
+
+### Front Quad Bayer mode
+
+The IMX371 full readout repeats each colour over a physical 2x2 block:
 
 ```text
 R R G G
@@ -13,120 +37,181 @@ G G B B
 G G B B
 ```
 
-The current Linux driver exposes that readout as ordinary 2x2 RGGB.
-libcamera consequently demosaics the wrong colour pattern. This accounts for
-both reported symptoms: the image is nearly monochrome and a regular grid is
-visible across it.
+Advertising that as ordinary RGGB makes a conventional demosaic nearly
+monochrome and creates a regular grid. Kernel patches add the sensor's
+2304x1728 hardware-binned mode and its 399 MHz link frequency. The sensor then
+combines each same-colour block and emits ordinary RGGB without a proprietary
+remosaic stage.
 
-The normal preview and video solution is the IMX371 hardware-binned mode. The
-sensor combines every same-colour 2x2 block and emits conventional RGGB at
-2304x1728. This avoids a proprietary full-resolution remosaic stage, reduces
-CSI bandwidth and requires less software-ISP work.
+### Gain conversion and exposure
 
-## Related gain defect
-
-The sensor gain equation is:
+IMX371, IMX376 and IMX519 use:
 
 ```text
 gain = 1024 / (1024 - register_code)
 ```
 
-Code 960 is therefore 16x gain. The current kernel limit is 480, which permits
-only about 1.88x, and libcamera 0.7.2 has no IMX371 sensor helper. Its simple
-IPA reports `Failed to create camera sensor helper for imx371` and otherwise
-treats the register code as if it were a linear gain value.
+The libcamera helpers convert register codes to real gain and provide the
+10-bit black level. Kernel patches expose the intended 16x gain range on
+IMX371 and IMX376 instead of the previous approximately 1.88x limit.
 
-The patch set corrects both sides:
+The main IMX519 1280x720 and 1920x1080 modes are capable of 120 and 60 fps,
+but the simple pipeline does not request a frame duration. It therefore used
+those maximum rates for ordinary preview, limiting exposure to about 4.2 ms
+or 16.7 ms. The kernel patch keeps those maximum rates while making 30 fps the
+default. This permits substantially longer exposure and lower gain until the
+pipeline gains an explicit `FrameDurationLimits` implementation.
 
-- the kernel gain control extends to code 960; and
-- libcamera gains an IMX371 helper with the 1024-based conversion and a
-  10-bit black level of `0x40` (`4096` in libcamera's 16-bit scale).
+### Rear autofocus
 
-## Included patches
+The simple IPA gains contrast-detect autofocus for both rear cameras:
 
-Kernel patches for `sdm845-mainline/linux` tag `sdm845-7.1-rc1-r0` are in
+- standard `AfModeAuto` and `AfModeContinuous` modes;
+- standard `AfTriggerStart` and `AfTriggerCancel` input;
+- `AfStateIdle`, `Scanning`, `Focused` and `Failed` metadata;
+- a central two-dimensional Sobel focus statistic normalized by luminance;
+- coarse and fine scans with actuator settling and measurement windows;
+- centre selection across the near-peak focus plateau, avoiding edge bias;
+- continuous-focus hysteresis and delayed restart after a sustained contrast
+  loss; and
+- no autofocus controls on fixed-focus IMX371.
+
+The tuning scans DAC positions `400..800`, first in steps of 100 and then 25.
+Positions within 10% of the peak metric form a plateau, and the selected
+position is its centre. `LensPosition` is deliberately not advertised: the
+kernel value is an uncalibrated DAC code, while libcamera defines that control
+in dioptres. Advertising a knowingly false unit would break applications.
+
+### GPU grid and crop fix
+
+The old EGL path demosaiced and resized packed Bayer data in one pass with
+nearest-neighbour source sampling. Non-integer downscales aliased the Bayer
+phase into a visible horizontal/vertical grid. A CPU-path comparison removed
+the grid but center-cropped most of the view and used more CPU, so it was kept
+only as a diagnostic.
+
+The final EGL path:
+
+1. demosaics to an intermediate full-resolution RGB texture;
+2. builds a mipmapped low-pass pyramid;
+3. center-crops to the requested aspect ratio; and
+4. scales filtered RGB into the output buffer.
+
+AGC, AWB and autofocus statistics use the same centered source rectangle as
+the displayed image. The 2304x1728-to-800x600 test sustained 30 fps on the
+Adreno 630 and removed the regular grid while retaining the full field of
+view.
+
+### User controls
+
+An identity CCM enables a truthful saturation control without pretending that
+the sensors have been colour-chart calibrated. The tested controls are:
+
+| Feature | Main rear | Secondary rear | Front | Status |
+| --- | --- | --- | --- | --- |
+| Automatic exposure | Yes | Yes | Yes | Existing simple AGC, corrected gain models |
+| Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
+| Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
+| One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
+| Contrast | Yes | Yes | Yes | `0..2` |
+| Gamma | Yes | Yes | Yes | `0.1..10` |
+| Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
+| HDR | No | No | No | No valid merge/tone-map implementation |
+| Flash integration | No | No | No | LEDs exist but are not a libcamera flash device |
+| Manual exposure/AWB | No | No | No | Not implemented by the simple IPA |
+| Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
+| Denoise/sharpening | No | No | No | No equivalent algorithms in this pipeline |
+
+The IMX371 and IMX376 kernel drivers contain wide-dynamic-range register
+hooks. That is not Android-style HDR: the software ISP cannot merge the
+resulting exposures or tone-map them. Enabling the register switch and naming
+it HDR would return invalid or unmerged data, so `HdrMode` remains absent.
+
+Android parity also includes proprietary tuning, lens shading, temporal
+denoise, sharpening, multi-frame fusion and scene processing. Those cannot be
+claimed from autofocus and demosaic fixes alone.
+
+## Patch layout
+
+Kernel patches targeting `sdm845-mainline/linux` tag
+`sdm845-7.1-rc1-r0` are in
 `patches/linux-postmarketos-qcom-sdm845/`:
 
-1. add the exact 2304x1728 2x2-binned mode and 399 MHz link configuration;
-2. advertise that link frequency in the shared OnePlus 6/6T device tree; and
-3. correct the analogue-gain control range.
+1. IMX371 2304x1728 binned mode;
+2. OnePlus device-tree link frequency;
+3. IMX371 16x gain range;
+4. IMX376 16x gain range; and
+5. IMX519 30 fps preview defaults.
 
-The libcamera helper is supplied in two forms:
+The nine-patch libcamera 0.7.2 series is in
+`patches/libcamera/v0.7.2/`. Sensor tuning files are in
+`config/libcamera/simple/`. The single pmaports integration diff in
+`packaging/pmaports/` adds all patches, tuning, checksums and package revision
+bumps.
 
-- `patches/libcamera/v0.7.2/` applies to the version currently packaged by
-  postmarketOS; and
-- `patches/libcamera/upstream/` applies to current libcamera `master`.
+No APK, private photograph, raw capture, device identifier, Android camera
+library or vendor tuning blob is committed.
 
-The patches contain no Android camera libraries, vendor tuning blobs, photos,
-device identifiers or other proprietary/user data.
+## Reproducible build
 
-## Evidence and offline validation
+Use the reviewed pmaports base and verify the integration diff before applying
+it:
 
-The failing processed frame was 1920x1080. Its corresponding packed RAW10
-frame was advertised as 4656x3496. Splitting a flat part of that raw frame by
-`x mod 4` and `y mod 4` showed four stable 2x2 same-colour clusters, not an
-ordinary Bayer mosaic.
+```sh
+git checkout 073ff887b0e18c4c80bd94098fda035e0e20d28b
+git apply --check --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
+git apply --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
 
-For a non-invasive proof, the active raw area was grouped into physical 2x2
-blocks, producing a 2304x1728 ordinary RGGB mosaic. A conventional edge-aware
-demosaic then removed the grid and restored independent colour channels. No
-test image is committed because the captures are private.
+pmbootstrap -p "$PWD" build --arch aarch64 libcamera
+pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
+```
 
-The binned register table, output size, frame/line timing and 798 Mbps per-lane
-rate were cross-checked against the factory 2304x1728 sensor mode. The table in
-the kernel patch is byte-for-byte identical to that mode.
+The reference build produced `libcamera`/`libcamera-ipa` r18 and SDM845
+kernel r8. See `packaging/pmaports/README.md` for hashes and rollback rules.
+These commands build packages only.
 
-## Build and test safety
+## Validation
 
-Do not unload `imx371` on a running OnePlus 6/6T. The tested stock kernel's
-remove path emitted a Qualcomm camera-clock warning, and kernel lockdown
-rejects an unsigned replacement module. The stock driver was recovered by a
-normal sysfs bind retry, but module swapping is not a supported test method.
+All camera processes were bounded, captures remained private and both rear
+lenses were parked at DAC 0 after tests.
 
-Use the normal postmarketOS kernel package build. A rebuilt kernel embeds the
-same generated signing key that signs its modules. Installation and the first
-reboot must be a separately approved operation with the installed stock APK
-retained for rollback. None of the camera patches touches the bootloader, A/B
-slot metadata, partition table, firmware or UFS boot configuration.
+- Both rear continuous-AF tests selected position 600 and reached `Focused`.
+- A one-shot main-camera test reported 240 frames in `Scanning` followed by 60
+  in `Focused`, with no restart.
+- A forced-defocus continuous test detected sustained metric loss, rescanned
+  once and returned to the prior focus plateau without hunting.
+- Saturation 0 produced zero measured chroma; saturation 2 increased measured
+  chroma relative to the default.
+- The final r18 filtered front-camera runtime completed a bounded 30-frame
+  800x600 capture from the 2304x1728 input at approximately 30 fps.
+- Repeated captures on all three sensors completed without EGL, CSI or camera
+  process errors in the isolated tests.
+- Clean aarch64 builds completed for both final package recipes.
 
-The reproducible pmaports integration patch and exact build commands are in
-[`packaging/pmaports/`](../packaging/pmaports/). It updates only the SDM845
-kernel and libcamera package recipes; applying it does not install anything.
-On the reference build, both packages completed successfully for `aarch64`.
-The resulting IMX371 module has matching `7.1.0-rc1-sdm845` vermagic, a PKCS#7
-signature from the kernel build key, the compiled gain limit of 960, and a
-OnePlus 6T DTB containing both 654 MHz and 399 MHz front-camera link rates.
+The final r18/r8 packages still require a separately approved system install.
+The existing installed r5/r3 front-camera stack remains the rollback baseline.
 
-After booting a patched package, verify in this order:
+## Installation boundary
 
-1. enumerate the front camera and confirm both 2304x1728 and the existing raw
-   mode are reported;
-2. capture a bounded 1920x1080 preview and confirm libcamera selects
-   2304x1728 RGGB input;
-3. check that no CSI, DPU, IOMMU or sensor I/O error was added to the kernel
-   log;
-4. capture a neutral scene and a scene containing red, green and blue objects;
-5. confirm the four-pixel grid is absent at 1:1 view;
-6. exercise exposure from bright to dim light and confirm gain metadata stays
-   between 1x and 16x; and
-7. test front-camera still capture, video and repeated open/close cycles.
+Do not unload camera modules on a running phone. The kernel package replaces
+modules under the current release path, so after an approved kernel upgrade do
+not open the camera or load modules before the approved reboot.
 
-## Remaining limitation
+Before installation:
 
-The 16-megapixel Quad Bayer readout needs a remosaic algorithm before it can be
-treated as a conventional colour image. Android uses a vendor remosaic stage.
-This project deliberately does not redistribute or load that component.
-Normal processed front-camera output should use the hardware-binned
-2304x1728 mode; full-resolution raw access can remain available for future
-open remosaic work.
+1. retain exact copies or rebuilds of the installed r5 kernel and r3
+   libcamera packages;
+2. stage patched and rollback APKs in separate offline repositories;
+3. run `apk upgrade --simulate` and require exactly the expected packages;
+4. record the exact-version rollback command; and
+5. obtain explicit approval for package installation and, separately, reboot.
 
-Colour-matrix and lens-shading calibration should be evaluated only after the
-binned path is live. They can improve accuracy and corner uniformity, but they
-cannot fix the original CFA mismatch and must not be guessed from one scene.
+Never use `apk upgrade --available` against a partial camera repository. It can
+remove unrelated installed packages.
 
 ## References
 
-- [Sony: Quad Bayer Coding](https://www.sony-semicon.com/en/technology/mobile/quad-bayer-coding.html)
-- [SDM845 mainline IMX371 driver at the patched base tag](https://gitlab.com/sdm845-mainline/linux/-/blob/sdm845-7.1-rc1-r0/drivers/media/i2c/imx371.c)
-- [libcamera sensor-helper source](https://gitlab.freedesktop.org/camera/libcamera/-/blob/master/src/ipa/libipa/camera_sensor_helper.cpp)
-- [LineageOS OnePlus SDM845 proprietary-file inventory](https://github.com/LineageOS/android_device_oneplus_sdm845-common/blob/lineage-22.2/proprietary-files.txt)
+- [Sony Quad Bayer coding](https://www.sony-semicon.com/en/technology/mobile/quad-bayer-coding.html)
+- [SDM845 mainline IMX371 driver](https://gitlab.com/sdm845-mainline/linux/-/blob/sdm845-7.1-rc1-r0/drivers/media/i2c/imx371.c)
+- [libcamera simple software ISP](https://git.libcamera.org/libcamera/libcamera.git/tree/src/libcamera/software_isp)
+- [libcamera autofocus controls](https://libcamera.org/api-html/namespacelibcamera_1_1controls.html)

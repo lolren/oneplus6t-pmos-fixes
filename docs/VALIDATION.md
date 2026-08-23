@@ -9,8 +9,8 @@ Validated on 23 August 2026:
 
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
-- kernel: `7.1.0-rc1-sdm845`;
-- libcamera: `99990.7.2-r2` (upstream 0.7.2);
+- kernel: `7.1.0-rc1-sdm845` (currently package r5);
+- libcamera: initially `99990.7.2-r2`, currently r3 (upstream 0.7.2);
 - Snapshot: `50.0-r1`;
 - NetworkManager: 1.56.1;
 - ModemManager: 1.25.95; and
@@ -72,68 +72,105 @@ blank naturally during unattended testing, visual foreground presentation was
 not initially claimed. The user subsequently confirmed that Chats opens from
 the touchscreen with the screen on.
 
-## Front camera results
+## Camera results
 
-The front sensor was identified as IMX371. The stock pipeline selected a
-4656x3496 packed RAW10 input for a 1920x1080 processed stream. A neutral raw
-capture had a stable 4x4 Quad Bayer layout with same-colour physical 2x2
-blocks. The stock conventional Bayer output reproduced both reported defects:
-near-monochrome colour and a fine regular grid.
+The first signed camera revision, kernel r5 plus libcamera/IPA r3, was installed
+and booted earlier with approval. The phone currently runs that baseline. Its
+front IMX371 hardware-binned mode restored colour and substantially improved
+the original Quad Bayer image. The full-resolution proprietary remosaic path
+is still intentionally absent.
 
-Offline 2x2 cluster binning produced a 2304x1728 ordinary RGGB mosaic. A normal
-demosaic removed the grid and restored independent channel response. Input and
-output captures remain private and are not present in this repository.
+Further work was tested without replacing that installed stack. Each candidate
+libcamera APK was extracted under the login user's camera-diagnostics
+directory; `LD_LIBRARY_PATH`, IPA module path and IPA tuning path selected it
+for a bounded `cam` process only. Kernel r8 was built but never installed.
+Private PPM/PNG captures and full logs are excluded by `.gitignore`.
 
-The factory binned-mode register sequence was decoded independently and then
-compared with the generated kernel table: all 83 address/value entries match.
-The kernel patches pass `git diff --check` and the Linux kernel strict
-`checkpatch.pl` test. The libcamera 0.7.2 helper patch applies to the packaged
-source, and an equivalent patch was rebased onto current upstream `master`.
+### Sensor and actuator findings
 
-The final pmaports integration patch cleanly applies to pmaports commit
-`073ff887b0e18c4c80bd94098fda035e0e20d28b`. Using pmbootstrap 3.11.0,
-clean `aarch64` builds completed for both packages:
+- stable IDs enumerate IMX519 main rear, IMX376 secondary rear and fixed-focus
+  IMX371 front;
+- both rear LC898217XC controls report DAC range `0..2047`;
+- controlled focus sweeps put the useful range near `400..800` for the test
+  scene; and
+- both actuators were parked at 0 after every completed test.
 
-- `linux-postmarketos-qcom-sdm845-7.1_rc1-r5.apk`, SHA-256
-  `e29453dc71b50225141be668beedc9a96650ae429b5623a498b5a0297122c7eb`;
-- `libcamera-99990.7.2-r3.apk`, SHA-256
-  `1bf0c7419679673afd4f9b27b69026f1a8fe171f8e24b526bdca99ad7926041b`;
+Kernel and libcamera gain fixes map all three Sony register codes with
+`1024 / (1024 - code)`. IMX371 and IMX376 kernel controls expose code 960, or
+16x, instead of code 480, approximately 1.88x.
+
+### Autofocus
+
+The final contrast AF uses a central two-dimensional Sobel statistic, coarse
+and fine scans, a 10% near-peak plateau centre and continuous-restart
+hysteresis.
+
+- Three repeated main-camera scans settled near the same plateau.
+- Final continuous tests selected position 600 on both rear cameras and
+  reached `AfStateFocused`.
+- One-shot `AfModeAuto` plus `AfTriggerStart` reported 240 captured frames as
+  `Scanning` and the final 60 as `Focused`.
+- After an external forced defocus to 400, continuous mode detected sustained
+  contrast loss, restarted exactly once and returned to its prior plateau
+  without hunting.
+- The front camera correctly exposes no AF controls.
+
+### Grid, crop and frame rate
+
+An isolated CPU/GPU comparison showed that the regular grid was introduced by
+the old single-pass EGL demosaic-and-nearest-scale path. CPU demosaic removed
+the grid but cropped most of the view. A two-pass EGL prototype first rendered
+black because temporary texture-coordinate storage outlived its stack frame;
+that candidate was rejected and never installed.
+
+The corrected path demosaics to persistent full-resolution RGB, generates a
+mipmapped low-pass pyramid, then center-crops and scales RGB. It retained the
+full field of view, removed the regular grid and sustained approximately 30 fps
+for a 2304x1728 input rendered at 800x600. Statistics were moved to the exact
+displayed crop, and autofocus passed again afterward.
+
+The main IMX519 low-resolution modes were traced independently:
+
+- 800x600 selected 1280x720 at a 120 fps default and capped exposure near
+  4.2 ms;
+- 1280-class output selected 1920x1080 at a 60 fps default; and
+- 1600x1200 selected 2328x1748 at about 30 fps and allowed much longer
+  exposure.
+
+Kernel r8 keeps the 120/60 fps minima but changes the first two defaults to
+30 fps. The existing VBLANK implementation calculates and applies the longer
+frame length; no sensor register table is removed.
+
+### Controls and final builds
+
+Identity CCM tuning exposes saturation on all three sensors. Saturation 0
+produced measured average chroma 0; saturation 2 increased average chroma from
+approximately 6.4 to 10.1 in the controlled scene. Contrast and gamma remain
+available. HDR was not exposed because the simple ISP has no valid
+multi-exposure merge or tone-map stage.
+
+The final integration diff applies cleanly to pmaports
+`073ff887b0e18c4c80bd94098fda035e0e20d28b`. Clean aarch64 package builds
+completed for:
+
+- kernel r8, SHA-256
+  `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e`;
+- libcamera r18, SHA-256
+  `360e1c718650907065f8322d1d01a57b27591b7ca827b3a0e8821c7082d93a63`;
   and
-- `libcamera-ipa-99990.7.2-r3.apk`, SHA-256
-  `02387288fedb6f9f002c757185f5942d9e15d6913298ef21bdff176e30914ea4`.
+- libcamera IPA r18, SHA-256
+  `4f1748ff710b67b6ef7d8f4e32c1e5f33dc84fa9c1d508192e4a88dc12285083`.
 
-The packaged IMX371 module has matching `7.1.0-rc1-sdm845` vermagic, a PKCS#7
-SHA-512 signature from the build-time kernel key, and a compiled gain maximum
-of 960. The packaged OnePlus 6T DTB advertises 654 MHz and 399 MHz for IMX371.
-The packaged simple IPA contains the registered `imx371` helper. APK hashes
-identify this reference build; independent package signatures and build
-metadata can make a clean rebuild bytewise different.
+The final r18 runtime enumerated all three cameras, exposed autofocus controls
+on both rear modules and none on the fixed-focus front module, and completed a
+bounded 30-frame front capture through the filtered EGL path at approximately
+30 fps. It was extracted under the login user's home directory and was not
+installed into a system package path.
 
-Unmodified, version-matched rollback builds also completed for the currently
-installed kernel `7.1_rc1-r4`, libcamera `99990.7.2-r2` and libcamera IPA
-`99990.7.2-r2`. Their file sets match their corresponding patched packages.
-They are local rebuilds of the same pmaports recipes, not bytewise copies of the
-APKs that were originally installed.
-
-All six APKs were copied to user storage on the phone and passed `sha256sum -c`.
-An offline local-repository simulation selected exactly the intended kernel,
-libcamera and IPA upgrades; a second policy check confirmed that simulation
-left the real system on `r4`/`r2`/`r2`.
-
-Upgrade and rollback were then exercised non-destructively in a user-owned copy
-of the phone's complete APK database with package scripts and commit hooks
-disabled. The copied database upgraded exactly those three packages to
-`r5`/`r3`/`r3`, and the exact-version rollback downgraded exactly those three to
-`r4`/`r2`/`r2`. This also exposed and rejected an unsafe alternative:
-`apk upgrade --available` against the partial rollback repository planned to
-prune unrelated packages. It was never run against the real package database.
-
-An attempted temporary module test was rejected by lockdown before custom code
-could execute. Unloading the stock module exposed a warning in its existing
-camera-clock remove path; the stock module and sensor binding were restored,
-and fresh libcamera enumeration again found all three cameras. Live binned-mode
-validation therefore requires the normal signed kernel package and an approved
-reboot. Do not use module swapping for this device.
+The r8 IMX519 module has matching `7.1.0-rc1-sdm845` vermagic and a PKCS#7
+SHA-512 build-key signature. The final kernel package was checked to ensure the
+discarded actuator diagnostic experiment is absent. No final package was
+installed or copied into a system package path.
 
 ## Remaining validation
 
@@ -142,6 +179,8 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The front camera still requires live validation of the signed patched kernel,
-followed by still/video, colour, grid, exposure and repeated-open tests listed
-in `CAMERA.md`. No successful patched-camera result is claimed yet.
+The final r8/r18 system transaction and reboot remain pending fresh approval.
+After that, record application-level preview, still/video, flash expectations,
+screen-off/on, repeated-open, suspend/resume and rollback tests. Android-level
+HDR, denoise, calibrated CCM/lens shading and computational fusion remain
+unimplemented and are not represented as completed work.

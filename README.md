@@ -104,17 +104,19 @@ privacy-safe diagnostic or request a fallback activation as the login user:
 See [docs/MESSAGES.md](docs/MESSAGES.md) for the measured result, display-driver
 evidence and the completed touchscreen confirmation.
 
-## Front camera
+## Cameras
 
-The front IMX371 is a Quad Bayer sensor, while the current kernel exposes only
-its full readout as ordinary Bayer. Reproducible kernel and libcamera patches
-add the sensor's 2304x1728 hardware-binned mode, correct its analogue-gain
-range and teach libcamera the gain conversion.
+The reproducible camera stack now covers all three sensors. It retains the
+front IMX371 hardware-binned Quad Bayer fix and adds corrected gain models,
+rear one-shot/continuous autofocus, filtered GPU scaling that removes the
+regular grid, centered statistics, a saturation control and a 30 fps default
+for ordinary main-camera preview.
 
-The diagnosis, private-data boundary, package test route and full-resolution
-limitation are documented in [docs/CAMERA.md](docs/CAMERA.md). The offline raw
-proof and signed kernel/libcamera package builds pass; live validation of the
-patched kernel still needs an explicitly approved installation and reboot.
+The final kernel r8 and libcamera r18 packages build successfully and pass
+isolated live tests without replacing the installed stack. HDR, flash,
+calibrated colour/lens shading and Android computational processing are not
+claimed. See [docs/CAMERA.md](docs/CAMERA.md) for the feature matrix, evidence,
+build route and installation boundary.
 
 ## Project status
 
@@ -123,10 +125,12 @@ patched kernel still needs an explicitly approved installation and reboot.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Front camera: Quad Bayer root cause confirmed; signed binned-mode, gain and
-  libcamera packages built, with live patched-kernel validation pending.
+- Cameras: installed r5/r3 front-binning baseline works; final r8/r18 stack
+  passes isolated three-camera, autofocus, saturation, grid and 30 fps tests,
+  with system installation pending fresh approval.
 - Reboot persistence: still to be recorded in the validation log.
-- Audio routing, display and power improvements: not yet included here.
+- Audio routing, display and power improvements are not included in this
+  camera revision.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 

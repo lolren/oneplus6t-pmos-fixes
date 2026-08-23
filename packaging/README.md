@@ -22,6 +22,11 @@ dependency. When Chatty is installed, its GLib utilities provide
 `gapplication`; `busctl` enables window verification on systemd images. The
 plain check does not D-Bus-activate an absent Chatty service.
 
+Python 3 supports the optional V4L2 focus-control diagnostic. Camera kernel,
+libcamera and tuning changes are deliberately not installed by this noarch
+helper package; their separately reviewed pmaports integration is in
+`packaging/pmaports/`.
+
 Before upstreaming this recipe:
 
 1. replace the local-checkout `builddir` with an immutable release or commit

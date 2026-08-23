@@ -55,27 +55,39 @@ window in under 0.3 seconds, and the user confirmed touchscreen launch. See
 Chatty issue unless a future recurrence first proves whether the window is
 absent or merely not presented.
 
-## Front camera
+## Camera stack
 
-The camera fix is split by upstream ownership:
+Split submissions by ownership and maturity:
 
-- `patches/linux-postmarketos-qcom-sdm845/0001-*` adds the IMX371 hardware-
-  binned mode to the SDM845 kernel fork;
-- `0002-*` adds its link rate to the shared OnePlus 6/6T device tree;
-- `0003-*` corrects the sensor driver's analogue-gain range; and
-- `patches/libcamera/upstream/0001-*` registers the matching IMX371 gain and
-  black-level helper in libcamera.
+- kernel `0001` adds the IMX371 binned mode;
+- kernel `0002` adds its OnePlus 6/6T device-tree link frequency;
+- kernel `0003` and `0004` correct IMX371/IMX376 analogue-gain ranges;
+- kernel `0005` keeps IMX519 high-speed capability but changes ordinary
+  preview defaults to 30 fps;
+- the existing `patches/libcamera/upstream/0001-*` is the small IMX371 helper
+  candidate; and
+- `patches/libcamera/v0.7.2/` contains the complete version-specific stack
+  used by current postmarketOS.
 
-The version-specific libcamera patch is only for the current postmarketOS
-package. The `upstream/` form should be proposed to libcamera. Kernel changes
-should first be reviewed by the SDM845 mainline maintainers, then routed to the
-Linux media and Qualcomm device-tree maintainers as appropriate. The combined
-pmaports recipe change is available at
-`packaging/pmaports/0001-oneplus6t-front-camera.patch`.
+The sensor helpers, sensor-delay properties, configurable AGC target, focus
+statistic and autofocus can be reviewed as independent libcamera changes. The
+EGL two-pass/mipmap patch should not be proposed unchanged while libcamera's
+official multipass GPU-ISP redesign is active; its measured OnePlus result is
+useful input to that work, but it needs alignment with the upstream design.
+See the official [multipass RFC discussion](https://lists.libcamera.org/pipermail/libcamera-devel/2026-June/059567.html)
+and [RGB/Bayer conversion patch](https://lists.libcamera.org/pipermail/libcamera-devel/2026-June/059302.html).
 
-Before submission, record live evidence from the signed package: selected
-2304x1728 sensor mode, colour recovery, absence of the four-pixel grid, bounded
-gain metadata, clean kernel logs, still/video operation and repeated camera
-open/close. Do not attach the user's test photographs or proprietary camera
-libraries. The numeric binned-mode table can be reviewed independently against
-sensor documentation; no vendor binary is included in these patches.
+Do not upstream identity matrices as calibrated sensor tuning. They exist only
+to expose the generic saturation control and are explicitly uncalibrated.
+Likewise, do not advertise `HdrMode`: sensor WDR registers are not a complete
+HDR pipeline without exposure fusion and tone mapping.
+
+Kernel changes should first be reviewed by the SDM845 mainline maintainers,
+then routed to Linux media and Qualcomm device-tree maintainers as appropriate.
+The pmaports packaging diff is
+`packaging/pmaports/0001-oneplus6t-camera-stack.patch`.
+
+Submission evidence may include stable camera IDs, selected modes, bounded
+gain/focus metadata, frame rates and sanitized error logs. Do not attach the
+user's photographs, raw captures, Android libraries or proprietary tuning
+files.
