@@ -1,0 +1,2 @@
+#!/bin/sh
+printf '%s\n' 'libgtk-4.so.1 => /usr/lib/libgtk-4.so.1'

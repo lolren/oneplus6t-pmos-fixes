@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+case " $* " in
+	*" list "*)
+		if [ "${PMOS_MOCK_DBUS_OWNER:-yes}" = yes ]; then
+			printf '%s 100 chatty user :1.1 user@100.service - -\n' "${PMOS_CHATTY_APP_ID:-sm.puri.Chatty}"
+		fi
+		;;
+	*" tree "*)
+		if [ -n "${PMOS_MOCK_TREE_PROBE:-}" ]; then
+			: > "$PMOS_MOCK_TREE_PROBE"
+		fi
+		printf '%s\n' '└─ /sm/puri/Chatty'
+		if [ -e "$PMOS_MOCK_WINDOW_STATE" ]; then
+			printf '%s\n' '  └─ /sm/puri/Chatty/window/1'
+		fi
+		;;
+	*) exit 1 ;;
+esac

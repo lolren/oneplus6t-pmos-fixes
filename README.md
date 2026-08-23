@@ -90,12 +90,27 @@ sudo ./scripts/configure-time-sync --epoch 1787485490 --timezone Europe/London
 
 See [docs/TIME.md](docs/TIME.md) for the automatic boot behavior and checks.
 
+## Messages
+
+The installed GNOME Chatty application and its background daemon are healthy,
+and both D-Bus and desktop-file activation create a window. Re-run the
+privacy-safe diagnostic or request a fallback activation as the login user:
+
+```sh
+./scripts/check-messages
+./scripts/check-messages --activate
+```
+
+See [docs/MESSAGES.md](docs/MESSAGES.md) for the measured result, display-driver
+evidence and the completed touchscreen confirmation.
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
   and HTTPS.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
+- Messages: package, daemon, automated activation and touchscreen launch pass.
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements: not yet included here.
 

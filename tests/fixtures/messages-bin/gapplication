@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+[ "$1" = launch ]
+[ "$2" = "${PMOS_CHATTY_APP_ID:-sm.puri.Chatty}" ]
+: > "$PMOS_MOCK_WINDOW_STATE"

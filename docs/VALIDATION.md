@@ -56,6 +56,20 @@ separate active `ims` bearer belongs to `81voltd`.
 `/var/lib/systemd/timesync/clock` has a current timestamp. The hardware RTC
 still reports 1970; no attempt was made to write it.
 
+## Messages results
+
+Chatty `0.8.9-r13` had an active, non-restarting user daemon, no coredump and no
+missing runtime library. A controlled GApplication launch exported a window in
+about 0.22 seconds. Closing only that window and launching the packaged desktop
+entry with `gtk-launch sm.puri.Chatty` exported a new window in about 0.29
+seconds. The window remained stable through the observation period.
+
+The compositor simultaneously recorded repeated failed DRM atomic commits, and
+the kernel reported DPU encoder errors. Because the display was allowed to
+blank naturally during unattended testing, visual foreground presentation was
+not initially claimed. The user subsequently confirmed that Chats opens from
+the touchscreen with the screen on.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

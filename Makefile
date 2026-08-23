@@ -8,15 +8,17 @@ SCRIPTS = \
 	scripts/configure-mobile-data \
 	scripts/remove-mobile-data \
 	scripts/check-mobile-data \
-	scripts/configure-time-sync
+	scripts/configure-time-sync \
+	scripts/check-messages
 
 .PHONY: all test install
 
 all: test
 
 test:
-	sh -n $(SCRIPTS) tests/test-apn-selection.sh packaging/APKBUILD
+	sh -n $(SCRIPTS) tests/test-apn-selection.sh tests/test-messages-check.sh packaging/APKBUILD
 	./tests/test-apn-selection.sh
+	./tests/test-messages-check.sh
 
 install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/scripts"
@@ -31,3 +33,4 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/remove-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-remove-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-check-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-time-sync" "$(DESTDIR)$(SBINDIR)/pmos-configure-time-sync"
+	ln -sfn "$(LIBEXECDIR)/scripts/check-messages" "$(DESTDIR)$(SBINDIR)/pmos-check-messages"

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Chats
+Exec=chatty %u
+Type=Application
+DBusActivatable=true

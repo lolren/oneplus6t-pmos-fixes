@@ -47,3 +47,10 @@ create a usable NetworkManager GSM profile. A separate user-interface issue
 should include sanitized NetworkManager/ModemManager versions, the absence of a
 GSM profile, and the shared-MCC/MNC result. It must not contain SIM serial,
 IMSI, IMEI or telephone-number data.
+
+The reported Chatty launch failure is not ready for upstream submission. Both
+its GApplication and packaged desktop-file activation paths currently create a
+window in under 0.3 seconds, and the user confirmed touchscreen launch. See
+`MESSAGES.md` for the separate Phoc/DRM presentation evidence. Do not submit a
+Chatty issue unless a future recurrence first proves whether the window is
+absent or merely not presented.

@@ -1,0 +1,151 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+APP_ID=${PMOS_CHATTY_APP_ID:-sm.puri.Chatty}
+DESKTOP_FILE=${PMOS_CHATTY_DESKTOP:-/usr/share/applications/sm.puri.Chatty.desktop}
+SERVICE=${PMOS_CHATTY_SERVICE:-sm.puri.Chatty-daemon.service}
+TIMEOUT_TENTHS=${PMOS_CHATTY_TIMEOUT_TENTHS:-100}
+activate=no
+problems=0
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--activate]
+
+Check Chatty's package, user daemon, D-Bus owner and window state without
+reading any message database.  --activate asks the existing application (or
+its D-Bus service) to create/present a window and waits up to 10 seconds.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--activate) activate=yes ;;
+		-h|--help) usage; exit 0 ;;
+		*) die "unknown option: $1" ;;
+	esac
+	shift
+done
+
+case "$TIMEOUT_TENTHS" in
+	""|*[!0-9]*) die "PMOS_CHATTY_TIMEOUT_TENTHS must be a positive integer" ;;
+esac
+[ "$TIMEOUT_TENTHS" -gt 0 ] || die "PMOS_CHATTY_TIMEOUT_TENTHS must be greater than zero"
+
+if [ -r "$DESKTOP_FILE" ] &&
+	grep -Eq '^Exec=([^[:space:]]*/)?chatty([[:space:]]|$)' "$DESKTOP_FILE" &&
+	grep -q '^DBusActivatable=true$' "$DESKTOP_FILE"; then
+	printf 'desktop_file=ok\n'
+else
+	printf 'desktop_file=missing-or-invalid\n'
+	problems=1
+fi
+
+chatty_binary=$(command -v chatty 2>/dev/null || true)
+if [ -n "$chatty_binary" ]; then
+	printf 'binary=%s\n' "$chatty_binary"
+else
+	printf 'binary=missing\n'
+	problems=1
+fi
+
+if [ -n "$chatty_binary" ] && command -v ldd >/dev/null 2>&1; then
+	if ldd "$chatty_binary" 2>&1 | grep -Eq '=>[[:space:]]+not found([[:space:]]|$)'; then
+		printf 'libraries=missing\n'
+		problems=1
+	else
+		printf 'libraries=resolved\n'
+	fi
+else
+	printf 'libraries=not-checked\n'
+fi
+
+user_id=$(id -u)
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$user_id" ]; then
+	XDG_RUNTIME_DIR=/run/user/$user_id
+	export XDG_RUNTIME_DIR
+fi
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] &&
+	[ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
+	DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+	export DBUS_SESSION_BUS_ADDRESS
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+	if systemctl --user is-active --quiet "$SERVICE" 2>/dev/null; then
+		printf 'daemon_service=active\n'
+	else
+		printf 'daemon_service=inactive\n'
+	fi
+else
+	printf 'daemon_service=not-checked\n'
+fi
+
+have_busctl=no
+dbus_owner_present=no
+if command -v busctl >/dev/null 2>&1; then
+	have_busctl=yes
+	if busctl --user --no-pager --no-legend list 2>/dev/null |
+		awk -v app="$APP_ID" '$1 == app { found=1 } END { exit !found }'; then
+		dbus_owner_present=yes
+		printf 'dbus_owner=present\n'
+	else
+		printf 'dbus_owner=absent\n'
+	fi
+else
+	printf 'dbus_owner=not-checked\n'
+fi
+
+window_present() {
+	[ "$have_busctl" = yes ] || return 2
+	[ "$dbus_owner_present" = yes ] || return 1
+	busctl --user --no-pager tree "$APP_ID" 2>/dev/null | grep -q '/window/'
+}
+
+if window_present; then
+	printf 'window=present\n'
+else
+	window_status=$?
+	if [ "$window_status" -eq 2 ]; then
+		printf 'window=not-checked\n'
+	else
+		printf 'window=absent\n'
+	fi
+fi
+
+if [ "$activate" = yes ]; then
+	command -v gapplication >/dev/null 2>&1 || die "gapplication is required for --activate"
+	if ! gapplication launch "$APP_ID"; then
+		printf 'activation=failed\n'
+		exit 1
+	fi
+
+	if [ "$have_busctl" != yes ]; then
+		printf 'activation=requested\n'
+		printf 'window_after_activation=not-checked\n'
+		exit "$problems"
+	fi
+
+	dbus_owner_present=yes
+	waited=0
+	while ! window_present; do
+		if [ "$waited" -ge "$TIMEOUT_TENTHS" ]; then
+			printf 'activation=timed-out\n'
+			printf 'window_after_activation=absent\n'
+			exit 1
+		fi
+		waited=$((waited + 1))
+		sleep 0.1
+	done
+	printf 'activation=ok\n'
+	printf 'window_after_activation=present\n'
+	printf 'window_poll_tenths=%s\n' "$waited"
+fi
+
+exit "$problems"

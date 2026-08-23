@@ -17,6 +17,11 @@ Mobile Broadband Provider database. `curl`, `resolvectl` and systemd time
 tools remain optional: diagnostics degrade safely when they are absent, and the
 time helper reports an explicit error outside a systemd installation.
 
+The Messages diagnostic is optional and does not make Chatty a package
+dependency. When Chatty is installed, its GLib utilities provide
+`gapplication`; `busctl` enables window verification on systemd images. The
+plain check does not D-Bus-activate an absent Chatty service.
+
 Before upstreaming this recipe:
 
 1. replace the local-checkout `builddir` with an immutable release or commit

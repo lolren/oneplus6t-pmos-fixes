@@ -1,0 +1,5 @@
+#!/bin/sh
+case " $* " in
+	*" --user is-active --quiet sm.puri.Chatty-daemon.service "*) exit 0 ;;
+	*) exit 1 ;;
+esac
