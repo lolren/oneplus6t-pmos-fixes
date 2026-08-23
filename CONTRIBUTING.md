@@ -13,7 +13,8 @@ For a new `data/mvno-apns.psv` rule:
 5. Add a fixture covering both the intended match and a nearby non-match.
 6. Run `make test` and `git diff --check`.
 
-If the standard `mobile-broadband-provider-info` schema can represent the
-carrier unambiguously, contribute there upstream instead of duplicating it in
-the local overlay. Its current schema cannot distinguish MVNOs by SIM GID, so
-this project's overlay covers those cases while retaining safe refusal.
+If current `mobile-broadband-provider-info` can represent the carrier with its
+`<gid1>` field, contribute there upstream instead of duplicating it in the
+local overlay. The tested `20251101` release predates that field, and current
+NetworkManager does not consume it, so this helper supports both the new
+database field and a reviewed compatibility overlay.

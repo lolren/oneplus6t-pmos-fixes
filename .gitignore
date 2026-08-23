@@ -9,3 +9,6 @@ artifacts/
 *.nmconnection
 .env
 known_hosts
+*.apk
+packaging/pkg/
+packaging/src/

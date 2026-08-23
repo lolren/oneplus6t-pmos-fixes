@@ -29,18 +29,25 @@ controlled test with database auto-configuration selected `superdrug.net` for
 a SMARTY SIM. Although the network happened to establish a bearer, another
 provider's APN is not a correct or portable configuration.
 
-The installed `serviceproviders.2.dtd` describes MCC/MNC matching but has no
-SIM GID field. ModemManager does expose GID1/GID2 without exposing the IMSI or
-SIM serial. The tested SMARTY SIM reports GID1 `0309`; SMARTY's own setup page
-publishes MCC `234`, MNC `20`, MVNO type GID and value `0309`.
+The installed `20251101` database describes MCC/MNC matching but has no SIM
+GID field. Upstream database `main` added `<gid1>` after that release, though
+current NetworkManager still ignores it. ModemManager exposes GID1/GID2 without
+exposing the IMSI or SIM serial. The tested SMARTY SIM reports GID1 `0309`;
+SMARTY's own setup page publishes MCC `234`, MNC `20`, MVNO type GID and
+value `0309`.
 
 `configure-mobile-data` therefore applies this order:
 
 1. an explicit APN supplied by the user;
 2. the most-specific MCC/MNC + GID match in `data/mvno-apns.psv`;
-3. NetworkManager database auto-configuration when exactly one provider name
-   matches the MCC/MNC; or
-4. a safe refusal that asks for an explicit APN.
+3. an exact MCC/MNC + GID1 match in a newer provider database;
+4. NetworkManager database auto-configuration when exactly one unrestricted
+   provider matches the MCC/MNC; or
+5. a safe refusal that asks for an explicit APN.
+
+For a database GID match, the helper reads that provider's first Internet APN
+and credentials itself. For an unambiguous unrestricted provider, it delegates
+to NetworkManager with `gsm.auto-config=yes`.
 
 No public carrier database is guaranteed to contain every plan worldwide.
 This design covers the standard database while making missing and ambiguous
@@ -129,6 +136,9 @@ Supported IP modes are `ipv4`, `ipv6` and `ipv4v6`.
 Every rule must cite a carrier or platform source that publishes the APN and
 matching identity. Add a fixture and test before submitting it. See
 [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+When upstream provider data already has a matching `<gid1>`, do not duplicate
+it in the overlay.
 
 ## Diagnostics
 

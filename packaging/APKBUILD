@@ -1,0 +1,28 @@
+# Local-checkout package recipe. See packaging/README.md before using in aports.
+maintainer="Lolren <loren.bufanu@gmail.com>"
+pkgname=oneplus6t-pmos-fixes
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Safe postmarketOS mobile-data and time helpers for OnePlus 6T"
+url="https://github.com/lolren/oneplus6t-pmos-fixes"
+arch="noarch"
+license="MIT"
+depends="
+	iproute2
+	mobile-broadband-provider-info
+	modemmanager
+	networkmanager-cli
+	"
+options="!strip"
+builddir="$startdir/.."
+
+check() {
+	make -C "$builddir" test
+}
+
+package() {
+	make -C "$builddir" \
+		DESTDIR="$pkgdir" \
+		PREFIX=/usr \
+		install
+}

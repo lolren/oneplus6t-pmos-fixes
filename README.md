@@ -5,8 +5,9 @@ Reproducible, rollback-safe fixes and diagnostics for the OnePlus 6T
 
 The first validated fix creates persistent mobile data through NetworkManager.
 It uses the standard `mobile-broadband-provider-info` database where that is
-safe, adds evidence-backed SIM GID matching for ambiguous MVNOs, and never
-guesses when several carriers share one MCC/MNC.
+safe, understands its newer SIM GID1 field, adds an evidence-backed
+compatibility overlay for older releases, and never guesses when several
+carriers share one MCC/MNC.
 
 Validated on 23 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
 ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
@@ -65,6 +66,10 @@ sudo pmos-configure-mobile-data --dry-run
 
 `make install DESTDIR=... PREFIX=/usr` is supported for package builders. No
 service is silently enabled by the Makefile.
+
+A local Alpine `APKBUILD` and its upstreaming checklist are in
+[packaging/](packaging/). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for why a
+carrier-specific profile must not be placed in the OnePlus device package.
 
 ## Time synchronization
 

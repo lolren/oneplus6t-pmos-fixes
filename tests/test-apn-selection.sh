@@ -25,7 +25,11 @@ specific=$(PMOS_PROVIDER_DB=$FIXTURE PMOS_MVNO_OVERLAY=$OVERLAP_FIXTURE \
 printf '%s\n' "$specific" | grep -q '^provider=SMARTY$'
 printf '%s\n' "$specific" | grep -q '^apn=mob.asm.net$'
 
-if ambiguous=$(run_dry --operator-code 23420 --gid1 FFFF 2>&1); then
+set +e
+ambiguous=$(run_dry --operator-code 23420 --gid1 FFFF 2>&1)
+ambiguous_status=$?
+set -e
+if [ "$ambiguous_status" -eq 0 ]; then
 	printf 'ambiguous operator unexpectedly succeeded\n' >&2
 	exit 1
 fi
@@ -36,6 +40,22 @@ printf '%s\n' "$unique" | grep -q '^selection=provider-database$'
 printf '%s\n' "$unique" | grep -q '^provider=Unique Carrier$'
 printf '%s\n' "$unique" | grep -q '^auto_config=yes$'
 
+database_gid=$(run_dry --operator-code 99901 --gid1 BBBB)
+printf '%s\n' "$database_gid" | grep -q '^selection=provider-database-gid$'
+printf '%s\n' "$database_gid" | grep -q '^provider=GID Carrier B$'
+printf '%s\n' "$database_gid" | grep -q '^apn=b.example$'
+printf '%s\n' "$database_gid" | grep -q '^auto_config=no$'
+
+set +e
+restricted=$(run_dry --operator-code 99902 --gid1 DDDD 2>&1)
+restricted_status=$?
+set -e
+if [ "$restricted_status" -eq 0 ]; then
+	printf 'non-matching restricted provider unexpectedly succeeded\n' >&2
+	exit 1
+fi
+printf '%s\n' "$restricted" | grep -q 'requires a different GID1'
+
 explicit=$(run_dry --provider Test --apn internet.example)
 printf '%s\n' "$explicit" | grep -q '^selection=explicit$'
 printf '%s\n' "$explicit" | grep -q '^apn=internet.example$'
@@ -43,15 +63,23 @@ printf '%s\n' "$explicit" | grep -q '^apn=internet.example$'
 explicit_v4=$(run_dry --provider Test --apn internet.example --ip-mode ipv4)
 printf '%s\n' "$explicit_v4" | grep -q '^ip_mode=ipv4$'
 
-if invalid_mode=$(run_dry --provider Test --apn internet.example --ip-mode invalid 2>&1); then
+set +e
+invalid_mode=$(run_dry --provider Test --apn internet.example --ip-mode invalid 2>&1)
+invalid_mode_status=$?
+set -e
+if [ "$invalid_mode_status" -eq 0 ]; then
 	printf 'invalid IP mode unexpectedly succeeded\n' >&2
 	exit 1
 fi
 printf '%s\n' "$invalid_mode" | grep -q -- '--ip-mode must be'
 
-if missing_db=$(PMOS_PROVIDER_DB=$TEST_DIR/fixtures/not-present.xml \
+set +e
+missing_db=$(PMOS_PROVIDER_DB=$TEST_DIR/fixtures/not-present.xml \
 	PMOS_MVNO_OVERLAY=$OVERLAY "$CONFIGURE" --dry-run \
-	--operator-code 99999 2>&1); then
+	--operator-code 99999 2>&1)
+missing_db_status=$?
+set -e
+if [ "$missing_db_status" -eq 0 ]; then
 	printf 'missing provider database unexpectedly succeeded\n' >&2
 	exit 1
 fi

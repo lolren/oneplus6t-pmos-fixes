@@ -24,5 +24,37 @@
 				<apn value="example.apn"/>
 			</gsm>
 		</provider>
+		<provider>
+			<name>GID Carrier A</name>
+			<gsm>
+				<network-id mcc="999" mnc="01"/>
+				<gid1>AAAA</gid1>
+				<apn value="a.example">
+					<usage type="internet"/>
+				</apn>
+			</gsm>
+		</provider>
+		<provider>
+			<name>GID Carrier B</name>
+			<gsm>
+				<network-id mcc="999" mnc="01"/>
+				<gid1>BBBB</gid1>
+				<apn value="b.example">
+					<usage type="internet"/>
+					<username>public-user</username>
+					<password>public-password</password>
+				</apn>
+			</gsm>
+		</provider>
+		<provider>
+			<name>Restricted Carrier</name>
+			<gsm>
+				<network-id mcc="999" mnc="02"/>
+				<gid1>CCCC</gid1>
+				<apn value="restricted.example">
+					<usage type="internet"/>
+				</apn>
+			</gsm>
+		</provider>
 	</country>
 </serviceproviders>

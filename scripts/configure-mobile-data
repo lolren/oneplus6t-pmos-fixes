@@ -45,7 +45,8 @@ Options:
 Carrier selection order:
   1. Explicit --apn
   2. Exact MCC/MNC + GID match in the reviewed MVNO overlay
-  3. NetworkManager's standard provider database when unambiguous
+  3. Exact GID1 match in a newer standard provider database
+  4. NetworkManager's standard provider database when unambiguous
 
 If multiple providers share one MCC/MNC and no GID rule matches, this command
 stops instead of silently selecting another MVNO's APN.
@@ -170,24 +171,32 @@ list_overlay_matches() {
 	}' "$OVERLAY"
 }
 
-list_database_providers() {
+list_database_records() {
 	[ -r "$PROVIDER_DB" ] || return 0
 	mcc=$(printf '%s' "$operator_code" | cut -c1-3)
 	mnc=$(printf '%s' "$operator_code" | cut -c4-)
 	awk -v wanted_mcc="$mcc" -v wanted_mnc="$mnc" '
-	function extract_name(line) {
-		sub(/^.*<name[^>]*>/, "", line)
-		sub(/<\/name>.*$/, "", line)
+	function element_text(line, tag) {
+		sub("^.*<" tag "[^>]*>", "", line)
+		sub("</" tag ">.*$", "", line)
+		gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
 		return line
 	}
-	/<provider>/ {
+	function safe_field(value) {
+		return index(value, "|") == 0
+	}
+	/<provider([ >])/ {
 		in_provider=1
 		provider=""
 		matched=0
+		gids=""
+		selected_apn=""
+		selected_username=""
+		selected_password=""
 		next
 	}
 	in_provider && provider == "" && /<name[^>]*>/ {
-		provider=extract_name($0)
+		provider=element_text($0, "name")
 	}
 	in_provider && /<network-id / {
 		mcc_pattern="mcc=\"" wanted_mcc "\""
@@ -195,12 +204,55 @@ list_database_providers() {
 		if ($0 ~ mcc_pattern && $0 ~ mnc_pattern)
 			matched=1
 	}
-	/<\/provider>/ {
-		if (in_provider && matched && provider != "")
-			print provider
-		in_provider=0
+	in_provider && /<gid1>/ {
+		gid=toupper(element_text($0, "gid1"))
+		if (gid != "")
+			gids=(gids == "" ? gid : gids "," gid)
 	}
-	' "$PROVIDER_DB" | sort -u
+	in_provider && /<apn [^>]*value="/ {
+		in_apn=1
+		internet_apn=0
+		apn_value=$0
+		sub(/^.*value="/, "", apn_value)
+		sub(/".*$/, "", apn_value)
+		apn_username=""
+		apn_password=""
+	}
+	in_provider && in_apn && /<usage [^>]*type="internet"/ {
+		internet_apn=1
+	}
+	in_provider && in_apn && /<username>/ {
+		apn_username=element_text($0, "username")
+	}
+	in_provider && in_apn && /<password>/ {
+		apn_password=element_text($0, "password")
+	}
+	in_provider && in_apn && /<\/apn>/ {
+		if (internet_apn && selected_apn == "") {
+			selected_apn=apn_value
+			selected_username=apn_username
+			selected_password=apn_password
+		}
+		in_apn=0
+	}
+	/<\/provider>/ {
+		if (in_provider && matched && provider != "" &&
+		    safe_field(provider) && safe_field(selected_apn) &&
+		    safe_field(selected_username) && safe_field(selected_password)) {
+			if (gids == "")
+				gids="-"
+			if (selected_apn == "")
+				selected_apn="-"
+			if (selected_username == "")
+				selected_username="-"
+			if (selected_password == "")
+				selected_password="-"
+			print provider "|" gids "|" selected_apn "|" selected_username "|" selected_password
+		}
+		in_provider=0
+		in_apn=0
+	}
+	' "$PROVIDER_DB"
 }
 
 selection=
@@ -234,29 +286,75 @@ EOF
 				die "provider database not found at $PROVIDER_DB; install" \
 					"mobile-broadband-provider-info or use --apn"
 			fi
-			providers=$(list_database_providers)
-			provider_count=$(printf '%s\n' "$providers" | sed '/^$/d' | wc -l | tr -d '[:space:]')
-			case "$provider_count" in
+			database_records=$(list_database_records)
+			database_count=$(printf '%s\n' "$database_records" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+			gid_matches=
+			if [ -n "$gid1" ]; then
+				gid_matches=$(printf '%s\n' "$database_records" | awk -F'|' -v wanted="$gid1" '
+				$0 != "" {
+					count=split($2, values, ",")
+					for (i=1; i <= count; i++) {
+						if (toupper(values[i]) == toupper(wanted)) {
+							print
+							break
+						}
+					}
+				}')
+			fi
+			gid_match_count=$(printf '%s\n' "$gid_matches" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+
+			case "$gid_match_count" in
 				1)
-					selection=provider-database
-					provider=$providers
-					auto_config=yes
+					selection=provider-database-gid
+					IFS='|' read -r provider database_gids apn database_username database_password <<EOF
+$gid_matches
+EOF
+					[ "$apn" != - ] || die "GID-matched provider '$provider' has no Internet APN"
+					[ "$database_username" = - ] || username=$database_username
+					[ "$database_password" = - ] || password=$database_password
 					source=$PROVIDER_DB
 					;;
-				0)
-					die "operator $operator_code is absent from the provider database; use --apn"
-					;;
-				*)
-					printf '%s: operator %s is shared by multiple providers:\n%s\n' "$PROGRAM" "$operator_code" "$providers" >&2
-					die "refusing ambiguous automatic APN selection; add a GID overlay rule or use --apn"
-					;;
+				0) ;;
+				*) die "multiple provider-database entries match SIM GID1 $gid1" ;;
 			esac
+
+			if [ "$gid_match_count" -eq 0 ]; then
+				case "$database_count" in
+					1)
+						IFS='|' read -r provider database_gids database_apn database_username database_password <<EOF
+$database_records
+EOF
+						[ "$database_gids" = - ] || die "the only database provider for operator $operator_code requires a different GID1; use --apn"
+						selection=provider-database
+						auto_config=yes
+						source=$PROVIDER_DB
+						;;
+					0)
+						die "operator $operator_code is absent from the provider database; use --apn"
+						;;
+					*)
+						providers=$(printf '%s\n' "$database_records" | cut -d'|' -f1 | sort -u)
+						printf '%s: operator %s is shared by multiple providers:\n%s\n' "$PROGRAM" "$operator_code" "$providers" >&2
+						die "refusing ambiguous automatic APN selection; add a GID overlay rule or use --apn"
+						;;
+				esac
+			fi
 			;;
 		*) die "multiple MVNO overlay rules match this SIM" ;;
 	esac
 fi
 
 [ -z "$requested_ip_mode" ] || ip_mode=$requested_ip_mode
+
+case "$apn" in
+	"") [ "$auto_config" = yes ] || die "selected provider has no APN" ;;
+	*[!A-Za-z0-9.-]*) die "selected APN contains unsupported characters" ;;
+esac
+
+case "$ip_mode" in
+	ipv4|ipv6|ipv4v6) ;;
+	*) die "selected provider has unsupported IP mode: $ip_mode" ;;
+esac
 
 printf 'operator_code=%s\n' "${operator_code:-unknown}"
 printf 'gid1=%s\n' "${gid1:-none}"

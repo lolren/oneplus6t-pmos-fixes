@@ -1,0 +1,37 @@
+From 203aacff8c7f28ff6dcd1765e54b602da545b8cf Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 23 Aug 2026 13:34:29 +0100
+Subject: [PATCH] gb: add SMARTY mobile provider
+
+---
+ serviceproviders.xml | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/serviceproviders.xml b/serviceproviders.xml
+index 0693b34..bf2731c 100644
+--- a/serviceproviders.xml
++++ b/serviceproviders.xml
+@@ -5518,6 +5518,23 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
++	<provider primary="false">
++		<!-- https://help.smarty.co.uk/en/articles/1155220-using-the-internet-after-you-ve-joined-smarty -->
++		<name>SMARTY</name>
++		<gsm>
++			<network-id mcc="234" mnc="20"/>
++			<gid1>0309</gid1>
++			<apn value="mob.asm.net">
++				<usage type="internet"/>
++			</apn>
++			<apn value="mob.asm.net">
++				<usage type="mms"/>
++				<mmsc>http://mms.um.three.co.uk:10021/mmsc</mmsc>
++				<mmsproxy>mms.three.co.uk:8799</mmsproxy>
++				<mmsattachmentsize>307200</mmsattachmentsize>
++			</apn>
++		</gsm>
++	</provider>
+ 	<provider>
+ 		<name>giffgaff</name>
+ 		<gsm>
