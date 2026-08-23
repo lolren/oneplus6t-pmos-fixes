@@ -61,3 +61,57 @@ live `imx371` module. Before any live installation, retain the exact installed
 stock versions or version-matched rollback builds, write down the downgrade
 command, verify package architecture/version and checksums, and obtain explicit
 approval for both installation and the subsequent reboot.
+
+## Audited live-test transaction
+
+The reference phone runs apk-tools 3.0.7. Patched and rollback APKs were staged
+in separate local repositories, each with an `aarch64/APKINDEX.tar.gz`. With
+the shell in the directory containing `patched/`, first simulate the upgrade:
+
+```sh
+apk upgrade --simulate --allow-untrusted --network=no \
+  --repositories-file /dev/null --repository "$PWD/patched" \
+  linux-postmarketos-qcom-sdm845 libcamera libcamera-ipa
+```
+
+It must list exactly these three transitions and no removals:
+
+```text
+linux-postmarketos-qcom-sdm845 7.1_rc1-r4 -> 7.1_rc1-r5
+libcamera-ipa                  99990.7.2-r2 -> 99990.7.2-r3
+libcamera                      99990.7.2-r2 -> 99990.7.2-r3
+```
+
+After explicit approval, repeat the same command as root without `--simulate`.
+This uses `apk upgrade`, so it does not add local-package identity pins to
+`/etc/apk/world`. Verify the installed versions before rebooting.
+
+The kernel release string is unchanged, so the package replaces modules below
+the running kernel's module path. Do not open the camera, unload/load modules
+or continue normal use between the successful package transaction and the
+approved reboot.
+
+### Rollback
+
+The rollback solver was tested in a user-owned copy of the phone's complete APK
+database. From the directory containing `stock/`, this simulation selected
+exactly three downgrades:
+
+```sh
+apk add --simulate --allow-untrusted --network=no \
+  --repositories-file /dev/null --repository "$PWD/stock" \
+  'linux-postmarketos-qcom-sdm845=7.1_rc1-r4' \
+  'libcamera=99990.7.2-r2' \
+  'libcamera-ipa=99990.7.2-r2'
+```
+
+Only after checking that output, repeat it as root without `--simulate`. This
+exact-version `apk add` temporarily pins the three rollback versions in
+`/etc/apk/world`. If no unrelated package changes were made during the test,
+restore the pre-test world-file backup after confirming all three downgrades,
+then reboot. If the world file changed for another reason, merge it instead of
+overwriting it.
+
+Never use `apk upgrade --available` with either three-package repository. An
+isolated simulation showed that apk-tools 3 treats `--available` globally and
+would prune unrelated packages missing from that partial repository.

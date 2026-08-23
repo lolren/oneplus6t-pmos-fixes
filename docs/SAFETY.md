@@ -32,6 +32,16 @@ signed postmarketOS kernel package. Installing that package and rebooting into
 it each require explicit approval after the stock APK and rollback command have
 been recorded.
 
+Do not use `apk upgrade --available` with a partial local rollback repository.
+On apk-tools 3 it can reconcile the whole installed system against that partial
+index and remove unrelated packages. The tested camera rollback uses exact
+version constraints and must list only three downgrades in simulation.
+
+Because the rebuilt kernel keeps the same release string, its package replaces
+modules under the running kernel's module directory. After a successful kernel
+package transaction, do not open the camera or load/unload modules before the
+approved reboot.
+
 Any future low-level change requires verified stock recovery material, a
 device-specific backup, an explicit rollback procedure, and separate user
 approval. Fairphone 5 kernels, DTBs, modules, services and boot images are not

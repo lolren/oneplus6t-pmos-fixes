@@ -115,6 +115,19 @@ installed kernel `7.1_rc1-r4`, libcamera `99990.7.2-r2` and libcamera IPA
 They are local rebuilds of the same pmaports recipes, not bytewise copies of the
 APKs that were originally installed.
 
+All six APKs were copied to user storage on the phone and passed `sha256sum -c`.
+An offline local-repository simulation selected exactly the intended kernel,
+libcamera and IPA upgrades; a second policy check confirmed that simulation
+left the real system on `r4`/`r2`/`r2`.
+
+Upgrade and rollback were then exercised non-destructively in a user-owned copy
+of the phone's complete APK database with package scripts and commit hooks
+disabled. The copied database upgraded exactly those three packages to
+`r5`/`r3`/`r3`, and the exact-version rollback downgraded exactly those three to
+`r4`/`r2`/`r2`. This also exposed and rejected an unsafe alternative:
+`apk upgrade --available` against the partial rollback repository planned to
+prune unrelated packages. It was never run against the real package database.
+
 An attempted temporary module test was rejected by lockdown before custom code
 could execute. Unloading the stock module exposed a warning in its existing
 camera-clock remove path; the stock module and sensor binding were restored,
