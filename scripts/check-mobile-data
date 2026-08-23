@@ -1,0 +1,126 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+command -v nmcli >/dev/null 2>&1 || die "nmcli is required"
+command -v mmcli >/dev/null 2>&1 || die "mmcli is required"
+
+modem_id=$(mmcli -L 2>/dev/null | sed -n 's#.*Modem/\([0-9][0-9]*\).*#\1#p' | head -n 1)
+[ -n "$modem_id" ] || die "no ModemManager modem found"
+modem_info=$(mmcli -m "$modem_id" -K 2>/dev/null) || die "could not inspect modem $modem_id"
+
+gsm_line=$(nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status | awk -F: '$2 == "gsm" && $3 == "connected" { print; exit }')
+[ -n "$gsm_line" ] || die "no connected GSM device"
+
+gsm_device=$(printf '%s\n' "$gsm_line" | cut -d: -f1)
+gsm_connection=$(printf '%s\n' "$gsm_line" | cut -d: -f4-)
+
+data_iface=
+bearer_paths=$(printf '%s\n' "$modem_info" | awk -F: '
+$1 ~ /^[[:space:]]*modem.generic.bearers.value\[[0-9]+\][[:space:]]*$/ {
+	value=substr($0, index($0, ":") + 1)
+	gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+	print value
+}')
+
+for bearer_path in $bearer_paths; do
+	bearer_id=${bearer_path##*/}
+	bearer_info=$(mmcli -b "$bearer_id" -K 2>/dev/null) || continue
+	bearer_connected=$(printf '%s\n' "$bearer_info" | awk -F: '
+		$1 ~ /^[[:space:]]*bearer.status.connected[[:space:]]*$/ {
+			value=substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value
+		}')
+	bearer_iface=$(printf '%s\n' "$bearer_info" | awk -F: '
+		$1 ~ /^[[:space:]]*bearer.status.interface[[:space:]]*$/ {
+			value=substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value
+		}')
+	[ "$bearer_connected" = yes ] || continue
+	[ -n "$bearer_iface" ] && [ "$bearer_iface" != -- ] || continue
+	if ip -4 route show default dev "$bearer_iface" | grep -q . || \
+	   ip -6 route show default dev "$bearer_iface" | grep -q .; then
+		data_iface=$bearer_iface
+		break
+	fi
+done
+
+[ -n "$data_iface" ] || die "no connected modem bearer owns a default route"
+
+printf 'gsm_device=%s\n' "$gsm_device"
+printf 'connection=%s\n' "$gsm_connection"
+printf 'data_interface=%s\n' "$data_iface"
+
+printf '%s\n' "$modem_info" | awk -F: '
+{
+	key=$1
+	gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+	if (key == "modem.generic.state" ||
+	    key == "modem.generic.access-technologies.value[1]" ||
+	    key == "modem.generic.signal-quality.value" ||
+	    key == "modem.3gpp.registration-state" ||
+	    key == "modem.3gpp.operator-name" ||
+	    key == "modem.3gpp.packet-service-state") {
+		value=substr($0, index($0, ":") + 1)
+		gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+		print key "=" value
+	}
+}'
+
+has_ip=no
+has_ipv4=no
+has_ipv6=no
+if ip -o -4 address show dev "$data_iface" scope global | grep -q .; then
+	has_ip=yes
+	has_ipv4=yes
+	ping -c 3 -W 3 -I "$data_iface" 1.1.1.1 >/dev/null || die "cellular IPv4 ping failed"
+	printf 'ipv4_ping=ok\n'
+else
+	printf 'ipv4_ping=skipped (no global IPv4 address)\n'
+fi
+
+if ip -o -6 address show dev "$data_iface" scope global | grep -q .; then
+	has_ip=yes
+	has_ipv6=yes
+	if command -v ping6 >/dev/null 2>&1; then
+		ping6 -c 3 -W 3 -I "$data_iface" 2606:4700:4700::1111 >/dev/null || die "cellular IPv6 ping failed"
+	else
+		ping -6 -c 3 -W 3 -I "$data_iface" 2606:4700:4700::1111 >/dev/null || die "cellular IPv6 ping failed"
+	fi
+	printf 'ipv6_ping=ok\n'
+else
+	printf 'ipv6_ping=skipped (no global IPv6 address)\n'
+fi
+
+[ "$has_ip" = yes ] || die "cellular interface has no global IP address"
+
+if command -v resolvectl >/dev/null 2>&1; then
+	resolvectl query --interface="$data_iface" postmarketos.org >/dev/null || die "cellular DNS resolution failed"
+	printf 'dns=ok\n'
+fi
+
+if [ "$has_ipv4" = yes ]; then
+	curl_family=-4
+	default_iface=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
+else
+	curl_family=-6
+	default_iface=$(ip -6 route show default | awk 'NR == 1 { print $5 }')
+fi
+if command -v curl >/dev/null 2>&1; then
+	code=$(curl --interface "$data_iface" "$curl_family" --connect-timeout 10 --max-time 20 -sS -o /dev/null -w '%{http_code}' https://postmarketos.org)
+	[ "$code" = 200 ] || die "cellular HTTPS returned status $code"
+	printf 'https=ok\n'
+elif [ "$default_iface" = "$data_iface" ] && command -v wget >/dev/null 2>&1; then
+	wget -T 20 -q --spider https://postmarketos.org || die "cellular HTTPS failed"
+	printf 'https=ok\n'
+else
+	printf 'https=skipped (install curl to bind the test to %s)\n' "$data_iface"
+fi

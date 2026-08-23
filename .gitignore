@@ -1,0 +1,11 @@
+logs/
+artifacts/
+*.img
+*.bin
+*.elf
+*.mbn
+*.key
+*.pem
+*.nmconnection
+.env
+known_hosts

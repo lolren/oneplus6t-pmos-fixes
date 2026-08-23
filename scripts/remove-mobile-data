@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+MARKER_DIR=${PMOS_MOBILE_STATE_DIR:-/var/lib/oneplus6t-pmos-fixes}
+MARKER_FILE=$MARKER_DIR/mobile-data-profile.uuid
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || die "run as root"
+[ ! -L "$MARKER_DIR" ] || die "state directory must not be a symbolic link"
+[ ! -L "$MARKER_FILE" ] || die "managed-profile marker must not be a symbolic link"
+[ -r "$MARKER_FILE" ] || die "no managed mobile-data profile marker exists"
+command -v nmcli >/dev/null 2>&1 || die "nmcli is required"
+
+uuid=$(sed -n '1p' "$MARKER_FILE")
+case "$uuid" in
+	????????-????-????-????-????????????) ;;
+	*) die "invalid profile UUID in $MARKER_FILE" ;;
+esac
+
+if profile_type=$(nmcli -g connection.type connection show "$uuid" 2>/dev/null); then
+	[ "$profile_type" = gsm ] || die "marker points to a non-GSM profile; refusing deletion"
+	nmcli connection down "$uuid" >/dev/null 2>&1 || true
+	nmcli connection delete "$uuid" >/dev/null
+fi
+
+rm -f "$MARKER_FILE"
+printf 'removed managed mobile-data profile %s\n' "$uuid"

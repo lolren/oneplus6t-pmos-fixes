@@ -1,0 +1,3 @@
+# operator-code|gid1|gid2|provider|apn|ip-mode|username|password|source
+23420|*|*|Wholesale fallback|generic.example|ipv4|-|-|test fixture
+23420|0309|*|SMARTY|mob.asm.net|ipv4|-|-|test fixture

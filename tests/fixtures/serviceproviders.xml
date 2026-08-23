@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<serviceproviders format="2.0">
+	<country code="gb">
+		<provider>
+			<name>Superdrug</name>
+			<gsm>
+				<network-id mcc="234" mnc="20"/>
+				<apn value="superdrug.net"/>
+			</gsm>
+		</provider>
+		<provider>
+			<name>3</name>
+			<gsm>
+				<network-id mcc="234" mnc="20"/>
+				<apn value="three.co.uk"/>
+			</gsm>
+		</provider>
+	</country>
+	<country code="us">
+		<provider>
+			<name>Unique Carrier</name>
+			<gsm>
+				<network-id mcc="310" mnc="260"/>
+				<apn value="example.apn"/>
+			</gsm>
+		</provider>
+	</country>
+</serviceproviders>

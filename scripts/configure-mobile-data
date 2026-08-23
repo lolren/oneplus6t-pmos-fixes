@@ -1,0 +1,395 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+OVERLAY=${PMOS_MVNO_OVERLAY:-$PROJECT_DIR/data/mvno-apns.psv}
+PROVIDER_DB=${PMOS_PROVIDER_DB:-/usr/share/mobile-broadband-provider-info/serviceproviders.xml}
+MARKER_DIR=${PMOS_MOBILE_STATE_DIR:-/var/lib/oneplus6t-pmos-fixes}
+MARKER_FILE=$MARKER_DIR/mobile-data-profile.uuid
+
+operator_code=
+gid1=
+gid2=
+explicit_apn=
+explicit_provider=
+connection_name=
+username=
+password=
+password_stdin=no
+requested_ip_mode=
+dry_run=no
+activate=yes
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Safely create one managed NetworkManager mobile-data profile.
+
+Options:
+  --dry-run                  Detect and print the selection; make no changes
+  --apn APN                  Use an explicit carrier APN
+  --provider NAME            Provider label used with --apn
+  --username USER            Public/generic APN username, if required
+  --password-stdin           Read the APN password from standard input
+  --ip-mode MODE             Override with ipv4, ipv6 or ipv4v6
+  --connection-name NAME     Override the managed connection name
+  --operator-code MCCMNC     Override SIM MCC/MNC (mainly for testing)
+  --gid1 HEX                 Override SIM GID1 (mainly for testing)
+  --gid2 HEX                 Override SIM GID2 (mainly for testing)
+  --no-activate              Create the profile without activating it
+  --help                     Show this help
+
+Carrier selection order:
+  1. Explicit --apn
+  2. Exact MCC/MNC + GID match in the reviewed MVNO overlay
+  3. NetworkManager's standard provider database when unambiguous
+
+If multiple providers share one MCC/MNC and no GID rule matches, this command
+stops instead of silently selecting another MVNO's APN.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+need_value() {
+	[ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--dry-run) dry_run=yes ;;
+		--apn) need_value "$@"; explicit_apn=$2; shift ;;
+		--provider) need_value "$@"; explicit_provider=$2; shift ;;
+		--username) need_value "$@"; username=$2; shift ;;
+		--password-stdin) password_stdin=yes ;;
+		--ip-mode) need_value "$@"; requested_ip_mode=$2; shift ;;
+		--connection-name) need_value "$@"; connection_name=$2; shift ;;
+		--operator-code) need_value "$@"; operator_code=$2; shift ;;
+		--gid1) need_value "$@"; gid1=$2; shift ;;
+		--gid2) need_value "$@"; gid2=$2; shift ;;
+		--no-activate) activate=no ;;
+		--help|-h) usage; exit 0 ;;
+		*) die "unknown option: $1" ;;
+	esac
+	shift
+done
+
+if [ "$password_stdin" = yes ]; then
+	IFS= read -r password || die "could not read APN password from standard input"
+fi
+
+case "$requested_ip_mode" in
+	""|ipv4|ipv6|ipv4v6) ;;
+	*) die "--ip-mode must be ipv4, ipv6 or ipv4v6" ;;
+esac
+
+normalize_gid() {
+	case "$1" in
+		""|--) printf '\n' ;;
+		*) printf '%s\n' "$1" | sed 's/^0[xX]//' | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]' ;;
+	esac
+}
+
+get_mm_key() {
+	key=$1
+	awk -F: -v wanted="$key" '
+	{
+		name=$1
+		gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+		if (name == wanted) {
+			value=substr($0, index($0, ":") + 1)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value
+			exit
+		}
+	}'
+}
+
+detect_sim() {
+	command -v mmcli >/dev/null 2>&1 || die "mmcli is required"
+	modem_id=$(mmcli -L 2>/dev/null | sed -n 's#.*Modem/\([0-9][0-9]*\).*#\1#p' | head -n 1)
+	[ -n "$modem_id" ] || die "no ModemManager modem found"
+	modem_info=$(mmcli -m "$modem_id" -K 2>/dev/null) || die "could not inspect modem $modem_id"
+	sim_path=$(printf '%s\n' "$modem_info" | get_mm_key modem.generic.sim)
+	case "$sim_path" in
+		*/SIM/[0-9]*) sim_id=${sim_path##*/} ;;
+		*) die "no active SIM found on modem $modem_id" ;;
+	esac
+	sim_info=$(mmcli -i "$sim_id" -K 2>/dev/null) || die "could not inspect active SIM"
+	[ -n "$operator_code" ] || operator_code=$(printf '%s\n' "$sim_info" | get_mm_key sim.properties.operator-code)
+	[ -n "$gid1" ] || gid1=$(printf '%s\n' "$sim_info" | get_mm_key sim.properties.gid1)
+	[ -n "$gid2" ] || gid2=$(printf '%s\n' "$sim_info" | get_mm_key sim.properties.gid2)
+}
+
+if [ -z "$explicit_apn" ] && [ -z "$operator_code" ]; then
+	detect_sim
+fi
+
+gid1=$(normalize_gid "$gid1")
+gid2=$(normalize_gid "$gid2")
+
+case "$explicit_apn" in
+	"" ) ;;
+	*[!A-Za-z0-9.-]* ) die "APN contains unsupported characters" ;;
+esac
+
+if [ -n "$operator_code" ]; then
+	case "$operator_code" in
+		[0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+		*) die "operator code must be a 5- or 6-digit MCC/MNC" ;;
+	esac
+fi
+
+list_overlay_matches() {
+	[ -r "$OVERLAY" ] || return 0
+	awk -F'|' -v operator="$operator_code" -v sim_gid1="$gid1" -v sim_gid2="$gid2" '
+	function matches(rule, actual) {
+		return rule == "*" || toupper(rule) == toupper(actual)
+	}
+	$0 !~ /^[[:space:]]*#/ && NF >= 9 {
+		if ($1 == operator && matches($2, sim_gid1) && matches($3, sim_gid2)) {
+			score = ($2 == "*" ? 0 : 1) + ($3 == "*" ? 0 : 1)
+			if (score > best) {
+				delete result
+				best = score
+				count = 0
+			}
+			if (score == best)
+				result[++count] = $4 "|" $5 "|" $6 "|" $7 "|" $8 "|" $9
+		}
+	}
+	END {
+		for (i = 1; i <= count; i++)
+			print result[i]
+	}' "$OVERLAY"
+}
+
+list_database_providers() {
+	[ -r "$PROVIDER_DB" ] || return 0
+	mcc=$(printf '%s' "$operator_code" | cut -c1-3)
+	mnc=$(printf '%s' "$operator_code" | cut -c4-)
+	awk -v wanted_mcc="$mcc" -v wanted_mnc="$mnc" '
+	function extract_name(line) {
+		sub(/^.*<name[^>]*>/, "", line)
+		sub(/<\/name>.*$/, "", line)
+		return line
+	}
+	/<provider>/ {
+		in_provider=1
+		provider=""
+		matched=0
+		next
+	}
+	in_provider && provider == "" && /<name[^>]*>/ {
+		provider=extract_name($0)
+	}
+	in_provider && /<network-id / {
+		mcc_pattern="mcc=\"" wanted_mcc "\""
+		mnc_pattern="mnc=\"" wanted_mnc "\""
+		if ($0 ~ mcc_pattern && $0 ~ mnc_pattern)
+			matched=1
+	}
+	/<\/provider>/ {
+		if (in_provider && matched && provider != "")
+			print provider
+		in_provider=0
+	}
+	' "$PROVIDER_DB" | sort -u
+}
+
+selection=
+provider=
+apn=
+ip_mode=ipv4v6
+overlay_username=-
+overlay_password=-
+source=
+auto_config=no
+
+if [ -n "$explicit_apn" ]; then
+	selection=explicit
+	provider=${explicit_provider:-Custom}
+	apn=$explicit_apn
+	source=user-supplied
+else
+	overlay_matches=$(list_overlay_matches)
+	overlay_count=$(printf '%s\n' "$overlay_matches" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+	case "$overlay_count" in
+		1)
+			selection=mvno-overlay
+			IFS='|' read -r provider apn ip_mode overlay_username overlay_password source <<EOF
+$overlay_matches
+EOF
+			[ "$overlay_username" = - ] || username=$overlay_username
+			[ "$overlay_password" = - ] || password=$overlay_password
+			;;
+		0)
+			if [ ! -r "$PROVIDER_DB" ]; then
+				die "provider database not found at $PROVIDER_DB; install" \
+					"mobile-broadband-provider-info or use --apn"
+			fi
+			providers=$(list_database_providers)
+			provider_count=$(printf '%s\n' "$providers" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+			case "$provider_count" in
+				1)
+					selection=provider-database
+					provider=$providers
+					auto_config=yes
+					source=$PROVIDER_DB
+					;;
+				0)
+					die "operator $operator_code is absent from the provider database; use --apn"
+					;;
+				*)
+					printf '%s: operator %s is shared by multiple providers:\n%s\n' "$PROGRAM" "$operator_code" "$providers" >&2
+					die "refusing ambiguous automatic APN selection; add a GID overlay rule or use --apn"
+					;;
+			esac
+			;;
+		*) die "multiple MVNO overlay rules match this SIM" ;;
+	esac
+fi
+
+[ -z "$requested_ip_mode" ] || ip_mode=$requested_ip_mode
+
+printf 'operator_code=%s\n' "${operator_code:-unknown}"
+printf 'gid1=%s\n' "${gid1:-none}"
+printf 'gid2=%s\n' "${gid2:-none}"
+printf 'selection=%s\n' "$selection"
+printf 'provider=%s\n' "$provider"
+printf 'apn=%s\n' "${apn:-database-auto}"
+printf 'ip_mode=%s\n' "$ip_mode"
+printf 'auto_config=%s\n' "$auto_config"
+printf 'source=%s\n' "$source"
+
+[ "$dry_run" = yes ] && exit 0
+[ "$(id -u)" -eq 0 ] || die "run as root (for example: sudo $PROGRAM)"
+command -v nmcli >/dev/null 2>&1 || die "nmcli is required"
+
+if [ -z "$connection_name" ]; then
+	connection_name="pmOS Mobile Data - $provider"
+fi
+
+candidate_name="$connection_name [candidate $$]"
+
+old_uuid=
+old_exists=no
+[ ! -L "$MARKER_FILE" ] || die "managed-profile marker must not be a symbolic link: $MARKER_FILE"
+if [ -r "$MARKER_FILE" ]; then
+	old_uuid=$(sed -n '1p' "$MARKER_FILE")
+	case "$old_uuid" in
+		????????-????-????-????-????????????) ;;
+		*) die "invalid managed-profile marker: $MARKER_FILE" ;;
+	esac
+	if old_type=$(nmcli -g connection.type connection show "$old_uuid" 2>/dev/null); then
+		[ "$old_type" = gsm ] || die "marker points to a non-GSM profile; refusing to modify it"
+		old_exists=yes
+	fi
+fi
+
+for existing_uuid in $(nmcli -g UUID connection show); do
+	existing_name=$(nmcli -g connection.id connection show "$existing_uuid")
+	if [ "$existing_name" = "$connection_name" ] && [ "$existing_uuid" != "$old_uuid" ]; then
+		die "connection '$connection_name' already exists but is not managed by this tool"
+	fi
+	if [ "$existing_name" = "$candidate_name" ]; then
+		die "stale candidate connection already exists: $candidate_name"
+	fi
+done
+
+if [ "$activate" = no ] && [ "$old_exists" = yes ]; then
+	die "--no-activate cannot replace an existing managed profile safely"
+fi
+
+candidate_uuid=
+candidate_activated=no
+committed=no
+marker_tmp=
+
+cleanup_candidate() {
+	if [ "$committed" != yes ] && [ -n "$candidate_uuid" ]; then
+		nmcli connection delete "$candidate_uuid" >/dev/null 2>&1 || true
+		if [ "$candidate_activated" = yes ] && [ "$old_exists" = yes ]; then
+			nmcli connection up "$old_uuid" >/dev/null 2>&1 || true
+		fi
+	fi
+	[ -z "$marker_tmp" ] || rm -f "$marker_tmp"
+}
+
+trap cleanup_candidate EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [ "$auto_config" = yes ]; then
+	nmcli connection add type gsm ifname '*' con-name "$candidate_name" gsm.auto-config yes >/dev/null
+else
+	nmcli connection add type gsm ifname '*' con-name "$candidate_name" gsm.apn "$apn" >/dev/null
+fi
+
+candidate_uuid=$(nmcli -g connection.uuid connection show "$candidate_name" | sed -n '1p')
+if [ -z "$candidate_uuid" ]; then
+	nmcli connection delete "$candidate_name" >/dev/null 2>&1 || true
+	die "could not determine the new profile UUID"
+fi
+
+nmcli connection modify "$candidate_uuid" \
+	connection.autoconnect yes \
+	connection.autoconnect-priority 10 \
+	connection.autoconnect-retries 0 \
+	gsm.auto-config "$auto_config"
+
+if [ -n "$operator_code" ]; then
+	nmcli connection modify "$candidate_uuid" gsm.sim-operator-id "$operator_code"
+fi
+
+case "$ip_mode" in
+	ipv4) nmcli connection modify "$candidate_uuid" ipv4.method auto ipv6.method disabled ;;
+	ipv6) nmcli connection modify "$candidate_uuid" ipv4.method disabled ipv6.method auto ;;
+	ipv4v6) nmcli connection modify "$candidate_uuid" ipv4.method auto ipv6.method auto ;;
+	*) die "unsupported IP mode in provider data: $ip_mode" ;;
+esac
+
+[ -z "$username" ] || nmcli connection modify "$candidate_uuid" gsm.username "$username"
+[ -z "$password" ] || nmcli connection modify "$candidate_uuid" gsm.password "$password"
+
+if [ "$activate" = yes ]; then
+	if ! nmcli connection up "$candidate_uuid"; then
+		if [ "$old_exists" = yes ]; then
+			nmcli connection up "$old_uuid" >/dev/null 2>&1 || true
+		fi
+		printf '%s: activation failed; candidate removed and previous managed profile preserved\n' "$PROGRAM" >&2
+		exit 1
+	fi
+	candidate_activated=yes
+fi
+
+if ! rename_error=$(nmcli connection modify "$candidate_uuid" connection.id "$connection_name" 2>&1); then
+	printf '%s\n' "$rename_error" >&2
+	die "could not assign final connection name"
+fi
+
+[ ! -L "$MARKER_DIR" ] || die "state directory must not be a symbolic link: $MARKER_DIR"
+install -d -m 0755 "$MARKER_DIR"
+marker_tmp=$MARKER_FILE.tmp.$$
+umask 077
+printf '%s\n' "$candidate_uuid" > "$marker_tmp"
+mv "$marker_tmp" "$MARKER_FILE"
+marker_tmp=
+committed=yes
+
+if [ "$old_exists" = yes ] && ! nmcli connection delete "$old_uuid" >/dev/null; then
+	printf '%s: warning: new profile is active, but old managed profile %s could not be deleted\n' \
+		"$PROGRAM" "$old_uuid" >&2
+fi
+
+trap - EXIT HUP INT TERM
+
+printf 'managed_uuid=%s\n' "$candidate_uuid"
+printf 'rollback=sudo %s/remove-mobile-data\n' "$SCRIPT_DIR"

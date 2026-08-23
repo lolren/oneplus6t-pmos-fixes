@@ -1,0 +1,3 @@
+# operator-code|gid1|gid2|provider|apn|ip-mode|username|password|source
+# "*" matches any value. "-" means no value. More-specific matches win.
+23420|0309|*|SMARTY|mob.asm.net|ipv4|-|-|https://help.smarty.co.uk/en/articles/1155220-using-the-internet-after-you-ve-joined-smarty

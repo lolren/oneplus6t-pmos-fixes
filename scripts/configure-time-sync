@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+epoch=
+timezone=
+ntp_was_disabled=no
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--epoch) [ "$#" -ge 2 ] || die "--epoch requires a value"; epoch=$2; shift ;;
+		--timezone) [ "$#" -ge 2 ] || die "--timezone requires a value"; timezone=$2; shift ;;
+		--help|-h)
+			printf 'Usage: %s [--epoch UNIX_SECONDS] [--timezone ZONE]\n' "$PROGRAM"
+			exit 0
+			;;
+		*) die "unknown option: $1" ;;
+	esac
+	shift
+done
+
+[ "$(id -u)" -eq 0 ] || die "run as root"
+command -v timedatectl >/dev/null 2>&1 || die "systemd timedatectl is required"
+
+restore_ntp() {
+	if [ "$ntp_was_disabled" = yes ]; then
+		timedatectl set-ntp true >/dev/null 2>&1 || true
+	fi
+}
+
+trap restore_ntp EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [ -n "$epoch" ]; then
+	case "$epoch" in *[!0-9]*|"") die "epoch must contain only digits" ;; esac
+	[ "$epoch" -ge 1700000000 ] || die "epoch is implausibly old; refusing to set it"
+	[ "$epoch" -le 4102444800 ] || die "epoch is implausibly far in the future; refusing to set it"
+	timedatectl set-ntp false
+	ntp_was_disabled=yes
+	date -u -s "@$epoch"
+fi
+
+[ -z "$timezone" ] || timedatectl set-timezone "$timezone"
+systemctl enable systemd-timesyncd.service >/dev/null
+timedatectl set-ntp true
+ntp_was_disabled=no
+trap - EXIT HUP INT TERM
+timedatectl status
