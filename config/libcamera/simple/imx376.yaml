@@ -28,6 +28,11 @@ algorithms:
       restartDelayMs: 2000
       continuous: true
   - Adjust:
+      gamma: 2.1
+      contrast: 1.05
+      saturation: 1.15
   - Agc:
       target: 2.0
+      highlightQuantile: 0.98
+      highlightTarget: 0.95
 ...

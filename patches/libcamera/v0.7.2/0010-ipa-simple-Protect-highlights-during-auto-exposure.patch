@@ -1,0 +1,329 @@
+From 60cdcd8ae311dffd1637ad80195bdb2451a6723a Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 08:12:03 +0100
+Subject: [PATCH 10/11] ipa: simple: Protect highlights during auto exposure
+
+---
+ .../internal/software_isp/swisp_stats.h       |  12 ++
+ src/ipa/simple/algorithms/agc.cpp             | 156 ++++++++++++++++--
+ src/ipa/simple/algorithms/agc.h               |   8 +-
+ src/libcamera/software_isp/swstats_cpu.cpp    |  14 +-
+ 4 files changed, 175 insertions(+), 15 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index 24c333c..60708b6 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -39,10 +39,22 @@ struct SwIspStats {
+ 	 * \brief Type of the histogram.
+ 	 */
+ 	using Histogram = std::array<uint32_t, kYHistogramSize>;
++	/**
++	 * \brief Type of the per-channel histograms
++	 */
++	using RGBHistograms = std::array<Histogram, 3>;
+ 	/**
+ 	 * \brief A histogram of luminance values of all the sampled pixels
+ 	 */
+ 	Histogram yHistogram;
++	/**
++	 * \brief Histograms of red, green and blue sampled pixel values
++	 *
++	 * The histograms contain linear sensor values before white balance. They
++	 * allow the IPA to predict channel clipping after applying the current
++	 * white-balance gains, which a luminance histogram alone cannot detect.
++	 */
++	RGBHistograms rgbHistogram;
+ 	/**
+ 	 * \brief Sum of squared Sobel gradients in the focus window
+ 	 *
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index c0993f2..d99da65 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -10,6 +10,8 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <errno.h>
++#include <numeric>
++#include <optional>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -62,8 +64,46 @@ static constexpr float kExpProportionalGain = 0.04;
+  */
+ static constexpr float kExpMaxStep = 0.15;
+ 
++/*
++ * Avoid reacting to tiny quantisation changes around the highlight target.
++ */
++static constexpr double kHighlightSatisfactory = 0.02;
++
++/*
++ * Return a black-level-normalised histogram quantile in the range [0, 1].
++ */
++static double normalizedQuantile(const SwIspStats::Histogram &histogram,
++				 unsigned int blackLevelHistIdx,
++				 double quantile)
++{
++	const auto first = histogram.begin() + blackLevelHistIdx;
++	const uint64_t total =
++		std::accumulate(first, histogram.end(), uint64_t(0));
++	if (!total)
++		return 0.0;
++
++	const double rank = quantile * total;
++	uint64_t cumulative = 0;
++	for (unsigned int i = blackLevelHistIdx; i < histogram.size(); i++) {
++		const uint64_t next = cumulative + histogram[i];
++		if (rank <= next) {
++			const double fraction = histogram[i]
++				? (rank - cumulative) / histogram[i]
++				: 0.0;
++			const double position = i + fraction - blackLevelHistIdx;
++			return std::clamp(position /
++					  (histogram.size() - blackLevelHistIdx),
++					  0.0, 1.0);
++		}
++
++		cumulative = next;
++	}
++
++	return 1.0;
++}
++
+ Agc::Agc()
+-	: exposureOptimal_(kDefaultExposureOptimal)
++	: exposureOptimal_(kDefaultExposureOptimal), highlightTarget_(1.0)
+ {
+ }
+ 
+@@ -82,30 +122,98 @@ int Agc::init([[maybe_unused]] IPAContext &context,
+ 		return -EINVAL;
+ 	}
+ 
++	const bool hasHighlightQuantile =
++		tuningData.contains("highlightQuantile");
++	const bool hasHighlightTarget = tuningData.contains("highlightTarget");
++	if (hasHighlightQuantile != hasHighlightTarget) {
++		LOG(IPASoftExposure, Error)
++			<< "'highlightQuantile' and 'highlightTarget' must be "
++			   "specified together";
++		return -EINVAL;
++	}
++
++	if (hasHighlightQuantile) {
++		const double quantile =
++			tuningData["highlightQuantile"].get<double>(0.0);
++		highlightTarget_ =
++			tuningData["highlightTarget"].get<double>(0.0);
++
++		if (quantile <= 0.0 || quantile > 1.0 ||
++		    highlightTarget_ <= 0.0 || highlightTarget_ > 1.0) {
++			LOG(IPASoftExposure, Error)
++				<< "Invalid highlight constraint: quantile "
++				<< quantile << ", target " << highlightTarget_
++				<< "; both must be in the range (0, 1]";
++			return -EINVAL;
++		}
++
++		highlightQuantile_ = quantile;
++	} else {
++		highlightQuantile_.reset();
++		highlightTarget_ = 1.0;
++	}
++
+ 	LOG(IPASoftExposure, Debug)
+ 		<< "Exposure target " << exposureOptimal_;
++	if (highlightQuantile_)
++		LOG(IPASoftExposure, Debug)
++			<< "Highlight quantile " << *highlightQuantile_
++			<< " target " << highlightTarget_;
++	else
++		LOG(IPASoftExposure, Debug)
++			<< "Highlight constraint disabled";
+ 
+ 	return 0;
+ }
+ 
+-void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
++void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++			 double exposureMSV,
++			 const std::optional<double> &highlightValue)
+ {
+ 	int32_t &exposure = frameContext.sensor.exposure;
+ 	double &again = frameContext.sensor.gain;
+ 
+ 	double error = exposureOptimal_ - exposureMSV;
+ 
+-	if (std::abs(error) <= kExposureSatisfactory)
+-		return;
+-
+ 	/*
+ 	 * Compute a proportional correction factor. The sign of the error
+ 	 * determines the direction: positive error means too dark (increase),
+ 	 * negative means too bright (decrease).
+ 	 */
+-	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
+-				-kExpMaxStep, kExpMaxStep);
+-	float factor = 1.0f + step;
++	float factor = 1.0f;
++	if (std::abs(error) > kExposureSatisfactory) {
++		float step = std::clamp(static_cast<float>(error) *
++					kExpProportionalGain,
++					-kExpMaxStep, kExpMaxStep);
++		factor += step;
++	}
++
++	/*
++	 * Constrain the mean-based correction with a prediction of the brightest
++	 * post-white-balance channel. This protects coloured highlights that can
++	 * clip even when the raw luminance mean is below its target.
++	 */
++	if (highlightValue && *highlightValue > 0.0) {
++		double highlightFactor = highlightTarget_ / *highlightValue;
++
++		if (*highlightValue > highlightTarget_) {
++			/* Hold steady inside the highlight hysteresis region. */
++			if (*highlightValue <=
++			    highlightTarget_ + kHighlightSatisfactory)
++				highlightFactor = 1.0;
++		} else {
++			/* Never let the predicted highlight exceed its target. */
++			highlightFactor = std::max(highlightFactor, 1.0);
++		}
++
++		factor = std::min(factor,
++				  static_cast<float>(highlightFactor));
++	}
++
++	factor = std::clamp(factor, 1.0f - kExpMaxStep,
++			    1.0f + kExpMaxStep);
++	if (std::abs(factor - 1.0f) < 0.0001f)
++		return;
+ 
+ 	if (factor > 1.0f) {
+ 		/* Scene too dark: increase exposure first, then gain. */
+@@ -141,10 +249,18 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	context.activeState.agc.exposure = exposure;
+ 	context.activeState.agc.again = again;
+ 
+-	LOG(IPASoftExposure, Debug)
+-		<< "exposureMSV " << exposureMSV
+-		<< " error " << error << " factor " << factor
+-		<< " exp " << exposure << " again " << again;
++	if (highlightValue)
++		LOG(IPASoftExposure, Debug)
++			<< "exposureMSV " << exposureMSV
++			<< " error " << error
++			<< " highlight " << *highlightValue
++			<< " factor " << factor
++			<< " exp " << exposure << " again " << again;
++	else
++		LOG(IPASoftExposure, Debug)
++			<< "exposureMSV " << exposureMSV
++			<< " error " << error << " factor " << factor
++			<< " exp " << exposure << " again " << again;
+ }
+ 
+ void Agc::process(IPAContext &context,
+@@ -212,7 +328,21 @@ void Agc::process(IPAContext &context,
+ 	}
+ 
+ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
+-	updateExposure(context, frameContext, exposureMSV);
++
++	std::optional<double> highlightValue;
++	if (highlightQuantile_) {
++		const auto &gains = context.activeState.awb.gains;
++		highlightValue = 0.0;
++		for (unsigned int channel = 0; channel < 3; channel++) {
++			const double value = normalizedQuantile(
++				stats->rgbHistogram[channel], blackLevelHistIdx,
++				*highlightQuantile_);
++			*highlightValue =
++				std::max(*highlightValue, value * gains[channel]);
++		}
++	}
++
++	updateExposure(context, frameContext, exposureMSV, highlightValue);
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Agc, "Agc")
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index 0bd4b0f..d3ae79f 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -7,6 +7,8 @@
+ 
+ #pragma once
+ 
++#include <optional>
++
+ #include "algorithm.h"
+ 
+ namespace libcamera {
+@@ -27,9 +29,13 @@ public:
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++	void updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++			    double exposureMSV,
++			    const std::optional<double> &highlightValue);
+ 
+ 	double exposureOptimal_;
++	std::optional<double> highlightQuantile_;
++	double highlightTarget_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 55361a9..fa245ea 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -224,6 +224,10 @@ void SwStatsCpu::finishFocusLine(SwIspStats &stats, FocusState &focusState,
+ 	sumG += g;                         \
+ 	sumB += b;                         \
+                                            \
++	stats.rgbHistogram[0][static_cast<unsigned int>(r) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
++	stats.rgbHistogram[1][static_cast<unsigned int>(g) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
++	stats.rgbHistogram[2][static_cast<unsigned int>(b) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
++                                           \
+ 	yVal = r * kRedYMul;               \
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+@@ -451,6 +455,8 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.yHistogram.fill(0);
++		for (auto &histogram : s.rgbHistogram)
++			histogram.fill(0);
+ 		s.focusContrast = 0;
+ 		s.focusLuminance = 0;
+ 		s.focusSamples = 0;
+@@ -477,14 +483,20 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		sharedStats_->yHistogram.fill(0);
++		for (auto &histogram : sharedStats_->rgbHistogram)
++			histogram.fill(0);
+ 		sharedStats_->focusContrast = 0;
+ 		sharedStats_->focusLuminance = 0;
+ 		sharedStats_->focusSamples = 0;
+ 		sharedStats_->focusLuminanceSamples = 0;
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
+-			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
++			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++) {
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
++				for (unsigned int channel = 0; channel < 3; channel++)
++					sharedStats_->rgbHistogram[channel][j] +=
++						s.rgbHistogram[channel][j];
++			}
+ 			sharedStats_->focusContrast += s.focusContrast;
+ 			sharedStats_->focusLuminance += s.focusLuminance;
+ 			sharedStats_->focusSamples += s.focusSamples;
+-- 
+2.49.0
+

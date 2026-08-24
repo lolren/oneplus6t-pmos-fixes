@@ -13,6 +13,11 @@ algorithms:
                  0, 1, 0,
                  0, 0, 1 ]
   - Adjust:
+      gamma: 2.0
+      contrast: 1.1
+      saturation: 1.25
   - Agc:
       target: 2.0
+      highlightQuantile: 0.98
+      highlightTarget: 0.95
 ...

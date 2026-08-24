@@ -2290,8 +2290,461 @@ index 0000000000000000000000000000000000000000..f25b8746b07c57a232fb0d4c83e88cce
 +-- 
 +2.49.0
 +
+diff --git a/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cd7ff5542a18e4ea9a0eb595ce519d3c304e680
+--- /dev/null
++++ b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
+@@ -0,0 +1,329 @@
++From 60cdcd8ae311dffd1637ad80195bdb2451a6723a Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 08:12:03 +0100
++Subject: [PATCH 12/13] ipa: simple: Protect highlights during auto exposure
++
++---
++ .../internal/software_isp/swisp_stats.h       |  12 ++
++ src/ipa/simple/algorithms/agc.cpp             | 156 ++++++++++++++++--
++ src/ipa/simple/algorithms/agc.h               |   8 +-
++ src/libcamera/software_isp/swstats_cpu.cpp    |  14 +-
++ 4 files changed, 175 insertions(+), 15 deletions(-)
++
++diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
++index 24c333c..60708b6 100644
++--- a/include/libcamera/internal/software_isp/swisp_stats.h
+++++ b/include/libcamera/internal/software_isp/swisp_stats.h
++@@ -39,10 +39,22 @@ struct SwIspStats {
++ 	 * \brief Type of the histogram.
++ 	 */
++ 	using Histogram = std::array<uint32_t, kYHistogramSize>;
+++	/**
+++	 * \brief Type of the per-channel histograms
+++	 */
+++	using RGBHistograms = std::array<Histogram, 3>;
++ 	/**
++ 	 * \brief A histogram of luminance values of all the sampled pixels
++ 	 */
++ 	Histogram yHistogram;
+++	/**
+++	 * \brief Histograms of red, green and blue sampled pixel values
+++	 *
+++	 * The histograms contain linear sensor values before white balance. They
+++	 * allow the IPA to predict channel clipping after applying the current
+++	 * white-balance gains, which a luminance histogram alone cannot detect.
+++	 */
+++	RGBHistograms rgbHistogram;
++ 	/**
++ 	 * \brief Sum of squared Sobel gradients in the focus window
++ 	 *
++diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
++index c0993f2..d99da65 100644
++--- a/src/ipa/simple/algorithms/agc.cpp
+++++ b/src/ipa/simple/algorithms/agc.cpp
++@@ -10,6 +10,8 @@
++ #include <algorithm>
++ #include <cmath>
++ #include <errno.h>
+++#include <numeric>
+++#include <optional>
++ #include <stdint.h>
++ 
++ #include <libcamera/base/log.h>
++@@ -62,8 +64,46 @@ static constexpr float kExpProportionalGain = 0.04;
++  */
++ static constexpr float kExpMaxStep = 0.15;
++ 
+++/*
+++ * Avoid reacting to tiny quantisation changes around the highlight target.
+++ */
+++static constexpr double kHighlightSatisfactory = 0.02;
+++
+++/*
+++ * Return a black-level-normalised histogram quantile in the range [0, 1].
+++ */
+++static double normalizedQuantile(const SwIspStats::Histogram &histogram,
+++				 unsigned int blackLevelHistIdx,
+++				 double quantile)
+++{
+++	const auto first = histogram.begin() + blackLevelHistIdx;
+++	const uint64_t total =
+++		std::accumulate(first, histogram.end(), uint64_t(0));
+++	if (!total)
+++		return 0.0;
+++
+++	const double rank = quantile * total;
+++	uint64_t cumulative = 0;
+++	for (unsigned int i = blackLevelHistIdx; i < histogram.size(); i++) {
+++		const uint64_t next = cumulative + histogram[i];
+++		if (rank <= next) {
+++			const double fraction = histogram[i]
+++				? (rank - cumulative) / histogram[i]
+++				: 0.0;
+++			const double position = i + fraction - blackLevelHistIdx;
+++			return std::clamp(position /
+++					  (histogram.size() - blackLevelHistIdx),
+++					  0.0, 1.0);
+++		}
+++
+++		cumulative = next;
+++	}
+++
+++	return 1.0;
+++}
+++
++ Agc::Agc()
++-	: exposureOptimal_(kDefaultExposureOptimal)
+++	: exposureOptimal_(kDefaultExposureOptimal), highlightTarget_(1.0)
++ {
++ }
++ 
++@@ -82,30 +122,98 @@ int Agc::init([[maybe_unused]] IPAContext &context,
++ 		return -EINVAL;
++ 	}
++ 
+++	const bool hasHighlightQuantile =
+++		tuningData.contains("highlightQuantile");
+++	const bool hasHighlightTarget = tuningData.contains("highlightTarget");
+++	if (hasHighlightQuantile != hasHighlightTarget) {
+++		LOG(IPASoftExposure, Error)
+++			<< "'highlightQuantile' and 'highlightTarget' must be "
+++			   "specified together";
+++		return -EINVAL;
+++	}
+++
+++	if (hasHighlightQuantile) {
+++		const double quantile =
+++			tuningData["highlightQuantile"].get<double>(0.0);
+++		highlightTarget_ =
+++			tuningData["highlightTarget"].get<double>(0.0);
+++
+++		if (quantile <= 0.0 || quantile > 1.0 ||
+++		    highlightTarget_ <= 0.0 || highlightTarget_ > 1.0) {
+++			LOG(IPASoftExposure, Error)
+++				<< "Invalid highlight constraint: quantile "
+++				<< quantile << ", target " << highlightTarget_
+++				<< "; both must be in the range (0, 1]";
+++			return -EINVAL;
+++		}
+++
+++		highlightQuantile_ = quantile;
+++	} else {
+++		highlightQuantile_.reset();
+++		highlightTarget_ = 1.0;
+++	}
+++
++ 	LOG(IPASoftExposure, Debug)
++ 		<< "Exposure target " << exposureOptimal_;
+++	if (highlightQuantile_)
+++		LOG(IPASoftExposure, Debug)
+++			<< "Highlight quantile " << *highlightQuantile_
+++			<< " target " << highlightTarget_;
+++	else
+++		LOG(IPASoftExposure, Debug)
+++			<< "Highlight constraint disabled";
++ 
++ 	return 0;
++ }
++ 
++-void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+++void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+++			 double exposureMSV,
+++			 const std::optional<double> &highlightValue)
++ {
++ 	int32_t &exposure = frameContext.sensor.exposure;
++ 	double &again = frameContext.sensor.gain;
++ 
++ 	double error = exposureOptimal_ - exposureMSV;
++ 
++-	if (std::abs(error) <= kExposureSatisfactory)
++-		return;
++-
++ 	/*
++ 	 * Compute a proportional correction factor. The sign of the error
++ 	 * determines the direction: positive error means too dark (increase),
++ 	 * negative means too bright (decrease).
++ 	 */
++-	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
++-				-kExpMaxStep, kExpMaxStep);
++-	float factor = 1.0f + step;
+++	float factor = 1.0f;
+++	if (std::abs(error) > kExposureSatisfactory) {
+++		float step = std::clamp(static_cast<float>(error) *
+++					kExpProportionalGain,
+++					-kExpMaxStep, kExpMaxStep);
+++		factor += step;
+++	}
+++
+++	/*
+++	 * Constrain the mean-based correction with a prediction of the brightest
+++	 * post-white-balance channel. This protects coloured highlights that can
+++	 * clip even when the raw luminance mean is below its target.
+++	 */
+++	if (highlightValue && *highlightValue > 0.0) {
+++		double highlightFactor = highlightTarget_ / *highlightValue;
+++
+++		if (*highlightValue > highlightTarget_) {
+++			/* Hold steady inside the highlight hysteresis region. */
+++			if (*highlightValue <=
+++			    highlightTarget_ + kHighlightSatisfactory)
+++				highlightFactor = 1.0;
+++		} else {
+++			/* Never let the predicted highlight exceed its target. */
+++			highlightFactor = std::max(highlightFactor, 1.0);
+++		}
+++
+++		factor = std::min(factor,
+++				  static_cast<float>(highlightFactor));
+++	}
+++
+++	factor = std::clamp(factor, 1.0f - kExpMaxStep,
+++			    1.0f + kExpMaxStep);
+++	if (std::abs(factor - 1.0f) < 0.0001f)
+++		return;
++ 
++ 	if (factor > 1.0f) {
++ 		/* Scene too dark: increase exposure first, then gain. */
++@@ -141,10 +249,18 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
++ 	context.activeState.agc.exposure = exposure;
++ 	context.activeState.agc.again = again;
++ 
++-	LOG(IPASoftExposure, Debug)
++-		<< "exposureMSV " << exposureMSV
++-		<< " error " << error << " factor " << factor
++-		<< " exp " << exposure << " again " << again;
+++	if (highlightValue)
+++		LOG(IPASoftExposure, Debug)
+++			<< "exposureMSV " << exposureMSV
+++			<< " error " << error
+++			<< " highlight " << *highlightValue
+++			<< " factor " << factor
+++			<< " exp " << exposure << " again " << again;
+++	else
+++		LOG(IPASoftExposure, Debug)
+++			<< "exposureMSV " << exposureMSV
+++			<< " error " << error << " factor " << factor
+++			<< " exp " << exposure << " again " << again;
++ }
++ 
++ void Agc::process(IPAContext &context,
++@@ -212,7 +328,21 @@ void Agc::process(IPAContext &context,
++ 	}
++ 
++ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
++-	updateExposure(context, frameContext, exposureMSV);
+++
+++	std::optional<double> highlightValue;
+++	if (highlightQuantile_) {
+++		const auto &gains = context.activeState.awb.gains;
+++		highlightValue = 0.0;
+++		for (unsigned int channel = 0; channel < 3; channel++) {
+++			const double value = normalizedQuantile(
+++				stats->rgbHistogram[channel], blackLevelHistIdx,
+++				*highlightQuantile_);
+++			*highlightValue =
+++				std::max(*highlightValue, value * gains[channel]);
+++		}
+++	}
+++
+++	updateExposure(context, frameContext, exposureMSV, highlightValue);
++ }
++ 
++ REGISTER_IPA_ALGORITHM(Agc, "Agc")
++diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
++index 0bd4b0f..d3ae79f 100644
++--- a/src/ipa/simple/algorithms/agc.h
+++++ b/src/ipa/simple/algorithms/agc.h
++@@ -7,6 +7,8 @@
++ 
++ #pragma once
++ 
+++#include <optional>
+++
++ #include "algorithm.h"
++ 
++ namespace libcamera {
++@@ -27,9 +29,13 @@ public:
++ 		     ControlList &metadata) override;
++ 
++ private:
++-	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
+++	void updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+++			    double exposureMSV,
+++			    const std::optional<double> &highlightValue);
++ 
++ 	double exposureOptimal_;
+++	std::optional<double> highlightQuantile_;
+++	double highlightTarget_;
++ };
++ 
++ } /* namespace ipa::soft::algorithms */
++diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
++index 55361a9..fa245ea 100644
++--- a/src/libcamera/software_isp/swstats_cpu.cpp
+++++ b/src/libcamera/software_isp/swstats_cpu.cpp
++@@ -224,6 +224,10 @@ void SwStatsCpu::finishFocusLine(SwIspStats &stats, FocusState &focusState,
++ 	sumG += g;                         \
++ 	sumB += b;                         \
++                                            \
+++	stats.rgbHistogram[0][static_cast<unsigned int>(r) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
+++	stats.rgbHistogram[1][static_cast<unsigned int>(g) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
+++	stats.rgbHistogram[2][static_cast<unsigned int>(b) * SwIspStats::kYHistogramSize / (256 * (div))]++; \
+++                                           \
++ 	yVal = r * kRedYMul;               \
++ 	yVal += g * kGreenYMul;            \
++ 	yVal += b * kBlueYMul;             \
++@@ -451,6 +455,8 @@ void SwStatsCpu::startFrame(uint32_t frame)
++ 	for (auto &s : stats_) {
++ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
++ 		s.yHistogram.fill(0);
+++		for (auto &histogram : s.rgbHistogram)
+++			histogram.fill(0);
++ 		s.focusContrast = 0;
++ 		s.focusLuminance = 0;
++ 		s.focusSamples = 0;
++@@ -477,14 +483,20 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
++ 	if (valid) {
++ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
++ 		sharedStats_->yHistogram.fill(0);
+++		for (auto &histogram : sharedStats_->rgbHistogram)
+++			histogram.fill(0);
++ 		sharedStats_->focusContrast = 0;
++ 		sharedStats_->focusLuminance = 0;
++ 		sharedStats_->focusSamples = 0;
++ 		sharedStats_->focusLuminanceSamples = 0;
++ 		for (const auto &s : stats_) {
++ 			sharedStats_->sum_ += s.sum_;
++-			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+++			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++) {
++ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+++				for (unsigned int channel = 0; channel < 3; channel++)
+++					sharedStats_->rgbHistogram[channel][j] +=
+++						s.rgbHistogram[channel][j];
+++			}
++ 			sharedStats_->focusContrast += s.focusContrast;
++ 			sharedStats_->focusLuminance += s.focusLuminance;
++ 			sharedStats_->focusSamples += s.focusSamples;
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..95967c1dd15168276e660c4e4a688eb31bc736c5
+--- /dev/null
++++ b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
+@@ -0,0 +1,112 @@
++From 14b7d81ebc9d0a86162e605378e7326c4050acac Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 08:12:13 +0100
++Subject: [PATCH 13/13] ipa: simple: Make image adjustment defaults tunable
++
++---
++ src/ipa/simple/algorithms/adjust.cpp | 46 +++++++++++++++++++++++-----
++ src/ipa/simple/algorithms/adjust.h   |  6 +++-
++ 2 files changed, 44 insertions(+), 8 deletions(-)
++
++diff --git a/src/ipa/simple/algorithms/adjust.cpp b/src/ipa/simple/algorithms/adjust.cpp
++index 8bf39c4..800fbfe 100644
++--- a/src/ipa/simple/algorithms/adjust.cpp
+++++ b/src/ipa/simple/algorithms/adjust.cpp
++@@ -8,6 +8,8 @@
++ 
++ #include "adjust.h"
++ 
+++#include <errno.h>
+++
++ #include <libcamera/base/log.h>
++ #include <libcamera/base/utils.h>
++ 
++@@ -24,24 +26,54 @@ constexpr float kDefaultSaturation = 1.0f;
++ 
++ LOG_DEFINE_CATEGORY(IPASoftAdjust)
++ 
++-int Adjust::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
+++Adjust::Adjust()
+++	: defaultGamma_(kDefaultGamma), defaultContrast_(kDefaultContrast),
+++	  defaultSaturation_(kDefaultSaturation)
+++{
+++}
+++
+++int Adjust::init(IPAContext &context, const ValueNode &tuningData)
++ {
+++	defaultGamma_ = tuningData["gamma"].get<float>(kDefaultGamma);
+++	defaultContrast_ =
+++		tuningData["contrast"].get<float>(kDefaultContrast);
+++	defaultSaturation_ =
+++		tuningData["saturation"].get<float>(kDefaultSaturation);
+++
+++	if (defaultGamma_ < 0.1f || defaultGamma_ > 10.0f ||
+++	    defaultContrast_ < 0.0f || defaultContrast_ > 2.0f ||
+++	    defaultSaturation_ < 0.0f || defaultSaturation_ > 2.0f) {
+++		LOG(IPASoftAdjust, Error)
+++			<< "Invalid adjustment defaults: gamma " << defaultGamma_
+++			<< ", contrast " << defaultContrast_
+++			<< ", saturation " << defaultSaturation_;
+++		return -EINVAL;
+++	}
+++
++ 	context.ctrlMap[&controls::Gamma] =
++-		ControlInfo(0.1f, 10.0f, kDefaultGamma);
+++		ControlInfo(0.1f, 10.0f, defaultGamma_);
++ 	context.ctrlMap[&controls::Contrast] =
++-		ControlInfo(0.0f, 2.0f, kDefaultContrast);
+++		ControlInfo(0.0f, 2.0f, defaultContrast_);
++ 	if (context.ccmEnabled)
++ 		context.ctrlMap[&controls::Saturation] =
++-			ControlInfo(0.0f, 2.0f, kDefaultSaturation);
+++			ControlInfo(0.0f, 2.0f, defaultSaturation_);
+++
+++	LOG(IPASoftAdjust, Debug)
+++		<< "Adjustment defaults: gamma " << defaultGamma_
+++		<< ", contrast " << defaultContrast_
+++		<< ", saturation " << defaultSaturation_;
+++
++ 	return 0;
++ }
++ 
++ int Adjust::configure(IPAContext &context,
++ 		      [[maybe_unused]] const IPAConfigInfo &configInfo)
++ {
++-	context.activeState.knobs.gamma = kDefaultGamma;
++-	context.activeState.knobs.contrast = std::optional<float>();
++-	context.activeState.knobs.saturation = std::optional<float>();
+++	context.activeState.knobs.gamma = defaultGamma_;
+++	context.activeState.knobs.contrast = defaultContrast_;
+++	context.activeState.knobs.saturation = context.ccmEnabled
+++		? std::optional<float>(defaultSaturation_)
+++		: std::optional<float>();
++ 
++ 	return 0;
++ }
++diff --git a/src/ipa/simple/algorithms/adjust.h b/src/ipa/simple/algorithms/adjust.h
++index 49c1f26..aa807ae 100644
++--- a/src/ipa/simple/algorithms/adjust.h
+++++ b/src/ipa/simple/algorithms/adjust.h
++@@ -22,7 +22,7 @@ constexpr float kDefaultGamma = 2.2f;
++ class Adjust : public Algorithm
++ {
++ public:
++-	Adjust() = default;
+++	Adjust();
++ 	~Adjust() = default;
++ 
++ 	int init(IPAContext &context, const ValueNode &tuningData) override;
++@@ -43,6 +43,10 @@ public:
++ 
++ private:
++ 	void applySaturation(Matrix<float, 3, 3> &ccm, float saturation);
+++
+++	float defaultGamma_;
+++	float defaultContrast_;
+++	float defaultSaturation_;
++ };
++ 
++ } /* namespace ipa::soft::algorithms */
++-- 
++2.49.0
++
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865bd25a3b8 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c426dbf5040 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -2299,11 +2752,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=18
++pkgrel=19
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,15 @@ _tuning_files="
+@@ -59,6 +59,17 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -2316,10 +2769,12 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865
 +	0009-ipa-simple-Add-contrast-detect-autofocus.patch
 +	0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 +	0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
++	0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
++	0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +184,22 @@ sha512sums="
+@@ -175,13 +186,24 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -2332,6 +2787,8 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865
 +065c1e119969bdf2a43db87b488b0714d0367f60246d47e41cc6a5c5afc048ca7ef58c587e3e6357cde7ae4fe47cf21a63684b738648aaa4ffe9eda24160aeb3  0009-ipa-simple-Add-contrast-detect-autofocus.patch
 +2cb721d8668a6b7ed34099d7bab564dbfe92f8e54ed67119e4a37b48e790d14237c196a1fca0c6b18715fadb9672319a66cc54c5558953acb33135f394ffa062  0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 +025f38abacbb7a7982b58c4453055c75a55516cc4a5759e788d65056081389e20dcc04cfd3358a10f1721eb5b6ac2d530b04c645d75a0076fe6d0facc8c1f512  0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
++97c8d024e1a28d886902475ecedbd08e4336c7c018db4105632f4583e7f1d46cdd6f3663e7f03718e385021ff9f8bb3582344fbd2ca02286ce62337edbb0da7a  0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
++4aae3b8da08c1b2cebb71b47a51abf1434393fe1007ad473f0dfdc36637e1ff17fb5620ac1af03ac96d4c0ea5f967a0d5710239583e4910361fe0f297468a413  0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -2339,17 +2796,17 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..0489df07dd38d7e9edfa3ff276ae0865
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+2735fac0cde893b4c014651dffbb6122f6cd5ba7ecffbce8c8a177e4037d1a03a53442585b7f3456f5fde8adb8bc8c564e078ab51e26e09e1c452364ed0e5e46  imx371.yaml
-+322a2e89ee14bcf8c1c1d9cc64a178e4386280ee0b0ec5c14790d7e54cf788dbd3e2f0e019cd58b61370fe5ae0048e73c016dca38b52db9a4614a8763d2c9d4a  imx376.yaml
-+322a2e89ee14bcf8c1c1d9cc64a178e4386280ee0b0ec5c14790d7e54cf788dbd3e2f0e019cd58b61370fe5ae0048e73c016dca38b52db9a4614a8763d2c9d4a  imx519.yaml
++9f6dfed8a7a7596457bf95cc62e1857dbafcdd54006e303736d62e35bcbb79e1812f247750f4c723bd829d664e08f448cf4e3f63d712df066537707e84a277b9  imx371.yaml
++6094df60eb3788e72bef3ae924062d1c3a6e6badbf597d1086f7dadcc3b9e54c79617866aeabdd1c1b2388a10fa967dfb8fdea10b407b4a3ff63d3918f070790  imx376.yaml
++e07fbf183565d63fc3e48f5d51437d205f3832c491bfd55e6202884abd699c7f2b68841bcde2765b30159af1d0b1eaee3f688ef2980f4ecd4c24c64ac7d0f786  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..242e74f9e3e71a56c9ada08cf510690ee32c0a2a 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..388e49b1b642b499a1561d018e1b176eb682e939 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
-@@ -6,6 +6,13 @@ algorithms:
+@@ -6,6 +6,18 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -2360,14 +2817,19 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..242e74f9e3e71a56c9ada08cf510690e
 +                 0, 1, 0,
 +                 0, 0, 1 ]
    - Adjust:
++      gamma: 2.0
++      contrast: 1.1
++      saturation: 1.25
    - Agc:
 +      target: 2.0
++      highlightQuantile: 0.98
++      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..019795397f0f6036163963cf4e10645cd605a882 100644
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..578497225d67a2e1b593d9b66d1eb243527362f1 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,27 @@ algorithms:
+@@ -7,36 +7,32 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -2421,14 +2883,19 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..019795397f0f6036163963cf4e10645c
 +      restartDelayMs: 2000
 +      continuous: true
    - Adjust:
++      gamma: 2.1
++      contrast: 1.05
++      saturation: 1.15
    - Agc:
 +      target: 2.0
++      highlightQuantile: 0.98
++      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..019795397f0f6036163963cf4e10645cd605a882 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..139b0089727c929445bb2f52fc1ce407fa9661c5 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,28 @@ algorithms:
+@@ -6,6 +6,33 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -2454,6 +2921,11 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..019795397f0f6036163963cf4e10645c
 +      restartDelayMs: 2000
 +      continuous: true
    - Adjust:
++      gamma: 2.2
++      contrast: 1.05
++      saturation: 1.25
    - Agc:
 +      target: 2.0
++      highlightQuantile: 0.98
++      highlightTarget: 0.95
  ...

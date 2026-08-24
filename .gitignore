@@ -8,6 +8,7 @@ artifacts/
 *.pem
 *.nmconnection
 .env
+__pycache__/
 known_hosts
 *.apk
 packaging/pkg/
