@@ -1,0 +1,533 @@
+From fd0d181356dffecf4256d0c1876f75dfa68b410f Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 22:44:29 +0100
+Subject: [PATCH] ipa: simple: stabilise continuous autofocus transitions
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 67adb71..a7057d7 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -30,24 +30,42 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	configuredMax_ = tuningData["maxPosition"].get<int32_t>(800);
+ 	coarseStep_ = tuningData["coarseStep"].get<int32_t>(100);
+ 	fineStep_ = tuningData["fineStep"].get<int32_t>(25);
++	fineRange_ = tuningData["fineRange"].get<int32_t>(coarseStep_);
++	configuredInitialPosition_ = tuningData["initialPosition"].get<int32_t>(
++		configuredMin_ + (configuredMax_ - configuredMin_) / 2);
+ 	settleTimeMs_ = tuningData["settleTimeMs"].get<unsigned int>(200);
++	settleFrames_ = tuningData["settleFrames"].get<unsigned int>(0);
+ 	startupDelayMs_ = tuningData["startupDelayMs"].get<unsigned int>(2000);
+ 	measureTimeMs_ = tuningData["measureTimeMs"].get<unsigned int>(100);
+ 	measureSamples_ = tuningData["measureSamples"].get<unsigned int>(2);
++	fastMeasureTimeMs_ =
++		tuningData["fastMeasureTimeMs"].get<unsigned int>(0);
++	fastMeasureSamples_ =
++		tuningData["fastMeasureSamples"].get<unsigned int>(1);
+ 	focusTolerance_ =
+ 		tuningData["focusTolerance"].get<double>(0.03);
++	finalFocusTolerance_ =
++		tuningData["finalFocusTolerance"].get<double>(0.25);
+ 	restartRatio_ = tuningData["restartRatio"].get<double>(0.7);
++	monitorReferenceDecay_ =
++		tuningData["monitorReferenceDecay"].get<double>(0.98);
+ 	monitorWindowMs_ = tuningData["monitorWindowMs"].get<unsigned int>(250);
+ 	restartHoldMs_ = tuningData["restartHoldMs"].get<unsigned int>(1000);
+ 	restartDelayMs_ = tuningData["restartDelayMs"].get<unsigned int>(2000);
+ 	bool continuous = tuningData["continuous"].get<bool>(true);
+ 
+ 	if (configuredMin_ < 0 || configuredMax_ <= configuredMin_ ||
+-	    coarseStep_ <= 0 || fineStep_ <= 0 ||
+-	    fineStep_ > coarseStep_ || !settleTimeMs_ || !measureTimeMs_ ||
+-	    !measureSamples_ || !monitorWindowMs_ || !restartHoldMs_ ||
++	    coarseStep_ <= 0 || fineStep_ <= 0 || fineRange_ <= 0 ||
++	    fineStep_ > coarseStep_ || fineStep_ > fineRange_ ||
++	    configuredInitialPosition_ < configuredMin_ ||
++	    configuredInitialPosition_ > configuredMax_ ||
++	    !settleTimeMs_ || !measureTimeMs_ ||
++	    !measureSamples_ || !fastMeasureSamples_ ||
++	    !monitorWindowMs_ || !restartHoldMs_ ||
+ 	    focusTolerance_ < 0.0 || focusTolerance_ >= 1.0 ||
+-	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0) {
++	    finalFocusTolerance_ < 0.0 || finalFocusTolerance_ >= 1.0 ||
++	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0 ||
++	    monitorReferenceDecay_ <= 0.0 || monitorReferenceDecay_ > 1.0) {
+ 		LOG(IPASoftAf, Error) << "Invalid autofocus tuning data";
+ 		return -EINVAL;
+ 	}
+@@ -88,31 +106,37 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
+ 			<< lensMin << "-" << lensMax;
+ 		return -EINVAL;
+ 	}
++	initialPosition_ = std::clamp(configuredInitialPosition_,
++				      minPosition_, maxPosition_);
+ 
+ 	mode_ = defaultMode_;
+ 	metering_ = controls::AfMeteringAuto;
+ 	focusWindow_ = {};
+ 	state_ = controls::AfStateIdle;
+ 	phase_ = ScanPhase::Idle;
+-	currentPosition_ = minPosition_;
+-	bestPosition_ = minPosition_;
++	currentPosition_ = initialPosition_;
++	bestPosition_ = initialPosition_;
++	lastFocusedPosition_ = initialPosition_;
+ 	bestMetric_ = 0.0;
+ 	positionMetrics_.clear();
+ 	focusedMetric_ = 0.0;
+ 	monitorMetricSum_ = 0.0;
+ 	monitorSamples_ = 0;
++	monitorReferenceValid_ = false;
+ 	lowContrast_ = false;
+ 	firstScan_ = true;
+ 
+ 	if (mode_ == controls::AfModeContinuous)
+-		startScan(context);
++		startScan(context, false);
+ 	else
+-		requestPosition(context, minPosition_);
++		requestPosition(context, initialPosition_);
+ 
+ 	LOG(IPASoftAf, Info)
+ 		<< "Autofocus range " << minPosition_ << "-" << maxPosition_
++		<< ", initial position " << initialPosition_
+ 		<< ", coarse step " << coarseStep_
+-		<< ", fine step " << fineStep_;
++		<< ", fine range/step " << fineRange_ << "/" << fineStep_
++		<< ", settle frames " << settleFrames_;
+ 
+ 	return 0;
+ }
+@@ -123,6 +147,9 @@ void Af::queueRequest(IPAContext &context,
+ 		      const ControlList &requestControls)
+ {
+ 	bool restartContinuous = false;
++	bool resumeContinuous = false;
++	const bool preserveFocusedPosition =
++		state_ == controls::AfStateFocused;
+ 
+ 	const auto &mode = requestControls.get(controls::AfMode);
+ 	if (mode && *mode != mode_) {
+@@ -133,8 +160,12 @@ void Af::queueRequest(IPAContext &context,
+ 		} else {
+ 			mode_ = *mode;
+ 			phase_ = ScanPhase::Idle;
+-			state_ = controls::AfStateIdle;
+-			restartContinuous = mode_ == controls::AfModeContinuous;
++			if (mode_ == controls::AfModeContinuous) {
++				resumeContinuous = preserveFocusedPosition;
++				restartContinuous = !resumeContinuous;
++			} else {
++				state_ = controls::AfStateIdle;
++			}
+ 		}
+ 	}
+ 
+@@ -148,8 +179,17 @@ void Af::queueRequest(IPAContext &context,
+ 		} else {
+ 			metering_ = *metering;
+ 			phase_ = ScanPhase::Idle;
+-			state_ = controls::AfStateIdle;
+-			restartContinuous = mode_ == controls::AfModeContinuous;
++			if (mode_ == controls::AfModeContinuous &&
++			    metering_ == controls::AfMeteringAuto &&
++			    preserveFocusedPosition) {
++				resumeContinuous = true;
++				restartContinuous = false;
++			} else {
++				state_ = controls::AfStateIdle;
++				restartContinuous =
++					mode_ == controls::AfModeContinuous;
++				resumeContinuous = false;
++			}
+ 		}
+ 	}
+ 
+@@ -169,12 +209,15 @@ void Af::queueRequest(IPAContext &context,
+ 				state_ = controls::AfStateIdle;
+ 				restartContinuous =
+ 					mode_ == controls::AfModeContinuous;
++				resumeContinuous = false;
+ 			}
+ 		}
+ 	}
+ 
+ 	if (restartContinuous)
+-		startScan(context);
++		startScan(context, false);
++	else if (resumeContinuous)
++		resumeContinuousMonitoring();
+ 
+ 	const auto &trigger = requestControls.get(controls::AfTrigger);
+ 	if (!trigger || mode_ != controls::AfModeAuto)
+@@ -182,7 +225,7 @@ void Af::queueRequest(IPAContext &context,
+ 
+ 	if (*trigger == controls::AfTriggerStart) {
+ 		if (phase_ == ScanPhase::Idle)
+-			startScan(context);
++			startScan(context, true);
+ 	} else if (*trigger == controls::AfTriggerCancel) {
+ 		phase_ = ScanPhase::Idle;
+ 		state_ = controls::AfStateIdle;
+@@ -204,21 +247,50 @@ void Af::prepare(IPAContext &context,
+ 	params->focusWindow = mapped.boundedTo(output);
+ }
+ 
+-void Af::buildCoarsePositions()
++void Af::buildCoarsePositions(int32_t center)
+ {
+ 	positions_.clear();
+-	positions_.push_back(minPosition_);
+-	for (int32_t position = minPosition_ + coarseStep_;
+-	     position < maxPosition_; position += coarseStep_)
+-		positions_.push_back(position);
+-	if (positions_.back() != maxPosition_)
+-		positions_.push_back(maxPosition_);
++	positions_.push_back(center);
++
++	const int32_t lower = std::max(minPosition_, center - coarseStep_);
++	const int32_t upper = std::min(maxPosition_, center + coarseStep_);
++	if (lower != center)
++		positions_.push_back(lower);
++	if (upper != center)
++		positions_.push_back(upper);
++}
++
++bool Af::extendCoarsePositions()
++{
++	if (positions_.empty() || positionMetrics_.size() != positions_.size())
++		return false;
++
++	auto best = std::max_element(positionMetrics_.begin(),
++				     positionMetrics_.end());
++	const std::size_t bestIndex = best - positionMetrics_.begin();
++	auto [minimum, maximum] = std::minmax_element(positions_.begin(),
++						      positions_.end());
++	int32_t next;
++
++	if (positions_[bestIndex] == *minimum && *minimum > minPosition_)
++		next = std::max(minPosition_, *minimum - coarseStep_);
++	else if (positions_[bestIndex] == *maximum && *maximum < maxPosition_)
++		next = std::min(maxPosition_, *maximum + coarseStep_);
++	else
++		return false;
++
++	if (std::find(positions_.begin(), positions_.end(), next) !=
++	    positions_.end())
++		return false;
++
++	positions_.push_back(next);
++	return true;
+ }
+ 
+ void Af::buildFinePositions()
+ {
+-	int32_t start = std::max(minPosition_, bestPosition_ - coarseStep_);
+-	int32_t end = std::min(maxPosition_, bestPosition_ + coarseStep_);
++	int32_t start = std::max(minPosition_, bestPosition_ - fineRange_);
++	int32_t end = std::min(maxPosition_, bestPosition_ + fineRange_);
+ 
+ 	positions_.clear();
+ 	positions_.push_back(start);
+@@ -235,22 +307,30 @@ void Af::buildFinePositions()
+ 
+ void Af::requestPosition(IPAContext &context, int32_t position)
+ {
++	const bool moved = position != currentPosition_;
+ 	currentPosition_ = position;
+ 	context.activeState.af.lensPosition = position;
+ 	settleUntil_ = std::chrono::steady_clock::now() +
+ 		std::chrono::milliseconds(settleTimeMs_);
+ 	measurementStarted_ = false;
++	settleFramesRemaining_ = moved ? settleFrames_ : 0;
+ 	samples_ = 0;
+ 	metricSum_ = 0.0;
+ 
+ 	LOG(IPASoftAf, Debug) << "Requesting lens position " << position;
+ }
+ 
+-void Af::startScan(IPAContext &context)
++void Af::startScan(IPAContext &context, bool fast)
+ {
+-	buildCoarsePositions();
++	fastScan_ = fast;
++	/*
++	 * Begin around the last successful position. If the best sample is on
++	 * an edge, extend only in that direction. This keeps ordinary refocus
++	 * local while still allowing the scan to reach the calibrated limits.
++	 */
++	buildCoarsePositions(lastFocusedPosition_);
+ 	positionIndex_ = 0;
+-	bestPosition_ = minPosition_;
++	bestPosition_ = lastFocusedPosition_;
+ 	bestMetric_ = -std::numeric_limits<double>::infinity();
+ 	positionMetrics_.clear();
+ 	phase_ = ScanPhase::Coarse;
+@@ -258,9 +338,40 @@ void Af::startScan(IPAContext &context)
+ 	lowContrast_ = false;
+ 	monitorMetricSum_ = 0.0;
+ 	monitorSamples_ = 0;
++	monitorReferenceValid_ = false;
+ 	scanNotBefore_ = std::chrono::steady_clock::now() +
+ 		std::chrono::milliseconds(firstScan_ ? startupDelayMs_ : 0);
+ 	requestPosition(context, positions_.front());
++	/* A new metering window also needs the queued pre-window frame flushed. */
++	if (fastScan_)
++		settleFramesRemaining_ = settleFrames_;
++}
++
++void Af::resumeContinuousMonitoring()
++{
++	/*
++	 * A completed tap-focus already left the lens at a measured optimum.
++	 * Returning to whole-frame continuous AF must not throw that result away
++	 * and sweep the full lens. Rebaseline the monitor because its metering
++	 * region may have changed from the tap window to the complete frame.
++	 */
++	phase_ = ScanPhase::Idle;
++	state_ = controls::AfStateFocused;
++	lastFocusedPosition_ = currentPosition_;
++	fastScan_ = false;
++	focusedMetric_ = 0.0;
++	monitorMetricSum_ = 0.0;
++	monitorSamples_ = 0;
++	monitorReferenceValid_ = false;
++	lowContrast_ = false;
++	auto now = std::chrono::steady_clock::now();
++	monitorWindowStart_ = now;
++	restartNotBefore_ = now +
++		std::chrono::milliseconds(restartDelayMs_);
++
++	LOG(IPASoftAf, Debug)
++		<< "Resuming continuous autofocus at lens position "
++		<< currentPosition_ << " without a scan";
+ }
+ 
+ void Af::selectBestPosition()
+@@ -311,6 +422,12 @@ void Af::finishPosition(IPAContext &context, double metric)
+ 	}
+ 
+ 	if (phase_ == ScanPhase::Coarse) {
++		if (extendCoarsePositions()) {
++			positionIndex_ = positions_.size() - 1;
++			requestPosition(context, positions_.back());
++			return;
++		}
++
+ 		selectBestPosition();
+ 		buildFinePositions();
+ 		positionIndex_ = 0;
+@@ -347,24 +464,42 @@ void Af::process(IPAContext &context,
+ {
+ 	double metric = focusMetric(stats);
+ 	auto now = std::chrono::steady_clock::now();
++	const unsigned int activeMeasureTimeMs =
++		fastScan_ ? fastMeasureTimeMs_ : measureTimeMs_;
++	const unsigned int activeMeasureSamples =
++		fastScan_ ? fastMeasureSamples_ : measureSamples_;
+ 
+ 	if (metric >= 0.0 && phase_ == ScanPhase::FinalSettle) {
+ 		if (now >= settleUntil_) {
+-			if (!measurementStarted_) {
++			if (settleFramesRemaining_) {
++				settleFramesRemaining_--;
++			} else if (!measurementStarted_) {
+ 				measurementStarted_ = true;
+ 				measureUntil_ = now +
+-					std::chrono::milliseconds(measureTimeMs_);
++					std::chrono::milliseconds(activeMeasureTimeMs);
++				metricSum_ += metric;
++				samples_++;
++			} else {
++				metricSum_ += metric;
++				samples_++;
+ 			}
+ 
+-			metricSum_ += metric;
+-			samples_++;
+-			if (now >= measureUntil_ && samples_ >= measureSamples_) {
++			if (!settleFramesRemaining_ && measurementStarted_ &&
++			    now >= measureUntil_ && samples_ >= activeMeasureSamples) {
+ 				phase_ = ScanPhase::Idle;
+ 				focusedMetric_ = metricSum_ / samples_;
++				const double minimumFinalMetric =
++					bestMetric_ * (1.0 - finalFocusTolerance_);
+ 				state_ = std::isfinite(focusedMetric_) &&
+-						 focusedMetric_ > 0.0
++						 focusedMetric_ > 0.0 &&
++						 (!std::isfinite(bestMetric_) ||
++						  focusedMetric_ >= minimumFinalMetric)
+ 						 ? controls::AfStateFocused
+ 						 : controls::AfStateFailed;
++				if (state_ == controls::AfStateFocused)
++					lastFocusedPosition_ = currentPosition_;
++				monitorReferenceValid_ =
++					state_ == controls::AfStateFocused;
+ 				restartNotBefore_ = now +
+ 					std::chrono::milliseconds(restartDelayMs_);
+ 				monitorWindowStart_ = now;
+@@ -382,16 +517,22 @@ void Af::process(IPAContext &context,
+ 		   (phase_ == ScanPhase::Coarse ||
+ 		    phase_ == ScanPhase::Fine)) {
+ 		if (now >= scanNotBefore_ && now >= settleUntil_) {
+-			if (!measurementStarted_) {
++			if (settleFramesRemaining_) {
++				settleFramesRemaining_--;
++			} else if (!measurementStarted_) {
+ 				firstScan_ = false;
+ 				measurementStarted_ = true;
+ 				measureUntil_ = now +
+-					std::chrono::milliseconds(measureTimeMs_);
++					std::chrono::milliseconds(activeMeasureTimeMs);
++				metricSum_ += metric;
++				samples_++;
++			} else {
++				metricSum_ += metric;
++				samples_++;
+ 			}
+ 
+-			metricSum_ += metric;
+-			samples_++;
+-			if (now >= measureUntil_ && samples_ >= measureSamples_)
++			if (!settleFramesRemaining_ && measurementStarted_ &&
++			    now >= measureUntil_ && samples_ >= activeMeasureSamples)
+ 				finishPosition(context, metricSum_ / samples_);
+ 		}
+ 	} else if (metric >= 0.0 &&
+@@ -407,28 +548,47 @@ void Af::process(IPAContext &context,
+ 			monitorMetricSum_ = 0.0;
+ 			monitorSamples_ = 0;
+ 
+-			LOG(IPASoftAf, Debug)
+-				<< "Continuous focus metric " << monitorMetric
+-				<< ", reference " << focusedMetric_;
+-
+-			if (monitorMetric > focusedMetric_)
++			if (!monitorReferenceValid_) {
+ 				focusedMetric_ = monitorMetric;
++				monitorReferenceValid_ = true;
++				lowContrast_ = false;
++				LOG(IPASoftAf, Debug)
++					<< "Continuous focus reference initialized at "
++					<< focusedMetric_;
++			} else {
++				const double previousReference = focusedMetric_;
++				const double restartThreshold =
++					previousReference * restartRatio_;
+ 
+-			if (now >= restartNotBefore_ &&
+-			    monitorMetric < focusedMetric_ * restartRatio_) {
+-				if (!lowContrast_) {
+-					lowContrast_ = true;
+-					lowContrastSince_ = now;
+-				} else if (now - lowContrastSince_ >=
+-					   std::chrono::milliseconds(restartHoldMs_)) {
+-					LOG(IPASoftAf, Debug)
+-						<< "Restarting continuous autofocus: metric "
+-						<< monitorMetric << " fell below "
+-						<< focusedMetric_ * restartRatio_;
+-					startScan(context);
++				LOG(IPASoftAf, Debug)
++					<< "Continuous focus metric " << monitorMetric
++					<< ", reference " << previousReference;
++
++				if (monitorMetric >= previousReference)
++					focusedMetric_ = monitorMetric;
++				else
++					focusedMetric_ = std::max(
++						monitorMetric,
++						previousReference *
++							monitorReferenceDecay_);
++
++				if (now >= restartNotBefore_ &&
++				    monitorMetric < restartThreshold) {
++					if (!lowContrast_) {
++						lowContrast_ = true;
++						lowContrastSince_ = now;
++					} else if (now - lowContrastSince_ >=
++						   std::chrono::milliseconds(
++							   restartHoldMs_)) {
++						LOG(IPASoftAf, Debug)
++							<< "Restarting continuous autofocus: metric "
++							<< monitorMetric << " fell below "
++							<< restartThreshold;
++						startScan(context, false);
++					}
++				} else {
++					lowContrast_ = false;
+ 				}
+-			} else {
+-				lowContrast_ = false;
+ 			}
+ 		}
+ 	}
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index de3a3c8..c80dd70 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -42,11 +42,13 @@ private:
+ 		FinalSettle,
+ 	};
+ 
+-	void startScan(IPAContext &context);
++	void startScan(IPAContext &context, bool fast = false);
+ 	void requestPosition(IPAContext &context, int32_t position);
+ 	void finishPosition(IPAContext &context, double metric);
++	void resumeContinuousMonitoring();
+ 	void selectBestPosition();
+-	void buildCoarsePositions();
++	void buildCoarsePositions(int32_t center);
++	bool extendCoarsePositions();
+ 	void buildFinePositions();
+ 	static double focusMetric(const SwIspStats *stats);
+ 
+@@ -54,12 +56,19 @@ private:
+ 	int32_t configuredMax_ = 800;
+ 	int32_t coarseStep_ = 100;
+ 	int32_t fineStep_ = 25;
++	int32_t fineRange_ = 100;
++	int32_t configuredInitialPosition_ = 600;
+ 	unsigned int settleTimeMs_ = 200;
++	unsigned int settleFrames_ = 0;
+ 	unsigned int startupDelayMs_ = 2000;
+ 	unsigned int measureTimeMs_ = 100;
+ 	unsigned int measureSamples_ = 2;
++	unsigned int fastMeasureTimeMs_ = 0;
++	unsigned int fastMeasureSamples_ = 1;
+ 	double focusTolerance_ = 0.03;
++	double finalFocusTolerance_ = 0.25;
+ 	double restartRatio_ = 0.7;
++	double monitorReferenceDecay_ = 0.98;
+ 	unsigned int monitorWindowMs_ = 250;
+ 	unsigned int restartHoldMs_ = 1000;
+ 	unsigned int restartDelayMs_ = 2000;
+@@ -67,6 +76,8 @@ private:
+ 
+ 	int32_t minPosition_ = 0;
+ 	int32_t maxPosition_ = 0;
++	int32_t initialPosition_ = 0;
++	int32_t lastFocusedPosition_ = 0;
+ 	int32_t mode_ = 0;
+ 	int32_t metering_ = 0;
+ 	int32_t state_ = 0;
+@@ -84,13 +95,16 @@ private:
+ 	std::chrono::steady_clock::time_point restartNotBefore_;
+ 	std::chrono::steady_clock::time_point lowContrastSince_;
+ 	bool firstScan_ = true;
++	bool fastScan_ = false;
+ 	bool measurementStarted_ = false;
++	unsigned int settleFramesRemaining_ = 0;
+ 	unsigned int samples_ = 0;
+ 	double metricSum_ = 0.0;
+ 	double bestMetric_ = 0.0;
+ 	double focusedMetric_ = 0.0;
+ 	double monitorMetricSum_ = 0.0;
+ 	unsigned int monitorSamples_ = 0;
++	bool monitorReferenceValid_ = false;
+ 	bool lowContrast_ = false;
+ };
+ 
+-- 
+2.49.0
+

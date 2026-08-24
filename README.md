@@ -115,7 +115,7 @@ and through an open Camera3 HAL in Waydroid.
 | Correct sensor gain models | Lets automatic exposure use the real 1x–16x range instead of making washed-out or underexposed decisions. |
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
-| Rear contrast autofocus | Drives both physical rear actuators and reports standard scan/focused/failed states. |
+| Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
 | Tap-to-focus and reticle | Maps a preview tap through crop/orientation into a real sensor metering region and shows immediate feedback. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
@@ -123,19 +123,21 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
-Kernel r8, libcamera/IPA r23, `pipewire-spa-libcamera` r6 and Snapshot r3 are
-installed. Exact r22 libcamera APKs are the immediate rollback; the older
-r20/r6/r2 complete userspace set is also retained. The native r23 stack passed
-control enumeration and bounded 30-frame captures on all three stable camera
-paths. The Waydroid r23 overlay passed all three Camera2 YUV/JPEG/private,
-autofocus and exposure tests.
+Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r6 and Snapshot r3 are
+installed. Exact r23 libcamera APKs are the immediate rollback; the older
+r20/r6/r2 complete userspace set is also retained. The native r24 stack passed
+bounded captures on all three stable camera paths, rear tap/reset tests and
+70/95-second continuous-focus stability runs. The Waydroid r24 overlay passed
+all three Camera2 YUV/JPEG/private, autofocus and exposure tests.
 
 The current native UI exposes a visible tap reticle plus Exposure, Colour,
-Contrast, Detail, Zoom and Reset. It is not yet an Android-level camera UI, and
-an occasional unnecessary continuous-autofocus rescan has been observed on the
-rear camera. Stabilizing that behavior and expanding truthful GUI controls are
-active work. HDR, flash integration, calibrated colour/lens shading, temporal
-denoise and Android vendor computational processing are not claimed. See
+Contrast, Detail, Zoom and Reset. The lower-layer focus instability is fixed:
+both rear cameras now use bounded progressive tap-focus and return to
+continuous monitoring without moving the lens. The UI is not yet an
+Android-level camera application; that work continues in the separately
+maintained Advanced Snapshot project. HDR, flash integration, calibrated
+colour/lens shading, temporal denoise and Android vendor computational
+processing are not claimed. See
 [docs/CAMERA.md](docs/CAMERA.md) for native details and
 [docs/WAYDROID.md](docs/WAYDROID.md) for Android requirements, build,
 installation, feature explanations, validation and rollback.
@@ -170,7 +172,7 @@ Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
 
-For the current r22-to-r23 native update, stage only the matching libcamera and
+For the current r23-to-r24 native update, stage only the matching libcamera and
 IPA APKs in an isolated repository and simulate before installing:
 
 ```sh
@@ -206,12 +208,12 @@ mapping stage.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Cameras: installed native r8/r23/r6/r3 stack passes three-camera capture,
-  controls and frame-duration enumeration; the Waydroid r23 lower layer passes
-  all three Camera2 stream/AF/EV probes. Rear continuous-AF hunting and the
-  higher-level native GUI remain active work.
-- Next priorities: finish native AF/UI acceptance, broaden Waydroid app testing
-  and Play Store setup, then native GPS and a Waydroid location bridge. See
+- Cameras: installed native r8/r24/r6/r3 stack passes three-camera capture,
+  controls, frame-duration enumeration, rear tap/reset and sustained AF tests;
+  the Waydroid r24 lower layer passes all three Camera2 stream/AF/EV probes.
+- Next priorities: build Advanced Snapshot, then add the VibeMarketOS signed
+  downstream repository, compatibility-gated updates and rollback generations;
+  broaden Waydroid app testing and Play Store setup afterward. See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements are not included in this

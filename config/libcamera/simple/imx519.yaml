@@ -15,17 +15,24 @@ algorithms:
   - Af:
       minPosition: 400
       maxPosition: 800
+      initialPosition: 600
       coarseStep: 100
       fineStep: 25
+      fineRange: 50
       settleTimeMs: 200
+      settleFrames: 2
       startupDelayMs: 2000
       measureTimeMs: 100
       measureSamples: 2
+      fastMeasureTimeMs: 0
+      fastMeasureSamples: 1
       focusTolerance: 0.10
+      finalFocusTolerance: 0.25
       restartRatio: 0.7
+      monitorReferenceDecay: 0.98
       monitorWindowMs: 250
-      restartHoldMs: 1000
-      restartDelayMs: 2000
+      restartHoldMs: 1500
+      restartDelayMs: 3000
       continuous: true
   - Adjust:
       gamma: 2.2

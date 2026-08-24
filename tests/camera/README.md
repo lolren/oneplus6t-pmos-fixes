@@ -21,6 +21,10 @@ validation.
   only for like-for-like framing, lighting and resolution.
 - `run-light-step.sh` performs a bounded, low-power rear-camera flash step with
   unconditional LED-off and lens-park cleanup.
+- `validate-pipewire-af.sh` discovers the current PipeWire serials, verifies a
+  real local tap-focus and scan-free Reset on both rear modules, holds each in
+  continuous mode to detect hunting, and confirms that the fixed-focus front
+  rejects autofocus while still streaming.
 - `analyze-light-step.py` summarizes exposure metadata from that test.
 
 Example with a separately staged libcamera runtime:
@@ -68,6 +72,22 @@ The helper must return success for either rear node and an unsupported result
 for fixed-focus IMX371. Stop the stream before parking the dynamically matched
 actuator. The serial is ephemeral and must never be copied into a patch or
 script.
+
+The complete r24 transition/stability check runs unattended as the graphical
+login user. Close camera applications first, or explicitly allow the runner to
+close Snapshot:
+
+```sh
+tests/camera/validate-pipewire-af.sh \
+  --output /private/path/af-validation \
+  --stability-seconds 60 \
+  --close-snapshot
+```
+
+It temporarily enables selective `IPASoftAf` logging and restarts only the
+user's PipeWire/WirePlumber services. A trap restores any prior libcamera log
+environment and active services on success, error or interruption. The test
+does not need root, capture an image, alter a kernel module or reboot.
 
 Measure a final PPM without publishing it:
 

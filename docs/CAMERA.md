@@ -5,10 +5,10 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8, libcamera/IPA r23, `pipewire-spa-libcamera` r6 and Snapshot r3 are
+Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r6 and Snapshot r3 are
 installed on the reference phone. The complete userspace set was built for
 aarch64, hash-verified, simulated offline and installed without a reboot. Exact
-r22 libcamera packages are the immediate rollback, and the complete r20/r6/r2
+r23 libcamera packages are the immediate rollback, and the complete r20/r6/r2
 set is also retained. The r21
 libcamera build is also retained as diagnostic evidence but is superseded
 because its fixed highlight ceiling weakened positive EV compensation. Nothing
@@ -65,7 +65,7 @@ Before explicit timing control, ordinary preview could inherit those rates and
 limit exposure to about 4.2 ms or 16.7 ms. The kernel patch keeps those maximum
 rates while making 30 fps the default.
 
-Libcamera r23 now advertises `FrameDurationLimits` when the sensor exposes
+Libcamera r23 introduced `FrameDurationLimits` when the sensor exposes
 VBLANK. A client may request a range down to a conservative 15 fps, allowing a
 frame of about 66.7 ms in low light. The mode default is unchanged until a
 client requests a range, and a fixed-rate video request stays fixed. VBLANK is
@@ -121,23 +121,33 @@ The simple IPA gains contrast-detect autofocus for both rear cameras:
 - standard `AfMetering` and sensor-coordinate `AfWindows` input;
 - `AfStateIdle`, `Scanning`, `Focused` and `Failed` metadata;
 - a central two-dimensional Sobel focus statistic normalized by luminance;
-- coarse and fine scans with actuator settling and measurement windows;
+- a progressive local coarse scan centred on the last successful position,
+  extending toward an edge only while measurements justify it;
+- a bounded fine scan, configurable actuator settling and final-position
+  validation;
 - centre selection across the near-peak focus plateau, avoiding edge bias;
 - continuous-focus hysteresis and delayed restart after a sustained contrast
-  loss; and
+  loss;
+- slow downward adaptation of the continuous-focus reference so one noisy
+  peak cannot cause recurring false scene changes;
+- scan-free return from tap-focus to continuous monitoring at the selected
+  physical lens position; and
 - no autofocus controls on fixed-focus IMX371.
 
-The tuning scans DAC positions `400..800`, first in steps of 100 and then 25.
-Positions within 10% of the peak metric form a plateau, and the selected
-position is its centre. `LensPosition` is deliberately not advertised: the
+The allowed range remains DAC `400..800`, with coarse step 100, fine step 25
+and two settle frames. A cold start begins at 600; later scans begin around the
+last focused position and expand only toward a better edge. Tap-focus uses the
+same bounded search with faster measurements. Positions within 10% of the peak
+metric form a plateau, and the selected position is its centre. `LensPosition`
+is deliberately not advertised: the
 kernel value is an uncalibrated DAC code, while libcamera defines that control
 in dioptres. Advertising a knowingly false unit would break applications.
 
-The isolated continuous-AF regression tests did not hunt after a forced scene
-change. Longer use in Snapshot has since exposed an occasional unnecessary
-rescan while the scene appears stable. That is tracked as an open hysteresis
-and scene-change-classification bug; it is not hidden by disabling continuous
-focus.
+On the installed r24 stack, main and secondary tap-focus both completed local
+searches, then Reset preserved the selected DAC position and issued no further
+lens request. A 70-second main run recorded 177 continuous measurements; a
+95-second secondary run, including tap/reset, recorded 220 post-reset
+measurements. Neither run restarted autofocus or moved the lens after settling.
 
 ### Snapshot tap-to-focus and still resolution
 
@@ -191,7 +201,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r23/r3 |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r24/r3 |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
@@ -231,7 +241,7 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The fifteen-patch libcamera 0.7.2 series is in
+The sixteen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
 50.0 three-patch application series have their own versioned directories under
@@ -259,7 +269,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r23,
+The reference build produced `libcamera`/`libcamera-ipa` r24,
 `pipewire-spa-libcamera` r6, Snapshot r3 and the existing SDM845 kernel r8.
 See `packaging/pmaports/README.md` for hashes and rollback rules. These commands
 build packages only.
@@ -317,25 +327,25 @@ lenses were parked at DAC 0 after tests.
   were rejected.
 - Repeated captures on all three sensors completed without EGL, CSI or camera
   process errors in both isolated and installed tests.
-- The r23 integration patch applied to the pinned pmaports base, its APKBUILD
-  passed shell syntax validation, and a clean pmbootstrap 3.11.1 aarch64 build
-  produced libcamera SHA-256
-  `45f6bd97df378aa8820f4651675f1b11b5d55f1294fe8116d6f01265c832687d`
+- The r24 integration patch applied to the pinned pmaports base, and a clean
+  pmbootstrap 3.11.1 aarch64 build produced libcamera SHA-256
+  `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9`
   and IPA SHA-256
-  `63dcf5ef5b1fdc29652b5c2e5e3e729681719c42f06c1183e010e71d94067bf2`.
-- The offline r22-to-r23 simulation listed exactly two upgrades and no
+  `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8`.
+- The offline r23-to-r24 simulation listed exactly two upgrades and no
   removal. Installation left `/etc/apk/world` byte-identical. All three stable
-  camera paths then completed separate bounded 30-frame native captures; the
-  main rear enumerated `FrameDurationLimits [52752..66667]` in its selected
-  control context.
-- The full native libcamera test run had 48 passes, one expected failure, 30
+  camera paths completed bounded native streams. Both rear cameras accepted a
+  PipeWire tap, settled, resumed continuous mode without a scan, and then held
+  focus for their timed stability windows. The fixed-focus front completed 120
+  frames and rejected focus with the expected status 3.
+- The full native libcamera test run had 48 passes, one expected failure, 31
   hardware skips and no failures. PipeWire passed 52 of 52 tests. Clean
-  aarch64 package builds completed for libcamera r23, PipeWire r6 and Snapshot
+  aarch64 package builds completed for libcamera r24, PipeWire r6 and Snapshot
   r3.
 
-The retained r22 libcamera APKs are the immediate rollback. The r8 plus
+The retained r23 libcamera APKs are the immediate rollback. The r8 plus
 r20/r6/r2 package set remains the complete older baseline. The reference phone
-now runs kernel r8 with the validated r23/r6/r3 userspace packages.
+now runs kernel r8 with the validated r24/r6/r3 userspace packages.
 
 ## Installation boundary
 
@@ -346,14 +356,14 @@ revision is userspace-only and did not require a kernel upgrade or reboot.
 
 To reproduce the completed installation safely:
 
-1. retain exact copies or verified rebuilds of the prior r22 libcamera and IPA
+1. retain exact copies or verified rebuilds of the prior r23 libcamera and IPA
    packages;
 2. stage patched and rollback APKs in separate offline repositories;
 3. put the aarch64 APKs and `APKINDEX.tar.gz` under each repository's
    `aarch64/` directory;
 4. pass the repository root—not its `aarch64/` subdirectory—to apk-tools 3,
-   run `apk upgrade --simulate`, and from the r22 baseline require only the two
-   r22-to-r23 libcamera upgrades, with no removal;
+   run `apk upgrade --simulate`, and from the r23 baseline require only the two
+   r23-to-r24 libcamera upgrades, with no removal;
 5. record the exact-version rollback command and a hash of `/etc/apk/world`;
    and
 6. close camera applications before installation. No reboot is needed for

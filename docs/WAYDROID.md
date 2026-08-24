@@ -6,7 +6,7 @@ software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The r23 overlay is installed and exposes three Android cameras. The native
+The r24 overlay is installed and exposes three Android cameras. The native
 postmarketOS stack is packaged separately; see [CAMERA.md](CAMERA.md).
 
 ## Features and their benefit
@@ -32,8 +32,9 @@ camera UI by themselves; an Android camera application consumes them.
 
 ## Source layout
 
-- `patches/libcamera/v0.7.2/` contains the fifteen generic native patches. The
-  final patch adds `FrameDurationLimits` to simple-pipeline sensors with VBLANK.
+- `patches/libcamera/v0.7.2/` contains the sixteen generic native patches. The
+  final two add `FrameDurationLimits` and stable progressive autofocus
+  transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   patch. Apply it after the complete generic series.
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
@@ -83,7 +84,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 ## Prepare the source
 
 Apply the pmaports integration patch first. Its resulting libcamera recipe
-contains the two postmarketOS base patches and this project's fifteen generic
+contains the two postmarketOS base patches and this project's sixteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
 the Android patch:
 
@@ -99,8 +100,8 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
-mismatch. The reviewed order ends with the generic frame-duration commit and
-then the Android Camera3 commit.
+mismatch. The reviewed order ends with generic frame duration, generic
+autofocus-transition stability and then the Android Camera3 commit.
 
 ## Build a runtime bundle
 
@@ -202,11 +203,12 @@ Then build and run the probe as documented in
 PROBE_DONE valid=3 total=3
 ```
 
-The 24 August 2026 run verified all three YUV/JPEG/private stream sets. Both
+The final r24 run on 24 August 2026 verified all three YUV/JPEG/private stream
+sets. Both
 rear cameras reported autofocus states `[3, 4]`; the front reported fixed
 focus `[0]`. All cameras returned -1/0/+1 EV metadata and visible pixel
 movement. The result file SHA-256 was
-`deb7756daa3fd0c1f21a8a703a4c264a9e9417353888bd6f127fd5269cfd64c2`.
+`425a0525ed08c039cba6831b0ec9c6566bec0ebbb1d7b03267b16f71feac2483`.
 Generated photographs remain private and are not part of the repository.
 
 Reference runtime hashes were:
@@ -214,12 +216,12 @@ Reference runtime hashes were:
 | File | SHA-256 |
 | --- | --- |
 | rendered `init.oneplus6t-camera.rc` (video GID 27) | `f7a52425dcde9996b4119ab1115e9f6df0550cf0890f8e9f9a3987848e4ed733` |
-| `camera.libcamera.so` | `c0def226bb98703882d747d048678e21f8934dad3678dbc4b0674c9630dbe6ef` |
-| `libcamera.so` | `beb6b2a226ce4395f3f6627865183fef46a6df60bd287c203720bf6e6d2645d4` |
-| `libcamera-base.so` | `ee7afde21eeea3cd1c0a8f8b87f68abbaca1b29b48eb3452d89b69223a25e8b9` |
+| `camera.libcamera.so` | `650b18b57db4fbd46441b6cfb443b8275c51c8cfc4c910eacb990407a48b42b9` |
+| `libcamera.so` | `6be47c42f61bea0e2b33439cbc290ab1544ccfb1e2dbd2f331b4031f4cde5002` |
+| `libcamera-base.so` | `ab80f590a78ea6d830e7ef34fe642850c2304d2da342537e7d8807e7947b7fb0` |
 | `libc++_shared.so` | `7ce65fd0fdd49236bc2ee618f6968dbb3fca46434845f563f2bb4c994878853e` |
-| `ipa_soft_simple.so` | `266877375bb694d3f591280b2abbe0b3df114110a3d78ca3074a7aab06b7ad22` |
-| `ipa_soft_simple.so.sign` | `879f8183a0b1f58011f0bcc0da883c76fbd853809d252837c6f629c79e90c9b7` |
+| `ipa_soft_simple.so` | `aa3fcebbf124643a4a0c281c7206f6544249f2415bf468d2aa94a64f82e7b24a` |
+| `ipa_soft_simple.so.sign` | `38f32fc98445b32f7f61e1daf16fc211aa11faf6d7e8a17369c52fd9d57ce3df` |
 
 The signature changes when a new build-local IPA key is generated, so hashes
 are reference evidence rather than a substitute for source verification.
@@ -228,6 +230,14 @@ Waydroid init overlay and tested through a complete container/session restart.
 Android boot completed, the provider retained supplementary GID 27, and all
 three camera devices returned closed and available without an init override
 error.
+
+The r24 installation first copied all thirteen replaced targets into a dated
+rollback tree with a presence manifest and SHA-256 file. The native Android
+probe then returned `PROBE_DONE valid=3 total=3`: camera IDs 0 and 2 reported
+AF states `[3, 4]` with real metering regions, camera 1 reported fixed-focus
+state `[0]`, and every camera passed YUV, private preview, JPEG, EV and sensor
+timing checks. Waydroid was returned to its prior stopped state afterward. The
+complete r23 overlay backup remains the immediate Android rollback.
 
 ## Rollback
 

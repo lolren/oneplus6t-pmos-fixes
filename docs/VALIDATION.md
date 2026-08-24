@@ -10,7 +10,7 @@ Validated on 23-24 August 2026:
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
 - kernel: `7.1.0-rc1-sdm845` (currently package r8);
-- libcamera: initially `99990.7.2-r2`, currently r23 (upstream 0.7.2);
+- libcamera: initially `99990.7.2-r2`, currently r24 (upstream 0.7.2);
 - PipeWire libcamera SPA plugin: `1.6.8-r6`;
 - Snapshot: `50.0-r3`;
 - NetworkManager: 1.56.1;
@@ -443,6 +443,87 @@ timeout during the stress run; every JPEG decoded and each following camera
 opened. These warnings remain tracked for broader application compatibility
 testing.
 
+### r24 autofocus transition stability
+
+The r24 generic commit
+`fd0d181356dffecf4256d0c1876f75dfa68b410f` replaces full-range repeat scans
+with a progressive search centred on the last successful position. It adds
+configurable settle frames, a bounded fine range, faster explicit tap
+measurements, final-position validation, an adaptive continuous-focus
+reference and a scan-free return from tap-focus to continuous mode. The
+Android Camera3 commit
+`aac57582a4af4b9cfae4f741fe2dc14e0c270887` was rebased on that generic
+commit, so the native and Waydroid stacks share one AF implementation instead
+of duplicating it.
+
+A clean native x86 build passed. The full native test run completed with 48
+passes, one expected failure, 31 hardware skips and no failure. A clean Android
+ARMv7/API-33 cross-build also passed. Reapplying the sixteen generic patches to
+libcamera v0.7.2 and then the Android-only patch succeeded without rejects.
+The regenerated pmaports integration diff applies to
+`875bddba6538818f2c3c9849e184f40688ad5140`, has SHA-256
+`68a419b8f01a90f9b7816eb10a4fe1767f9b75d635be950d1a1b392d77aadb6e`,
+and produced these clean pmbootstrap 3.11.1 aarch64 packages:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
+| `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
+
+Exact r23 APKs were copied into a separate rollback repository and verified
+before installation. The offline simulation listed exactly the r23-to-r24
+`libcamera-ipa` and `libcamera` upgrades with no removal. PipeWire and
+WirePlumber were stopped for the transaction; both returned active afterward.
+`/etc/apk/world` remained byte-identical at SHA-256
+`960e4755fdf654d63e069c567063943d5a4609dda53c27289dd920f1bdb8a842`.
+No kernel, partition, boot slot, module or firmware changed, and the phone was
+not rebooted.
+
+Installed native tests used dynamically discovered PipeWire serials. Main
+tap-focus moved from DAC 500 through a bounded local search and settled at 650.
+Reset logged `Resuming continuous autofocus at lens position 650 without a
+scan`, initialized a new whole-frame reference and issued zero lens-position
+requests. Secondary tap-focus settled at DAC 430; its Reset preserved 430 and
+also issued zero lens requests. Timed stability evidence was:
+
+| Camera | Window | Continuous measurements | AF restarts | Lens requests after stable transition |
+| --- | ---: | ---: | ---: | ---: |
+| Main IMX519 | 70 s | 177 | 0 | 0 after initial settle |
+| Secondary IMX376 | 95 s | 220 after Reset | 0 | 0 after Reset |
+
+The fixed-focus front completed a bounded 120-frame 640x480 RGBA stream. The
+installed helper returned status 3 and `camera does not support tap-to-focus`,
+as required. Full per-frame logging was replaced by a selective AF trace for
+the timed runs; all `LIBCAMERA_*` user-service environment variables were then
+unset and PipeWire/WirePlumber restarted in their normal production state.
+The checked-in unattended runner was then copied verbatim to the phone and
+passed a separate smoke run: 41 main and 54 secondary post-reset measurements,
+zero restarts, zero lens requests, and 120 fixed-focus front frames. Its exit
+trap restored active services and left no libcamera logging environment or
+GStreamer process behind.
+
+The coherent r24 Waydroid overlay was installed only after backing up all
+thirteen replaced targets with a presence manifest and SHA-256 list. Reference
+runtime hashes are:
+
+| Runtime file | SHA-256 |
+| --- | --- |
+| `camera.libcamera.so` | `650b18b57db4fbd46441b6cfb443b8275c51c8cfc4c910eacb990407a48b42b9` |
+| `libcamera.so` | `6be47c42f61bea0e2b33439cbc290ab1544ccfb1e2dbd2f331b4031f4cde5002` |
+| `libcamera-base.so` | `ab80f590a78ea6d830e7ef34fe642850c2304d2da342537e7d8807e7947b7fb0` |
+| `ipa_soft_simple.so` | `aa3fcebbf124643a4a0c281c7206f6544249f2415bf468d2aa94a64f82e7b24a` |
+| `ipa_soft_simple.so.sign` | `38f32fc98445b32f7f61e1daf16fc211aa11faf6d7e8a17369c52fd9d57ce3df` |
+
+Android booted, the provider reported running and `dumpsys media.camera`
+reported three devices. The unattended probe ended with
+`PROBE_DONE valid=3 total=3`; rear IDs 0 and 2 returned AF states `[3, 4]` and
+real metering regions, front ID 1 returned fixed-focus state `[0]`, and all
+three passed YUV, private preview, JPEG, EV and sensor-timing checks. The
+sanitized result SHA-256 is
+`425a0525ed08c039cba6831b0ec9c6566bec0ebbb1d7b03267b16f71feac2483`.
+Generated JPEGs remain private. Waydroid was returned to its prior stopped
+state; the complete r23 overlay backup remains available for rollback.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.
@@ -450,14 +531,14 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r23/r6/r3 native userspace stack and r23 Waydroid overlay are installed and
-required no phone reboot. Exact r22 libcamera and older r20/r6/r2 rollback APKs
+The r24/r6/r3 native userspace stack and r24 Waydroid overlay are installed and
+required no phone reboot. Exact r23 libcamera and older r20/r6/r2 rollback APKs
 remain staged in separate user-owned offline repositories.
 An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution
 photo, video, flash expectations, screen-off/on, suspend/resume and an actual
 exact-version rollback test remain to be recorded. Android-level HDR, temporal
 denoise, calibrated CCM/lens shading and computational fusion remain
-unimplemented and are not represented as completed work. Native continuous AF
-still needs a prolonged stable-scene hunting test and tuning. The Snapshot GUI
-also remains below the requested Android-camera control level. Waydroid needs
+unimplemented and are not represented as completed work. The Snapshot GUI
+remains below the requested Android-camera control level and is the next camera
+workstream. Waydroid needs
 broader third-party camera-app, Play Store and lifecycle testing.

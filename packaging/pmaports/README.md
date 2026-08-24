@@ -1,7 +1,7 @@
 # Reproducible OnePlus 6T camera packages
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
-pmaports: five SDM845 kernel patches, fifteen libcamera patches, three tuning
+pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control-transport patch, three Snapshot patches, checksums
 and package revision bumps. It contains no APK, boot image, firmware, vendor
 library, photograph or device-specific identifier.
@@ -11,7 +11,7 @@ library, photograph or device-specific identifier.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`1e4f4fa1d1445200d43e6e7ee63ea2ed200b6a0cd64ac2c44be970493955475a`.
+`68a419b8f01a90f9b7816eb10a4fe1767f9b75d635be950d1a1b392d77aadb6e`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -33,7 +33,7 @@ completed for aarch64.
 Applying the integration patch to the reviewed base produces:
 
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r8`;
-- `libcamera-99990.7.2-r23` and `libcamera-ipa-99990.7.2-r23`;
+- `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r6`; and
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`.
 
@@ -45,8 +45,8 @@ during live diagnosis. They do not imply that many public releases.
 | Package | SHA-256 |
 | --- | --- |
 | `linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk` | `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e` |
-| `libcamera-99990.7.2-r23.apk` | `45f6bd97df378aa8820f4651675f1b11b5d55f1294fe8116d6f01265c832687d` |
-| `libcamera-ipa-99990.7.2-r23.apk` | `63dcf5ef5b1fdc29652b5c2e5e3e729681719c42f06c1183e010e71d94067bf2` |
+| `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
+| `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
 | `pipewire-spa-libcamera-1.6.8-r6.apk` | `658658c3b9df142a6462e3a73457b44a378d6820dba0c6b05a14d18f865635d4` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
@@ -62,20 +62,20 @@ does not contain the discarded actuator-readiness or diagnostics experiments.
 The reference phone currently runs:
 
 - kernel package `7.1_rc1-r8`;
-- `libcamera` and `libcamera-ipa` `99990.7.2-r23`;
+- `libcamera` and `libcamera-ipa` `99990.7.2-r24`;
 - `pipewire-spa-libcamera` `1.6.8-r6`; and
 - Snapshot and Snapshot language data `50.0-r3`.
 
-The exact r22 libcamera packages are the preferred rollback for the r23 frame
-duration update. The older complete r20/r6/r2 set remains useful when rolling
+The exact r23 libcamera packages are the preferred rollback for the r24
+autofocus-transition update. The older complete r20/r6/r2 set remains useful when rolling
 back the earlier Snapshot and PipeWire work. Keep local APKs, or verified
 version-matched rebuilds, before reproducing either transition. Do not assume
 that an online repository will continue to carry old versions.
 
-| Immediate r23 rollback package | SHA-256 |
+| Immediate r24 rollback package | SHA-256 |
 | --- | --- |
-| `libcamera-99990.7.2-r22.apk` | `0900e38b7945778e1e0c9219db9ad5a1fc31bcc7a9a154aa4dd7830fc3519644` |
-| `libcamera-ipa-99990.7.2-r22.apk` | `6e56cbd696d8575d19a9aedf54093421718470ee67c1597dcb261d4dce41c9e9` |
+| `libcamera-99990.7.2-r23.apk` | `45f6bd97df378aa8820f4651675f1b11b5d55f1294fe8116d6f01265c832687d` |
+| `libcamera-ipa-99990.7.2-r23.apk` | `63dcf5ef5b1fdc29652b5c2e5e3e729681719c42f06c1183e010e71d94067bf2` |
 
 | Rollback package | SHA-256 |
 | --- | --- |
@@ -92,7 +92,7 @@ reboot. The completed camera update was userspace-only and did not require a
 reboot. Installing on another phone still requires root, a reviewed simulation
 and an explicit decision by its owner.
 
-For the r22-to-r23 update, stage the two r23 APKs and the two r22 rollback APKs
+For the r23-to-r24 update, stage the two r24 APKs and the two r23 rollback APKs
 in separate offline repositories. apk-tools 3 reads `APKINDEX.tar.gz` from the
 native `aarch64/` directory. Pass the repository root to apk, not its
 `aarch64/` subdirectory.
@@ -122,8 +122,8 @@ Starting from the documented baseline, it must list exactly these
 transitions and no removal:
 
 ```text
-libcamera-ipa           99990.7.2-r22 -> 99990.7.2-r23
-libcamera               99990.7.2-r22 -> 99990.7.2-r23
+libcamera-ipa           99990.7.2-r23 -> 99990.7.2-r24
+libcamera               99990.7.2-r23 -> 99990.7.2-r24
 ```
 
 Only after reviewing that output and receiving approval may the same command
@@ -140,13 +140,13 @@ be opened between that transaction and the approved reboot.
 
 ## Rollback
 
-Simulate exact-version r23 rollback against the isolated rollback repository:
+Simulate exact-version r24 rollback against the isolated rollback repository:
 
 ```sh
 apk add --simulate --allow-untrusted --network=no \
   --interactive=no --repository "$PWD/rollback" \
-  'libcamera=99990.7.2-r22' \
-  'libcamera-ipa=99990.7.2-r22'
+  'libcamera=99990.7.2-r23' \
+  'libcamera-ipa=99990.7.2-r23'
 ```
 
 Require exactly two downgrades, no PipeWire or Snapshot change and no removals.
