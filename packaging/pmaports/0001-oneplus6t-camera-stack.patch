@@ -3723,8 +3723,493 @@ index 0000000..2b56326
 +-- 
 +2.49.0
 +
+diff --git a/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch b/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch
+new file mode 100644
+index 0000000..ce69384
+--- /dev/null
++++ b/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch
+@@ -0,0 +1,479 @@
++From 353a7714d5f65896ef880926bf56f5d915de4cdf Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 21:12:25 +0100
++Subject: [PATCH] ipa: simple: Add frame duration control
++
++Advertise FrameDurationLimits when a simple-pipeline sensor exposes VBLANK, carry VBLANK through delayed controls and report the active frame duration in request metadata.
++
++Keep each sensor mode default unchanged until a client requests a range. Preview and still clients may then extend to a conservative 66.667 ms frame while fixed-rate video requests remain fixed. Grow VBLANK before exposure because V4L2 only expands the exposure range after the frame length changes.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++
++diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
++index c5e0bf7..c77f904 100644
++--- a/src/ipa/simple/algorithms/agc.cpp
+++++ b/src/ipa/simple/algorithms/agc.cpp
++@@ -8,6 +8,7 @@
++ #include "agc.h"
++ 
++ #include <algorithm>
+++#include <chrono>
++ #include <cmath>
++ #include <errno.h>
++ #include <numeric>
++@@ -175,13 +176,35 @@ void Agc::queueRequest(IPAContext &context,
++ 		       const ControlList &controls)
++ {
++ 	const auto &exposureValue = controls.get(controls::ExposureValue);
++-	if (!exposureValue.has_value())
+++	if (exposureValue.has_value()) {
+++		context.activeState.agc.exposureValue = exposureValue.value();
+++		LOG(IPASoftExposure, Debug)
+++			<< "Setting exposure compensation to "
+++			<< exposureValue.value() << " EV";
+++	}
+++
+++	if (!context.configuration.agc.frameDurationSupported)
++ 		return;
++ 
++-	context.activeState.agc.exposureValue = exposureValue.value();
++-	LOG(IPASoftExposure, Debug)
++-		<< "Setting exposure compensation to " << exposureValue.value()
++-		<< " EV";
+++	const auto &frameDurationLimits =
+++		controls.get(controls::FrameDurationLimits);
+++	if (!frameDurationLimits)
+++		return;
+++
+++	const auto &configuration = context.configuration.agc;
+++	const int64_t minimum =
+++		configuration.frameDurationMin.get<std::micro>();
+++	const int64_t maximum =
+++		configuration.frameDurationMax.get<std::micro>();
+++	const int64_t requestedMinimum = std::clamp(
+++		frameDurationLimits->front(), minimum, maximum);
+++	const int64_t requestedMaximum = std::clamp(
+++		frameDurationLimits->back(), requestedMinimum, maximum);
+++
+++	context.activeState.agc.minFrameDuration =
+++		std::chrono::microseconds(requestedMinimum);
+++	context.activeState.agc.maxFrameDuration =
+++		std::chrono::microseconds(requestedMaximum);
++ }
++ 
++ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++@@ -190,6 +213,63 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ {
++ 	int32_t &exposure = frameContext.sensor.exposure;
++ 	double &again = frameContext.sensor.gain;
+++	auto &configuration = context.configuration.agc;
+++
+++	int32_t currentExposureMax = configuration.exposureMax;
+++	int32_t requestedExposureMax = configuration.exposureMax;
+++	if (configuration.frameDurationSupported) {
+++		const int32_t height = context.sensorInfo.outputSize.height;
+++		currentExposureMax = std::clamp(
+++			height + frameContext.sensor.vblank -
+++				configuration.exposureMargin,
+++			configuration.exposureMin, configuration.exposureMax);
+++
+++		const int32_t requestedFrameLength = static_cast<int32_t>(
+++			context.activeState.agc.maxFrameDuration /
+++			configuration.lineDuration);
+++		requestedExposureMax = std::clamp(
+++			requestedFrameLength - configuration.exposureMargin,
+++			configuration.exposureMin, configuration.exposureMax);
+++	}
+++
+++	auto updateFrameDuration = [&](std::optional<int32_t> expandedLimit =
+++						 std::nullopt) {
+++		if (!configuration.frameDurationSupported)
+++			return;
+++
+++		const int32_t height = context.sensorInfo.outputSize.height;
+++		const int32_t minimumFrameLength = std::max(
+++			height + configuration.vblankMin,
+++			static_cast<int32_t>(
+++				context.activeState.agc.minFrameDuration /
+++				configuration.lineDuration));
+++		const int32_t maximumFrameLength = std::max(
+++			minimumFrameLength,
+++			std::min(height + configuration.vblankMax,
+++				 static_cast<int32_t>(
+++					 context.activeState.agc.maxFrameDuration /
+++						 configuration.lineDuration)));
+++		int32_t frameLength = std::max(
+++			minimumFrameLength,
+++			exposure + configuration.exposureMargin);
+++		if (expandedLimit)
+++			frameLength = std::max(
+++				frameLength,
+++				*expandedLimit + configuration.exposureMargin);
+++		frameLength = std::clamp(frameLength, minimumFrameLength,
+++					 maximumFrameLength);
+++		frameContext.sensor.vblank = frameLength - height;
+++	};
+++
+++	/* Honour a newly tightened FPS range before making brightness changes. */
+++	if (exposure > requestedExposureMax) {
+++		exposure = requestedExposureMax;
+++		updateFrameDuration();
+++		context.activeState.agc.exposure = exposure;
+++		context.activeState.agc.again = again;
+++		context.activeState.agc.vblank = frameContext.sensor.vblank;
+++		return;
+++	}
++ 
++ 	const double evScale =
++ 		std::exp2(context.activeState.agc.exposureValue);
++@@ -244,27 +324,45 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 
++ 	factor = std::clamp(factor, 1.0f - kExpMaxStep,
++ 			    1.0f + kExpMaxStep);
++-	if (std::abs(factor - 1.0f) < 0.0001f)
+++	if (std::abs(factor - 1.0f) < 0.0001f) {
+++		updateFrameDuration();
+++		context.activeState.agc.exposure = exposure;
+++		context.activeState.agc.again = again;
+++		context.activeState.agc.vblank = frameContext.sensor.vblank;
++ 		return;
+++	}
++ 
+++	std::optional<int32_t> expandedExposureLimit;
++ 	if (factor > 1.0f) {
++ 		/* Scene too dark: increase exposure first, then gain. */
++-		if (exposure < context.configuration.agc.exposureMax) {
+++		if (exposure < currentExposureMax) {
++ 			int32_t next = static_cast<int32_t>(exposure * factor);
++-			exposure = std::max(next, exposure + 1);
+++			exposure = std::min(std::max(next, exposure + 1),
+++					    currentExposureMax);
+++		} else if (currentExposureMax < requestedExposureMax) {
+++			/*
+++			 * V4L2 updates the exposure range only after VBLANK has
+++			 * changed. Grow the frame first, then use the additional
+++			 * shutter range when it appears in a later statistics frame.
+++			 */
+++			int32_t next = static_cast<int32_t>(
+++				currentExposureMax * factor);
+++			expandedExposureLimit = std::min(
+++				std::max(next, currentExposureMax + 1),
+++				requestedExposureMax);
++ 		} else {
++ 			double next = again * factor;
++-			if (next - again < context.configuration.agc.againMinStep)
++-				again += context.configuration.agc.againMinStep;
+++			if (next - again < configuration.againMinStep)
+++				again += configuration.againMinStep;
++ 			else
++ 				again = next;
++ 		}
++ 	} else {
++ 		/* Scene too bright: decrease gain first, then exposure. */
++-		if (again > context.configuration.agc.again10) {
+++		if (again > configuration.again10) {
++ 			double next = again * factor;
++-			if (again - next < context.configuration.agc.againMinStep)
++-				again -= context.configuration.agc.againMinStep;
+++			if (again - next < configuration.againMinStep)
+++				again -= configuration.againMinStep;
++ 			else
++ 				again = next;
++ 		} else {
++@@ -273,13 +371,15 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 		}
++ 	}
++ 
++-	exposure = std::clamp(exposure, context.configuration.agc.exposureMin,
++-			      context.configuration.agc.exposureMax);
++-	again = std::clamp(again, context.configuration.agc.againMin,
++-			   context.configuration.agc.againMax);
+++	exposure = std::clamp(exposure, configuration.exposureMin,
+++			      requestedExposureMax);
+++	again = std::clamp(again, configuration.againMin,
+++			   configuration.againMax);
+++	updateFrameDuration(expandedExposureLimit);
++ 
++ 	context.activeState.agc.exposure = exposure;
++ 	context.activeState.agc.again = again;
+++	context.activeState.agc.vblank = frameContext.sensor.vblank;
++ 
++ 	if (highlightValue)
++ 		LOG(IPASoftExposure, Debug)
++@@ -287,12 +387,14 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 			<< " error " << error
++ 			<< " highlight " << *highlightValue
++ 			<< " factor " << factor
++-			<< " exp " << exposure << " again " << again;
+++			<< " exp " << exposure << " again " << again
+++			<< " vblank " << frameContext.sensor.vblank;
++ 	else
++ 		LOG(IPASoftExposure, Debug)
++ 			<< "exposureMSV " << exposureMSV
++ 			<< " error " << error << " factor " << factor
++-			<< " exp " << exposure << " again " << again;
+++			<< " exp " << exposure << " again " << again
+++			<< " vblank " << frameContext.sensor.vblank;
++ }
++ 
++ void Agc::process(IPAContext &context,
++@@ -307,6 +409,21 @@ void Agc::process(IPAContext &context,
++ 	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
++ 	metadata.set(controls::ExposureValue,
++ 		     context.activeState.agc.exposureValue);
+++	if (context.configuration.agc.frameDurationSupported) {
+++		const utils::Duration frameDuration =
+++			(context.sensorInfo.outputSize.height +
+++			 frameContext.sensor.vblank) *
+++			context.configuration.agc.lineDuration;
+++		metadata.set(controls::FrameDuration,
+++			     frameDuration.get<std::micro>());
+++		metadata.set(controls::FrameDurationLimits,
+++			     { static_cast<int64_t>(
+++				       context.activeState.agc.minFrameDuration
+++					       .get<std::micro>()),
+++			       static_cast<int64_t>(
+++				       context.activeState.agc.maxFrameDuration
+++					       .get<std::micro>()) });
+++	}
++ 
++ 	if (!context.activeState.agc.valid) {
++ 		/*
++@@ -315,6 +432,7 @@ void Agc::process(IPAContext &context,
++ 		 */
++ 		context.activeState.agc.exposure = frameContext.sensor.exposure;
++ 		context.activeState.agc.again = frameContext.sensor.gain;
+++		context.activeState.agc.vblank = frameContext.sensor.vblank;
++ 		context.activeState.agc.valid = true;
++ 	}
++ 
++@@ -325,6 +443,7 @@ void Agc::process(IPAContext &context,
++ 		 */
++ 		frameContext.sensor.exposure = context.activeState.agc.exposure;
++ 		frameContext.sensor.gain = context.activeState.agc.again;
+++		frameContext.sensor.vblank = context.activeState.agc.vblank;
++ 		return;
++ 	}
++ 
++diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
++index ba80b75..b308d23 100644
++--- a/src/ipa/simple/ipa_context.h
+++++ b/src/ipa/simple/ipa_context.h
++@@ -27,8 +27,14 @@ namespace ipa::soft {
++ struct IPASessionConfiguration {
++ 	struct {
++ 		int32_t exposureMin, exposureMax;
+++		int32_t exposureMargin;
++ 		double againMin, againMax, again10, againMinStep;
++ 		utils::Duration lineDuration;
+++		bool frameDurationSupported;
+++		int32_t vblankMin, vblankMax, vblankDefault;
+++		utils::Duration frameDurationMin;
+++		utils::Duration frameDurationMax;
+++		utils::Duration frameDurationDefault;
++ 	} agc;
++ 	struct {
++ 		std::optional<uint8_t> level;
++@@ -40,6 +46,9 @@ struct IPAActiveState {
++ 		int32_t exposure;
++ 		double again;
++ 		float exposureValue;
+++		int32_t vblank;
+++		utils::Duration minFrameDuration;
+++		utils::Duration maxFrameDuration;
++ 		bool valid;
++ 	} agc;
++ 
++@@ -75,6 +84,7 @@ struct IPAFrameContext : public FrameContext {
++ 	struct {
++ 		int32_t exposure;
++ 		double gain;
+++		int32_t vblank;
++ 	} sensor;
++ 
++ 	RGB<float> gains;
++diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
++index 73386b2..aedf07b 100644
++--- a/src/ipa/simple/soft_simple.cpp
+++++ b/src/ipa/simple/soft_simple.cpp
++@@ -5,6 +5,7 @@
++  * Simple Software Image Processing Algorithm module
++  */
++ 
+++#include <algorithm>
++ #include <chrono>
++ #include <stdint.h>
++ #include <sys/mman.h>
++@@ -41,6 +42,23 @@ namespace ipa::soft {
++ /* Maximum number of frame contexts to be held */
++ static constexpr uint32_t kMaxFrameContexts = 16;
++ 
+++/*
+++ * Let still-image and preview clients trade frame rate for one extra stop of
+++ * low-light exposure. Video clients can keep requesting a fixed 30 FPS range.
+++ */
+++static constexpr int64_t kMaxAutomaticFrameDurationUs = 66'667;
+++
+++static int64_t frameDurationUs(const IPACameraSensorInfo &sensorInfo,
+++			       uint64_t frameLength)
+++{
+++	const uint64_t framePixels =
+++		static_cast<uint64_t>(sensorInfo.minLineLength) * frameLength;
+++
+++	/* Round up so the advertised duration never exceeds the corresponding FPS. */
+++	return (framePixels * 1'000'000ULL + sensorInfo.pixelRate - 1) /
+++	       sensorInfo.pixelRate;
+++}
+++
++ class IPASoftSimple : public ipa::soft::IPASoftInterface, public Module
++ {
++ public:
++@@ -181,6 +199,26 @@ int IPASoftSimple::init(const IPASettings &settings,
++ 		stats_ = static_cast<SwIspStats *>(mem);
++ 	}
++ 
+++	const auto vblank = sensorControls.find(V4L2_CID_VBLANK);
+++	if (vblank != sensorControls.end() && sensorInfo.pixelRate > 0) {
+++		const ControlInfo &info = vblank->second;
+++		const uint64_t height = sensorInfo.outputSize.height;
+++		const int64_t minDuration = frameDurationUs(
+++			sensorInfo, height + info.min().get<int32_t>());
+++		const int64_t hardwareMaxDuration = frameDurationUs(
+++			sensorInfo, height + info.max().get<int32_t>());
+++		const int64_t defaultDuration = frameDurationUs(
+++			sensorInfo, height + info.def().get<int32_t>());
+++		const int64_t maxDuration = std::clamp(
+++			std::max(defaultDuration, kMaxAutomaticFrameDurationUs),
+++			minDuration, hardwareMaxDuration);
+++
+++		context_.ctrlMap[&controls::FrameDurationLimits] =
+++			ControlInfo(minDuration, maxDuration,
+++				    Span<const int64_t, 2>{ { defaultDuration,
+++							       defaultDuration } });
+++	}
+++
++ 	ControlInfoMap::Map ctrlMap = context_.ctrlMap;
++ 	*ipaControls = ControlInfoMap(std::move(ctrlMap), controls::controls);
++ 
++@@ -221,11 +259,56 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
++ 		context_.sensorInfo.minLineLength * 1.0s / context_.sensorInfo.pixelRate;
++ 	context_.configuration.agc.exposureMin = exposureInfo.min().get<int32_t>();
++ 	context_.configuration.agc.exposureMax = exposureInfo.max().get<int32_t>();
+++	context_.configuration.agc.exposureMargin = 0;
+++	context_.configuration.agc.frameDurationSupported = false;
++ 	if (!context_.configuration.agc.exposureMin) {
++ 		LOG(IPASoft, Warning) << "Minimum exposure is zero, that can't be linear";
++ 		context_.configuration.agc.exposureMin = 1;
++ 	}
++ 
+++	const auto vblank = sensorInfoMap_.find(V4L2_CID_VBLANK);
+++	if (vblank != sensorInfoMap_.end()) {
+++		auto &agc = context_.configuration.agc;
+++		const ControlInfo &info = vblank->second;
+++		const int32_t height = context_.sensorInfo.outputSize.height;
+++		agc.frameDurationSupported = true;
+++		agc.vblankMin = info.min().get<int32_t>();
+++		agc.vblankDefault = info.def().get<int32_t>();
+++
+++		const int64_t minDurationUs = frameDurationUs(
+++			context_.sensorInfo, height + agc.vblankMin);
+++		const int64_t hardwareMaxDurationUs = frameDurationUs(
+++			context_.sensorInfo,
+++			height + info.max().get<int32_t>());
+++		const int64_t defaultDurationUs = frameDurationUs(
+++			context_.sensorInfo, height + agc.vblankDefault);
+++		const int64_t maxDurationUs = std::clamp(
+++			std::max(defaultDurationUs, kMaxAutomaticFrameDurationUs),
+++			minDurationUs, hardwareMaxDurationUs);
+++
+++		agc.frameDurationMin = std::chrono::microseconds(minDurationUs);
+++		agc.frameDurationMax = std::chrono::microseconds(maxDurationUs);
+++		agc.frameDurationDefault =
+++			std::chrono::microseconds(defaultDurationUs);
+++
+++		const int32_t maxFrameLength = static_cast<int32_t>(
+++			agc.frameDurationMax / agc.lineDuration);
+++		agc.vblankMax = std::clamp(maxFrameLength - height,
+++					    agc.vblankMin,
+++					    info.max().get<int32_t>());
+++		agc.exposureMargin = std::max(
+++			0, height + agc.vblankDefault - agc.exposureMax);
+++		agc.exposureMax = std::max(
+++			agc.exposureMin,
+++			height + agc.vblankMax - agc.exposureMargin);
+++
+++		context_.activeState.agc.vblank = agc.vblankDefault;
+++		context_.activeState.agc.minFrameDuration =
+++			agc.frameDurationDefault;
+++		context_.activeState.agc.maxFrameDuration =
+++			agc.frameDurationDefault;
+++	}
+++
++ 	int32_t againMin = gainInfo.min().get<int32_t>();
++ 	int32_t againMax = gainInfo.max().get<int32_t>();
++ 	int32_t againDef = gainInfo.def().get<int32_t>();
++@@ -307,11 +390,24 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ 				 const ControlList &sensorControls)
++ {
++ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+++	const bool frameDurationSupported =
+++		context_.configuration.agc.frameDurationSupported;
+++
+++	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
+++	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN) ||
+++	    (frameDurationSupported &&
+++	     !sensorControls.contains(V4L2_CID_VBLANK))) {
+++		LOG(IPASoft, Error) << "Control(s) missing";
+++		return;
+++	}
++ 
++ 	frameContext.sensor.exposure =
++ 		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
++ 	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
+++	if (frameDurationSupported)
+++		frameContext.sensor.vblank =
+++			sensorControls.get(V4L2_CID_VBLANK).get<int32_t>();
++ 
++ 	ControlList metadata(controls::controls);
++ 	for (const auto &algo : algorithms())
++@@ -319,19 +415,14 @@ void IPASoftSimple::processStats(const uint32_t frame,
++ 	emitLensControls();
++ 	metadataReady.emit(frame, metadata);
++ 
++-	/* Sanity check */
++-	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
++-	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN)) {
++-		LOG(IPASoft, Error) << "Control(s) missing";
++-		return;
++-	}
++-
++ 	ControlList ctrls(sensorInfoMap_);
++ 
++ 	auto &againNew = frameContext.sensor.gain;
++ 	ctrls.set(V4L2_CID_EXPOSURE, frameContext.sensor.exposure);
++ 	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
++ 		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
+++	if (frameDurationSupported)
+++		ctrls.set(V4L2_CID_VBLANK, frameContext.sensor.vblank);
++ 
++ 	setSensorControls.emit(ctrls);
++ }
++diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
++index f06f587..7ec71cf 100644
++--- a/src/libcamera/pipeline/simple/simple.cpp
+++++ b/src/libcamera/pipeline/simple/simple.cpp
++@@ -573,6 +573,10 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
++ 		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
++ 		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
++ 	};
+++	if (sensor_->controls().count(V4L2_CID_VBLANK))
+++		params.emplace(V4L2_CID_VBLANK,
+++			       DelayedControls::ControlParams{ delays.vblankDelay,
+++							      false });
++ 	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
++ 
++ 	LOG(SimplePipeline, Debug)
++-- 
++2.49.0
++
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef2..b40d5c7 100644
+index 3857ef2..46ad531 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -3732,11 +4217,11 @@ index 3857ef2..b40d5c7 100644
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=22
++pkgrel=23
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,20 @@ _tuning_files="
+@@ -59,6 +59,21 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -3754,10 +4239,11 @@ index 3857ef2..b40d5c7 100644
 +	0014-ipa-simple-Add-autofocus-metering-windows.patch
 +	0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 +	0016-ipa-simple-Add-exposure-compensation-control.patch
++	0017-ipa-simple-Add-frame-duration-control.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +189,27 @@ sha512sums="
+@@ -175,13 +190,28 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -3775,6 +4261,7 @@ index 3857ef2..b40d5c7 100644
 +4d4e761233a8230358cd66cd4fc5ae8b6ac4492f7543dee3fc1a60c87f122ee165fa2c3b040c8ea05b182f17c76bee75765a6edb65add1efa009a58bbb16ab8f  0014-ipa-simple-Add-autofocus-metering-windows.patch
 +2dd891668804b38f5a7404eca08e37a2b72eed38f38bb504f97ecfc6eaf39e785a77a9e9864ccad6824d98d874a3d0ac7fdd74b830fc29fc206d25c0dab1fbbe  0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 +c95fb64c5dea27724bdf8617d96a34273e0e40348080061a012dd1e742163b671e4bf0a4cf0ec99bd40f19d758f6e99c8f4e85b3411d0e41b2e578c764bebbc2  0016-ipa-simple-Add-exposure-compensation-control.patch
++cd6a28e3c0d8e0e2ee6da560c0d435752bc3ab48b19354e5f1aa2993d38fe52d9b845dc706e7351d6bc58dc17f0c81ca7514852413fe0b30d83e9fe77553329b  0017-ipa-simple-Add-frame-duration-control.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml

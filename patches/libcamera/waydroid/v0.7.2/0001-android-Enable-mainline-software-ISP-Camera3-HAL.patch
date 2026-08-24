@@ -1,0 +1,1744 @@
+From e9c3f7cf3337429e5c0aa46c3f91dfd048ff3d6b Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 21:20:10 +0100
+Subject: [PATCH] android: Enable the mainline software ISP Camera3 HAL
+
+Make the generic Android HAL usable with minigbm buffers on the OnePlus 6T Waydroid armv7 image, add software NV12 output and keep software-ISP control latency bounded.
+
+Translate exposure compensation, variable preview frame rates, autofocus modes/triggers/regions and result metadata between Camera2 and libcamera. Preserve valid sub-30-fps stream maps for sensors whose usable mode tops out at 15 fps, and report exposure, sensitivity and frame duration.
+
+Use a bounded fast scan for explicit Android autofocus triggers while retaining local continuous refinement. This lets Camera2 clients open all three sensors, capture YUV/JPEG/private streams and use tap focus without vendor camera libraries.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/android/camera_buffer.h b/src/android/camera_buffer.h
+index 9666996..6b6119e 100644
+--- a/src/android/camera_buffer.h
++++ b/src/android/camera_buffer.h
+@@ -27,6 +27,7 @@ public:
+ 	bool isValid() const;
+ 
+ 	unsigned int numPlanes() const;
++	int fd(unsigned int plane) const;
+ 
+ 	libcamera::Span<const uint8_t> plane(unsigned int plane) const;
+ 	libcamera::Span<uint8_t> plane(unsigned int plane);
+@@ -58,6 +59,10 @@ unsigned int CameraBuffer::numPlanes() const				\
+ {									\
+ 	return _d()->numPlanes();					\
+ }									\
++int CameraBuffer::fd(unsigned int plane) const				\
++{									\
++	return _d()->fd(plane);						\
++}									\
+ Span<const uint8_t> CameraBuffer::plane(unsigned int plane) const	\
+ {									\
+ 	return const_cast<Private *>(_d())->plane(plane);		\
+diff --git a/src/android/camera_capabilities.cpp b/src/android/camera_capabilities.cpp
+index 6b58dd5..6bd6cb3 100644
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -552,6 +552,7 @@ int CameraCapabilities::initializeStreamConfigurations()
+ 	 * metadata.
+ 	 */
+ 	Size maxJpegSize;
++	bool missingFrameDurationWarned = false;
+ 	for (const auto &format : camera3FormatsMap) {
+ 		int androidFormat = format.first;
+ 		const Camera3Format &camera3Format = format.second;
+@@ -660,15 +661,32 @@ int CameraCapabilities::initializeStreamConfigurations()
+ 			const ControlInfoMap &controls = camera_->controls();
+ 			const auto frameDurations = controls.find(
+ 				&controls::FrameDurationLimits);
++			int64_t minFrameDuration;
++			int64_t maxFrameDuration;
+ 			if (frameDurations == controls.end()) {
+-				LOG(HAL, Error)
+-					<< "Camera does not report frame durations";
+-				return -EINVAL;
++				/*
++				 * Some simple-pipeline sensors have a fixed frame
++				 * interval and don't expose VBLANK, so libcamera can't
++				 * publish FrameDurationLimits. Android still requires
++				 * frame-duration metadata. Advertise the conservative
++				 * fixed rate used by the HAL for its normal stream set.
++				 */
++				constexpr int64_t defaultFrameDuration = 1'000'000'000 / 30;
++				minFrameDuration = defaultFrameDuration;
++				maxFrameDuration = defaultFrameDuration;
++				if (!missingFrameDurationWarned) {
++					LOG(HAL, Warning)
++						<< "Camera does not report frame durations; "
++						   "assuming fixed 30 FPS";
++					missingFrameDurationWarned = true;
++				}
++			} else {
++				minFrameDuration =
++					frameDurations->second.min().get<int64_t>() * 1000;
++				maxFrameDuration =
++					frameDurations->second.max().get<int64_t>() * 1000;
+ 			}
+ 
+-			int64_t minFrameDuration = frameDurations->second.min().get<int64_t>() * 1000;
+-			int64_t maxFrameDuration = frameDurations->second.max().get<int64_t>() * 1000;
+-
+ 			/*
+ 			 * Cap min frame duration to 30 FPS with 1% tolerance.
+ 			 *
+@@ -788,6 +806,11 @@ int CameraCapabilities::initializeStaticMetadata()
+ 
+ 	const ControlInfoMap &controlsInfo = camera_->controls();
+ 	const ControlList &properties = camera_->properties();
++	const auto afModeInfo = controlsInfo.find(&controls::AfMode);
++	const bool autofocusSupported = afModeInfo != controlsInfo.end();
++	const bool afRegionsSupported =
++		controlsInfo.find(&controls::AfWindows) != controlsInfo.end() &&
++		controlsInfo.find(&controls::AfMetering) != controlsInfo.end();
+ 
+ 	availableCharacteristicsKeys_ = {
+ 		ANDROID_COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES,
+@@ -910,6 +933,7 @@ int CameraCapabilities::initializeStaticMetadata()
+ 		ANDROID_SCALER_CROP_REGION,
+ 		ANDROID_SENSOR_EXPOSURE_TIME,
+ 		ANDROID_SENSOR_FRAME_DURATION,
++		ANDROID_SENSOR_SENSITIVITY,
+ 		ANDROID_SENSOR_ROLLING_SHUTTER_SKEW,
+ 		ANDROID_SENSOR_TEST_PATTERN_MODE,
+ 		ANDROID_SENSOR_TIMESTAMP,
+@@ -919,6 +943,11 @@ int CameraCapabilities::initializeStaticMetadata()
+ 		ANDROID_STATISTICS_SCENE_FLICKER,
+ 	};
+ 
++	if (afRegionsSupported) {
++		availableRequestKeys_.insert(ANDROID_CONTROL_AF_REGIONS);
++		availableResultKeys_.insert(ANDROID_CONTROL_AF_REGIONS);
++	}
++
+ 	/* Color correction static metadata. */
+ 	{
+ 		std::vector<uint8_t> data;
+@@ -950,14 +979,25 @@ int CameraCapabilities::initializeStaticMetadata()
+ 	staticMetadata_->addEntry(ANDROID_CONTROL_AE_AVAILABLE_MODES,
+ 				  aeAvailableModes);
+ 
+-	std::vector<int32_t> aeCompensationRange = {
+-		0, 0,
+-	};
++	const auto exposureValueInfo = controlsInfo.find(&controls::ExposureValue);
++	const bool exposureCompensationSupported =
++		exposureValueInfo != controlsInfo.end();
++	std::vector<int32_t> aeCompensationRange = { 0, 0 };
++	if (exposureCompensationSupported) {
++		aeCompensationRange = {
++			static_cast<int32_t>(std::lround(
++				exposureValueInfo->second.min().get<float>() * 10.0f)),
++			static_cast<int32_t>(std::lround(
++				exposureValueInfo->second.max().get<float>() * 10.0f)),
++		};
++	}
+ 	staticMetadata_->addEntry(ANDROID_CONTROL_AE_COMPENSATION_RANGE,
+ 				  aeCompensationRange);
+ 
+ 	const camera_metadata_rational_t aeCompensationStep[] = {
+-		{ 0, 1 }
++		exposureCompensationSupported
++			? camera_metadata_rational_t{ 1, 10 }
++			: camera_metadata_rational_t{ 0, 1 }
+ 	};
+ 	staticMetadata_->addEntry(ANDROID_CONTROL_AE_COMPENSATION_STEP,
+ 				  aeCompensationStep);
+@@ -965,6 +1005,20 @@ int CameraCapabilities::initializeStaticMetadata()
+ 	std::vector<uint8_t> availableAfModes = {
+ 		ANDROID_CONTROL_AF_MODE_OFF,
+ 	};
++	if (autofocusSupported) {
++		const int32_t minMode = afModeInfo->second.min().get<int32_t>();
++		const int32_t maxMode = afModeInfo->second.max().get<int32_t>();
++		if (minMode <= controls::AfModeAuto &&
++		    maxMode >= controls::AfModeAuto)
++			availableAfModes.push_back(ANDROID_CONTROL_AF_MODE_AUTO);
++		if (minMode <= controls::AfModeContinuous &&
++		    maxMode >= controls::AfModeContinuous) {
++			availableAfModes.push_back(
++				ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO);
++			availableAfModes.push_back(
++				ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE);
++		}
++	}
+ 	staticMetadata_->addEntry(ANDROID_CONTROL_AF_AVAILABLE_MODES,
+ 				  availableAfModes);
+ 
+@@ -997,7 +1051,7 @@ int CameraCapabilities::initializeStaticMetadata()
+ 				  availableAwbModes);
+ 
+ 	std::vector<int32_t> availableMaxRegions = {
+-		0, 0, 0,
++		0, 0, afRegionsSupported ? 1 : 0,
+ 	};
+ 	staticMetadata_->addEntry(ANDROID_CONTROL_MAX_REGIONS,
+ 				  availableMaxRegions);
+@@ -1095,9 +1149,22 @@ int CameraCapabilities::initializeStaticMetadata()
+ 					  data);
+ 	}
+ 
+-	int32_t sensitivityRange[] = {
+-		32, 2400,
+-	};
++	/*
++	 * The Android HAL historically used this conservative fallback because
++	 * some pipelines report analogue gain as result metadata without exposing
++	 * it as a request control. Prefer the pipeline's real range when present.
++	 */
++	int32_t sensitivityRange[] = { 32, 2400 };
++	const auto &analogueGainInfo = controlsInfo.find(&controls::AnalogueGain);
++	if (analogueGainInfo != controlsInfo.end()) {
++		sensitivityRange[0] = std::max(
++			1, static_cast<int32_t>(std::lround(
++				analogueGainInfo->second.min().get<float>() * 100.0f)));
++		sensitivityRange[1] = std::max(
++			sensitivityRange[0],
++			static_cast<int32_t>(std::lround(
++				analogueGainInfo->second.max().get<float>() * 100.0f)));
++	}
+ 	staticMetadata_->addEntry(ANDROID_SENSOR_INFO_SENSITIVITY_RANGE,
+ 				  sensitivityRange);
+ 
+@@ -1108,14 +1175,15 @@ int CameraCapabilities::initializeStaticMetadata()
+ 					  *filterArr);
+ 
+ 	const auto &exposureInfo = controlsInfo.find(&controls::ExposureTime);
++	int64_t exposureTimeRange[2] = { 1000, maxFrameDuration_ };
+ 	if (exposureInfo != controlsInfo.end()) {
+-		int64_t exposureTimeRange[2] = {
+-			exposureInfo->second.min().get<int32_t>() * 1000LL,
+-			exposureInfo->second.max().get<int32_t>() * 1000LL,
+-		};
+-		staticMetadata_->addEntry(ANDROID_SENSOR_INFO_EXPOSURE_TIME_RANGE,
+-					  exposureTimeRange, 2);
++		exposureTimeRange[0] =
++			exposureInfo->second.min().get<int32_t>() * 1000LL;
++		exposureTimeRange[1] =
++			exposureInfo->second.max().get<int32_t>() * 1000LL;
+ 	}
++	staticMetadata_->addEntry(ANDROID_SENSOR_INFO_EXPOSURE_TIME_RANGE,
++				  exposureTimeRange, 2);
+ 
+ 	staticMetadata_->addEntry(ANDROID_SENSOR_ORIENTATION, orientation_);
+ 
+@@ -1284,7 +1352,12 @@ int CameraCapabilities::initializeStaticMetadata()
+ 	staticMetadata_->addEntry(ANDROID_LENS_INFO_HYPERFOCAL_DISTANCE,
+ 				  hypeFocalDistance);
+ 
+-	float minFocusDistance = 0;
++	/*
++	 * Android uses a non-zero value to distinguish an autofocus lens from a
++	 * fixed-focus lens. The simple IPA exposes actuator positions rather than
++	 * calibrated dioptres, so report a conservative capability marker.
++	 */
++	float minFocusDistance = autofocusSupported ? 1.0f : 0.0f;
+ 	staticMetadata_->addEntry(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE,
+ 				  minFocusDistance);
+ 
+@@ -1337,20 +1410,14 @@ int CameraCapabilities::initializeStaticMetadata()
+ 
+ 	for (const auto &entry : streamConfigurations_) {
+ 		/*
+-		 * Filter out YUV streams not capable of running at 30 FPS.
+-		 *
+-		 * This requirement comes from CTS RecordingTest failures most
+-		 * probably related to a requirement of the camcoder video
+-		 * recording profile. Inspecting the Intel IPU3 HAL
+-		 * implementation confirms this but no reference has been found
+-		 * in the metadata documentation.
++		 * Keep slower YUV streams. Some sensors genuinely top out below
++		 * 30 FPS in their only usable mode; dropping those entries removes
++		 * every IMPLEMENTATION_DEFINED stream and makes Android reject the
++		 * entire camera characteristics map.
+ 		 */
+ 		unsigned int fps =
+ 			static_cast<unsigned int>(floor(1e9 / entry.minFrameDurationNsec));
+ 
+-		if (entry.androidFormat != HAL_PIXEL_FORMAT_BLOB && fps < 30)
+-			continue;
+-
+ 		/*
+ 		 * Collect the FPS of the maximum YUV output size to populate
+ 		 * AE_AVAILABLE_TARGET_FPS_RANGE
+@@ -1394,6 +1461,13 @@ int CameraCapabilities::initializeStaticMetadata()
+ 	 * smaller than 10^9 / minFps.
+ 	 */
+ 	int32_t minFps = std::ceil(1e9 / maxFrameDuration_);
++	/*
++	 * Integer nanosecond frame durations cannot represent rates such as
++	 * 30 FPS exactly. Keep rounding from producing an invalid { 31, 30 }
++	 * range for fixed-rate cameras.
++	 */
++	if (minFps > maxYUVFps)
++		minFps = maxYUVFps;
+ 	int32_t availableAeFpsTarget[] = {
+ 		minFps, maxYUVFps, maxYUVFps, maxYUVFps,
+ 	};
+@@ -1568,6 +1642,19 @@ std::unique_ptr<CameraMetadata> CameraCapabilities::requestTemplatePreview() con
+ 				  aeAntibandingMode);
+ 
+ 	uint8_t afMode = ANDROID_CONTROL_AF_MODE_OFF;
++	found = staticMetadata_->getEntry(ANDROID_CONTROL_AF_AVAILABLE_MODES,
++					  &entry);
++	if (found) {
++		for (size_t i = 0; i < entry.count; ++i) {
++			if (entry.data.u8[i] ==
++			    ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE) {
++				afMode = ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
++				break;
++			}
++			if (entry.data.u8[i] == ANDROID_CONTROL_AF_MODE_AUTO)
++				afMode = ANDROID_CONTROL_AF_MODE_AUTO;
++		}
++	}
+ 	requestTemplate->addEntry(ANDROID_CONTROL_AF_MODE, afMode);
+ 
+ 	uint8_t afTrigger = ANDROID_CONTROL_AF_TRIGGER_IDLE;
+@@ -1641,5 +1728,18 @@ std::unique_ptr<CameraMetadata> CameraCapabilities::requestTemplateVideo() const
+ 	previewTemplate->updateEntry(ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
+ 				     entry.data.i32 + 2, 2);
+ 
++	if (staticMetadata_->getEntry(ANDROID_CONTROL_AF_AVAILABLE_MODES,
++				      &entry)) {
++		for (size_t i = 0; i < entry.count; ++i) {
++			if (entry.data.u8[i] !=
++			    ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO)
++				continue;
++
++			uint8_t afMode = ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO;
++			previewTemplate->updateEntry(ANDROID_CONTROL_AF_MODE, afMode);
++			break;
++		}
++	}
++
+ 	return previewTemplate;
+ }
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 80ff248..c20e11f 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -8,6 +8,7 @@
+ #include "camera_device.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <fstream>
+ #include <set>
+ #include <sys/mman.h>
+@@ -23,6 +24,7 @@
+ #include <libcamera/fence.h>
+ #include <libcamera/formats.h>
+ #include <libcamera/geometry.h>
++#include <libcamera/orientation.h>
+ #include <libcamera/property_ids.h>
+ 
+ #include "system/graphics.h"
+@@ -194,6 +196,32 @@ const char *directionToString(int stream_type)
+ 	}
+ }
+ 
++bool isAndroidContinuousAf(uint8_t mode)
++{
++	return mode == ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO ||
++	       mode == ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
++}
++
++uint8_t androidAfState(int32_t state, uint8_t mode)
++{
++	const bool continuous = isAndroidContinuousAf(mode);
++
++	switch (state) {
++	case controls::AfStateScanning:
++		return continuous ? ANDROID_CONTROL_AF_STATE_PASSIVE_SCAN
++				  : ANDROID_CONTROL_AF_STATE_ACTIVE_SCAN;
++	case controls::AfStateFocused:
++		return continuous ? ANDROID_CONTROL_AF_STATE_PASSIVE_FOCUSED
++				  : ANDROID_CONTROL_AF_STATE_FOCUSED_LOCKED;
++	case controls::AfStateFailed:
++		return continuous ? ANDROID_CONTROL_AF_STATE_PASSIVE_UNFOCUSED
++				  : ANDROID_CONTROL_AF_STATE_NOT_FOCUSED_LOCKED;
++	case controls::AfStateIdle:
++	default:
++		return ANDROID_CONTROL_AF_STATE_INACTIVE;
++	}
++}
++
+ #if defined(OS_CHROMEOS)
+ /*
+  * Check whether the crop_rotate_scale_degrees values for all streams in
+@@ -547,6 +575,16 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * Android rotates camera buffers according to ANDROID_SENSOR_ORIENTATION.
++	 * Request the sensor's native mounting orientation here so pipeline
++	 * handlers that can't transpose frames don't have to adjust it during
++	 * validation.
++	 */
++	const auto &rotation = camera_->properties().get(properties::Rotation);
++	if (rotation)
++		config->orientation = orientationFromRotation(*rotation);
++
+ 	/*
+ 	 * Clear and remove any existing configuration from previous calls, and
+ 	 * ensure the required entries are available without further
+@@ -783,7 +821,13 @@ CameraDevice::createFrameBuffer(const buffer_handle_t camera3buffer,
+ 
+ 	std::vector<FrameBuffer::Plane> planes(buf.numPlanes());
+ 	for (size_t i = 0; i < buf.numPlanes(); ++i) {
+-		SharedFD fd{ camera3buffer->data[i] };
++		/*
++		 * Keep the descriptor in an lvalue so SharedFD duplicates it. Passing
++		 * the accessor's temporary directly would select SharedFD's ownership-
++		 * taking constructor and close the descriptor owned by gralloc.
++		 */
++		const int planeFd = buf.fd(i);
++		SharedFD fd{ planeFd };
+ 		if (!fd.isValid()) {
+ 			LOG(HAL, Fatal) << "No valid fd";
+ 			return nullptr;
+@@ -814,7 +858,118 @@ int CameraDevice::processControls(Camera3RequestDescriptor *descriptor)
+ 		controls.set(controls::ScalerCrop, cropRegion);
+ 	}
+ 
+-	if (settings.getEntry(ANDROID_STATISTICS_FACE_DETECT_MODE, &entry)) {
++	const ControlInfoMap &availableControls = camera_->controls();
++	if (availableControls.find(&controls::ExposureValue) !=
++			availableControls.end() &&
++	    settings.getEntry(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION, &entry)) {
++		controls.set(controls::ExposureValue,
++			     static_cast<float>(*entry.data.i32) / 10.0f);
++	}
++
++	const auto frameDurationInfo =
++		availableControls.find(&controls::FrameDurationLimits);
++	if (frameDurationInfo != availableControls.end() &&
++	    settings.getEntry(ANDROID_CONTROL_AE_TARGET_FPS_RANGE, &entry)) {
++		const int32_t minFps = entry.data.i32[0];
++		const int32_t maxFps = entry.data.i32[1];
++		if (minFps > 0 && maxFps >= minFps) {
++			const auto durationForFps = [](int32_t fps) {
++				return (1'000'000LL + fps - 1) / fps;
++			};
++			const int64_t minimum =
++				frameDurationInfo->second.min().get<int64_t>();
++			const int64_t maximum =
++				frameDurationInfo->second.max().get<int64_t>();
++			const int64_t requestedMinimum = std::clamp(
++				durationForFps(maxFps), minimum, maximum);
++			const int64_t requestedMaximum = std::clamp(
++				durationForFps(minFps), requestedMinimum, maximum);
++
++			controls.set(controls::FrameDurationLimits,
++				     { requestedMinimum, requestedMaximum });
++		}
++	}
++
++	const bool autofocusSupported =
++		availableControls.find(&controls::AfMode) != availableControls.end();
++	if (autofocusSupported &&
++	    settings.getEntry(ANDROID_CONTROL_AF_MODE, &entry)) {
++		int32_t mode;
++		switch (*entry.data.u8) {
++		case ANDROID_CONTROL_AF_MODE_OFF:
++		case ANDROID_CONTROL_AF_MODE_AUTO:
++			mode = controls::AfModeAuto;
++			break;
++		case ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO:
++		case ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE:
++			mode = controls::AfModeContinuous;
++			break;
++		default:
++			LOG(HAL, Error) << "Unsupported Android AF mode "
++					<< static_cast<unsigned int>(*entry.data.u8);
++			return -EINVAL;
++		}
++		controls.set(controls::AfMode, mode);
++	}
++
++	const bool afRegionsSupported =
++		availableControls.find(&controls::AfWindows) !=
++			availableControls.end() &&
++		availableControls.find(&controls::AfMetering) !=
++			availableControls.end();
++	if (afRegionsSupported &&
++	    settings.getEntry(ANDROID_CONTROL_AF_REGIONS, &entry)) {
++		const int32_t *best = nullptr;
++		int32_t bestWeight = 0;
++		for (size_t i = 0; i + 4 < entry.count; i += 5) {
++			const int32_t *region = entry.data.i32 + i;
++			if (region[4] <= bestWeight || region[2] <= region[0] ||
++			    region[3] <= region[1])
++				continue;
++			best = region;
++			bestWeight = region[4];
++		}
++
++		Rectangle focusWindow;
++		if (best) {
++			focusWindow = Rectangle{
++				best[0], best[1],
++				static_cast<unsigned int>(best[2] - best[0]),
++				static_cast<unsigned int>(best[3] - best[1])
++			};
++			controls.set(controls::AfMetering,
++				     controls::AfMeteringWindows);
++		} else {
++			controls.set(controls::AfMetering,
++				     controls::AfMeteringAuto);
++		}
++		controls.set(controls::AfWindows,
++			     Span<const Rectangle>(&focusWindow, 1));
++	}
++
++	if (autofocusSupported &&
++	    settings.getEntry(ANDROID_CONTROL_AF_TRIGGER, &entry)) {
++		switch (*entry.data.u8) {
++		case ANDROID_CONTROL_AF_TRIGGER_IDLE:
++			break;
++		case ANDROID_CONTROL_AF_TRIGGER_START:
++			controls.set(controls::AfTrigger,
++				     controls::AfTriggerStart);
++			break;
++		case ANDROID_CONTROL_AF_TRIGGER_CANCEL:
++			controls.set(controls::AfTrigger,
++				     controls::AfTriggerCancel);
++			break;
++		default:
++			LOG(HAL, Error) << "Unsupported Android AF trigger "
++					<< static_cast<unsigned int>(*entry.data.u8);
++			return -EINVAL;
++		}
++	}
++
++	if (availableControls.find(&controls::draft::FaceDetectMode) !=
++		availableControls.end() &&
++	    settings.getEntry(ANDROID_STATISTICS_FACE_DETECT_MODE, &entry)) {
+ 		const uint8_t *data = entry.data.u8;
+ 		controls.set(controls::draft::FaceDetectMode, data[0]);
+ 	}
+@@ -1465,6 +1620,12 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) cons
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AE_ANTIBANDING_MODE, value);
+ 
+ 	int32_t value32 = 0;
++	const auto &exposureValue = metadata.get(controls::ExposureValue);
++	if (exposureValue)
++		value32 = static_cast<int32_t>(std::lround(*exposureValue * 10.0f));
++	else if (settings.getEntry(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
++				   &entry))
++		value32 = *entry.data.i32;
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
+ 				 value32);
+ 
+@@ -1491,15 +1652,27 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) cons
+ 	value = ANDROID_CONTROL_AE_STATE_CONVERGED;
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AE_STATE, value);
+ 
+-	value = ANDROID_CONTROL_AF_MODE_OFF;
+-	resultMetadata->addEntry(ANDROID_CONTROL_AF_MODE, value);
++	uint8_t requestedAfMode = ANDROID_CONTROL_AF_MODE_OFF;
++	if (settings.getEntry(ANDROID_CONTROL_AF_MODE, &entry))
++		requestedAfMode = *entry.data.u8;
++	resultMetadata->addEntry(ANDROID_CONTROL_AF_MODE, requestedAfMode);
+ 
+-	value = ANDROID_CONTROL_AF_STATE_INACTIVE;
++	const auto &afState = metadata.get(controls::AfState);
++	value = androidAfState(afState.value_or(controls::AfStateIdle),
++			       requestedAfMode);
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AF_STATE, value);
++	const bool lensMoving =
++		afState && *afState == controls::AfStateScanning;
+ 
+ 	value = ANDROID_CONTROL_AF_TRIGGER_IDLE;
++	if (settings.getEntry(ANDROID_CONTROL_AF_TRIGGER, &entry))
++		value = *entry.data.u8;
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AF_TRIGGER, value);
+ 
++	if (settings.getEntry(ANDROID_CONTROL_AF_REGIONS, &entry))
++		resultMetadata->addEntry(ANDROID_CONTROL_AF_REGIONS,
++					 entry.data.i32, entry.count);
++
+ 	value = ANDROID_CONTROL_AWB_MODE_AUTO;
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AWB_MODE, value);
+ 
+@@ -1536,7 +1709,8 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) cons
+ 	float focal_length = 1.0;
+ 	resultMetadata->addEntry(ANDROID_LENS_FOCAL_LENGTH, focal_length);
+ 
+-	value = ANDROID_LENS_STATE_STATIONARY;
++	value = lensMoving ? ANDROID_LENS_STATE_MOVING
++			   : ANDROID_LENS_STATE_STATIONARY;
+ 	resultMetadata->addEntry(ANDROID_LENS_STATE, value);
+ 
+ 	value = ANDROID_LENS_OPTICAL_STABILIZATION_MODE_OFF;
+@@ -1582,6 +1756,14 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) cons
+ 		resultMetadata->addEntry(ANDROID_SENSOR_EXPOSURE_TIME,
+ 					 *exposureTime * 1000ULL);
+ 
++	const auto &analogueGain = metadata.get(controls::AnalogueGain);
++	if (analogueGain) {
++		const int32_t sensitivity = std::max(
++			1, static_cast<int32_t>(std::lround(*analogueGain * 100.0f)));
++		resultMetadata->addEntry(ANDROID_SENSOR_SENSITIVITY,
++					 sensitivity);
++	}
++
+ 	const auto &frameDuration = metadata.get(controls::FrameDuration);
+ 	if (frameDuration)
+ 		resultMetadata->addEntry(ANDROID_SENSOR_FRAME_DURATION,
+diff --git a/src/android/mm/cros_camera_buffer.cpp b/src/android/mm/cros_camera_buffer.cpp
+index e2a44a2..3b72304 100644
+--- a/src/android/mm/cros_camera_buffer.cpp
++++ b/src/android/mm/cros_camera_buffer.cpp
+@@ -28,6 +28,7 @@ public:
+ 	bool isValid() const { return registered_; }
+ 
+ 	unsigned int numPlanes() const;
++	int fd(unsigned int plane) const;
+ 
+ 	Span<uint8_t> plane(unsigned int plane);
+ 
+@@ -99,6 +100,14 @@ unsigned int CameraBuffer::Private::numPlanes() const
+ 	return bufferManager_->GetNumPlanes(handle_);
+ }
+ 
++int CameraBuffer::Private::fd(unsigned int plane) const
++{
++	if (!handle_ || handle_->numFds < 1 || plane >= numPlanes())
++		return -1;
++
++	return handle_->data[handle_->numFds == 1 ? 0 : plane];
++}
++
+ Span<uint8_t> CameraBuffer::Private::plane(unsigned int plane)
+ {
+ 	if (!mapped_)
+diff --git a/src/android/mm/generic_camera_buffer.cpp b/src/android/mm/generic_camera_buffer.cpp
+index 0ffcb44..f72cda7 100644
+--- a/src/android/mm/generic_camera_buffer.cpp
++++ b/src/android/mm/generic_camera_buffer.cpp
+@@ -7,6 +7,8 @@
+ 
+ #include "../camera_buffer.h"
+ 
++#include <algorithm>
++#include <sys/stat.h>
+ #include <sys/mman.h>
+ #include <unistd.h>
+ 
+@@ -15,6 +17,8 @@
+ #include "libcamera/internal/formats.h"
+ #include "libcamera/internal/mapped_framebuffer.h"
+ 
++#include "minigbm_buffer.h"
++
+ using namespace libcamera;
+ 
+ LOG_DECLARE_CATEGORY(HAL)
+@@ -30,6 +34,7 @@ public:
+ 	~Private();
+ 
+ 	unsigned int numPlanes() const;
++	int fd(unsigned int plane) const;
+ 
+ 	Span<uint8_t> plane(unsigned int plane);
+ 
+@@ -48,10 +53,11 @@ private:
+ 
+ 	void map();
+ 
+-	int fd_;
+ 	int flags_;
+-	off_t bufferLength_;
++	size_t totalLength_;
+ 	bool mapped_;
++	std::vector<int> planeFds_;
++	std::vector<size_t> mapLengths_;
+ 	std::vector<PlaneInfo> planeInfo_;
+ };
+ 
+@@ -59,7 +65,7 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+ 			       buffer_handle_t camera3Buffer,
+ 			       PixelFormat pixelFormat,
+ 			       const Size &size, int flags)
+-	: fd_(-1), flags_(flags), bufferLength_(-1), mapped_(false)
++	: flags_(flags), totalLength_(0), mapped_(false)
+ {
+ 	error_ = 0;
+ 
+@@ -70,39 +76,84 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+ 		return;
+ 	}
+ 
++	if (!camera3Buffer || camera3Buffer->numFds < 1 ||
++	    camera3Buffer->data[0] < 0) {
++		error_ = -EINVAL;
++		LOG(HAL, Error) << "No valid file descriptor";
++		return;
++	}
++
+ 	/*
+-	 * As Android doesn't offer an API to query buffer layouts, assume for
+-	 * now that the buffer is backed by a single dmabuf, with planes being
+-	 * stored contiguously.
++	 * Waydroid's minigbm gralloc exposes one descriptor and explicit layout
++	 * metadata per plane. Use that ABI when present instead of applying the
++	 * generic single-dmabuf assumption.
+ 	 */
+-	for (int i = 0; i < camera3Buffer->numFds; i++) {
+-		if (camera3Buffer->data[i] == -1 || camera3Buffer->data[i] == fd_)
+-			continue;
+-
+-		if (fd_ != -1) {
+-			error_ = -EINVAL;
+-			LOG(HAL, Error) << "Discontiguous planes are not supported";
+-			return;
++	if (const auto *minigbm =
++		    android::minigbmBufferHandle(camera3Buffer)) {
++		planeInfo_.reserve(minigbm->numPlanes);
++		planeFds_.reserve(minigbm->numPlanes);
++		mapLengths_.reserve(minigbm->numPlanes);
++
++		for (unsigned int i = 0; i < minigbm->numPlanes; ++i) {
++			const int fd = minigbm->fds[i];
++			const size_t end = static_cast<size_t>(minigbm->offsets[i]) +
++					   minigbm->sizes[i];
++			if (fd < 0 || minigbm->sizes[i] == 0 || end == 0) {
++				error_ = -EINVAL;
++				LOG(HAL, Error) << "Invalid minigbm plane " << i;
++				return;
++			}
++
++			struct stat status = {};
++			size_t mapLength = end;
++			if (fstat(fd, &status) == 0 && status.st_size > 0)
++				mapLength = status.st_size;
++			if (mapLength < end) {
++				error_ = -EINVAL;
++				LOG(HAL, Error)
++					<< "Minigbm plane " << i << " is out of buffer:"
++					<< " plane offset=" << minigbm->offsets[i]
++					<< ", plane size=" << minigbm->sizes[i]
++					<< ", buffer length=" << mapLength;
++				return;
++			}
++
++			planeFds_.push_back(fd);
++			mapLengths_.push_back(mapLength);
++			planeInfo_.push_back({ minigbm->strides[i],
++					       minigbm->offsets[i],
++					       minigbm->sizes[i] });
++			totalLength_ = std::max(totalLength_, mapLength);
+ 		}
+ 
+-		fd_ = camera3Buffer->data[i];
+-	}
++		if (minigbm->totalSize)
++			totalLength_ = minigbm->totalSize;
+ 
+-	if (fd_ == -1) {
+-		error_ = -EINVAL;
+-		LOG(HAL, Error) << "No valid file descriptor";
++		LOG(HAL, Debug)
++			<< "Using minigbm layout with " << minigbm->numPlanes
++			<< " plane(s)";
+ 		return;
+ 	}
+ 
+-	bufferLength_ = lseek(fd_, 0, SEEK_END);
+-	if (bufferLength_ < 0) {
+-		error_ = -errno;
+-		LOG(HAL, Error) << "Failed to get buffer length";
+-		return;
++	/* Generic fallback: all logical planes share one contiguous dmabuf. */
++	const int fd = camera3Buffer->data[0];
++	struct stat status = {};
++	if (fstat(fd, &status) == 0 && status.st_size > 0)
++		totalLength_ = status.st_size;
++	else {
++		off_t length = lseek(fd, 0, SEEK_END);
++		if (length < 0) {
++			error_ = -errno;
++			LOG(HAL, Error) << "Failed to get buffer length";
++			return;
++		}
++		totalLength_ = length;
+ 	}
+ 
+ 	const unsigned int numPlanes = info.numPlanes();
+ 	planeInfo_.resize(numPlanes);
++	planeFds_.resize(numPlanes, fd);
++	mapLengths_.resize(numPlanes, totalLength_);
+ 
+ 	unsigned int offset = 0;
+ 	for (unsigned int i = 0; i < numPlanes; ++i) {
+@@ -112,11 +163,12 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+ 		planeInfo_[i].offset = offset;
+ 		planeInfo_[i].size = planeSize;
+ 
+-		if (bufferLength_ < offset + planeSize) {
++		if (totalLength_ < offset + planeSize) {
++			error_ = -EINVAL;
+ 			LOG(HAL, Error) << "Plane " << i << " is out of buffer:"
+ 					<< " plane offset=" << offset
+ 					<< ", plane size=" << planeSize
+-					<< ", buffer length=" << bufferLength_;
++					<< ", buffer length=" << totalLength_;
+ 			return;
+ 		}
+ 
+@@ -133,6 +185,14 @@ unsigned int CameraBuffer::Private::numPlanes() const
+ 	return planeInfo_.size();
+ }
+ 
++int CameraBuffer::Private::fd(unsigned int plane) const
++{
++	if (plane >= planeFds_.size())
++		return -1;
++
++	return planeFds_[plane];
++}
++
+ Span<uint8_t> CameraBuffer::Private::plane(unsigned int plane)
+ {
+ 	if (!mapped_)
+@@ -169,26 +229,26 @@ unsigned int CameraBuffer::Private::size(unsigned int plane) const
+ 
+ size_t CameraBuffer::Private::jpegBufferSize(size_t maxJpegBufferSize) const
+ {
+-	ASSERT(bufferLength_ >= 0);
+-
+-	return std::min<unsigned int>(bufferLength_, maxJpegBufferSize);
++	return std::min(totalLength_, maxJpegBufferSize);
+ }
+ 
+ void CameraBuffer::Private::map()
+ {
+-	ASSERT(fd_ != -1);
+-	ASSERT(bufferLength_ >= 0);
+-
+-	void *address = mmap(nullptr, bufferLength_, flags_, MAP_SHARED, fd_, 0);
+-	if (address == MAP_FAILED) {
+-		error_ = -errno;
+-		LOG(HAL, Error) << "Failed to mmap plane";
+-		return;
+-	}
+-	maps_.emplace_back(static_cast<uint8_t *>(address), bufferLength_);
++	ASSERT(planeFds_.size() == planeInfo_.size());
++	ASSERT(mapLengths_.size() == planeInfo_.size());
+ 
++	maps_.reserve(planeInfo_.size());
+ 	planes_.reserve(planeInfo_.size());
+-	for (const auto &info : planeInfo_) {
++	for (unsigned int i = 0; i < planeInfo_.size(); ++i) {
++		const auto &info = planeInfo_[i];
++		void *address = mmap(nullptr, mapLengths_[i], flags_, MAP_SHARED,
++				     planeFds_[i], 0);
++		if (address == MAP_FAILED) {
++			error_ = -errno;
++			LOG(HAL, Error) << "Failed to mmap plane " << i;
++			return;
++		}
++		maps_.emplace_back(static_cast<uint8_t *>(address), mapLengths_[i]);
+ 		planes_.emplace_back(
+ 			static_cast<uint8_t *>(address) + info.offset, info.size);
+ 	}
+diff --git a/src/android/mm/generic_frame_buffer_allocator.cpp b/src/android/mm/generic_frame_buffer_allocator.cpp
+index 25ad6b0..48ab90c 100644
+--- a/src/android/mm/generic_frame_buffer_allocator.cpp
++++ b/src/android/mm/generic_frame_buffer_allocator.cpp
+@@ -22,6 +22,7 @@
+ #include "../camera_device.h"
+ #include "../frame_buffer_allocator.h"
+ #include "../hal_framebuffer.h"
++#include "minigbm_buffer.h"
+ 
+ using namespace libcamera;
+ 
+@@ -76,8 +77,10 @@ public:
+ 		  hardwareModule_(nullptr),
+ 		  allocDevice_(nullptr)
+ 	{
+-		hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &hardwareModule_);
+-		ASSERT(hardwareModule_);
++		int ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
++					&hardwareModule_);
++		if (ret || !hardwareModule_)
++			LOG(HAL, Error) << "Failed to load gralloc module: " << ret;
+ 	}
+ 
+ 	~Private() override;
+@@ -95,7 +98,8 @@ PlatformFrameBufferAllocator::Private::~Private()
+ {
+ 	if (allocDevice_)
+ 		gralloc_close(allocDevice_);
+-	dlclose(hardwareModule_->dso);
++	if (hardwareModule_)
++		dlclose(hardwareModule_->dso);
+ }
+ 
+ std::unique_ptr<HALFrameBuffer>
+@@ -103,6 +107,9 @@ PlatformFrameBufferAllocator::Private::allocate(int halPixelFormat,
+ 						const libcamera::Size &size,
+ 						uint32_t usage)
+ {
++	if (!hardwareModule_)
++		return nullptr;
++
+ 	if (!allocDevice_) {
+ 		int ret = gralloc_open(hardwareModule_, &allocDevice_);
+ 		if (ret) {
+@@ -124,7 +131,29 @@ PlatformFrameBufferAllocator::Private::allocate(int halPixelFormat,
+ 		return nullptr;
+ 	}
+ 
+-	/* This code assumes the planes are mapped consecutively. */
++	/* Prefer the explicit per-plane layout exported by minigbm. */
++	if (const auto *minigbm = android::minigbmBufferHandle(handle)) {
++		std::vector<FrameBuffer::Plane> planes(minigbm->numPlanes);
++		for (auto [i, plane] : utils::enumerate(planes)) {
++			SharedFD fd{ minigbm->fds[i] };
++			if (!fd.isValid() || !minigbm->sizes[i]) {
++				LOG(HAL, Error) << "Invalid minigbm plane " << i;
++				allocDevice_->free(allocDevice_, handle);
++				return nullptr;
++			}
++
++			plane.fd = fd;
++			plane.offset = minigbm->offsets[i];
++			plane.length = minigbm->sizes[i];
++		}
++
++		return std::make_unique<HALFrameBuffer>(
++			std::make_unique<GenericFrameBufferData>(
++				allocDevice_, handle, planes),
++			handle);
++	}
++
++	/* Generic fallback assumes the planes are mapped consecutively. */
+ 	const libcamera::PixelFormat pixelFormat =
+ 		cameraDevice_->capabilities()->toPixelFormat(halPixelFormat);
+ 	const auto &info = PixelFormatInfo::info(pixelFormat);
+diff --git a/src/android/mm/libhardware_stub.c b/src/android/mm/libhardware_stub.c
+index 28faa63..f72b555 100644
+--- a/src/android/mm/libhardware_stub.c
++++ b/src/android/mm/libhardware_stub.c
+@@ -2,16 +2,30 @@
+ /*
+  * Copyright (C) 2023, Ideas on Board
+  *
+- * Android libhardware stub for test compilation
++ * Android libhardware runtime loader
+  */
+ 
++#include <dlfcn.h>
+ #include <errno.h>
+ 
+ #include <hardware/hardware.h>
+ 
+-int hw_get_module(const char *id __attribute__((__unused__)),
+-		  const struct hw_module_t **module)
++int hw_get_module(const char *id, const struct hw_module_t **module)
+ {
+-	*module = NULL;
+-	return -ENOTSUP;
++	typedef int (*hw_get_module_fn)(const char *, const struct hw_module_t **);
++	static void *libhardware;
++	static hw_get_module_fn real_hw_get_module;
++
++	if (!real_hw_get_module) {
++		libhardware = dlopen("libhardware.so", RTLD_NOW | RTLD_LOCAL);
++		if (!libhardware)
++			return -ENOENT;
++
++		real_hw_get_module =
++			(hw_get_module_fn)dlsym(libhardware, "hw_get_module");
++		if (!real_hw_get_module)
++			return -ENOSYS;
++	}
++
++	return real_hw_get_module(id, module);
+ }
+diff --git a/src/android/mm/minigbm_buffer.h b/src/android/mm/minigbm_buffer.h
+new file mode 100644
+index 0000000..5a3e6bc
+--- /dev/null
++++ b/src/android/mm/minigbm_buffer.h
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++/*
++ * Copyright 2016 The Chromium OS Authors. All rights reserved.
++ *
++ * Minimal view of the minigbm native handle layout. The layout and magic
++ * value are part of minigbm's cros_gralloc_handle ABI. Keeping this view
++ * local avoids linking the Android camera HAL to minigbm internals.
++ */
++
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++
++#include <hardware/gralloc.h>
++
++namespace libcamera::android {
++
++constexpr unsigned int kMinigbmMaxPlanes = 4;
++constexpr unsigned int kMinigbmMaxFds = kMinigbmMaxPlanes + 1;
++constexpr uint32_t kMinigbmMagic = 0xABCDDCBA;
++
++struct MinigbmBufferHandle : public native_handle_t {
++	int32_t fds[kMinigbmMaxFds];
++	uint32_t strides[kMinigbmMaxPlanes];
++	uint32_t offsets[kMinigbmMaxPlanes];
++	uint32_t sizes[kMinigbmMaxPlanes];
++	uint32_t id;
++	uint32_t width;
++	uint32_t height;
++	uint32_t format;
++	uint32_t tiling;
++	uint64_t formatModifier;
++	uint64_t useFlags;
++	uint32_t magic;
++	uint32_t pixelStride;
++	int32_t droidFormat;
++	int32_t usage;
++	uint32_t numPlanes;
++	uint64_t reservedRegionSize;
++	uint64_t totalSize;
++} __attribute__((packed));
++
++inline const MinigbmBufferHandle *minigbmBufferHandle(buffer_handle_t handle)
++{
++	if (!handle || handle->numFds < 1 || handle->numInts < 0)
++		return nullptr;
++
++	constexpr size_t dataWords =
++		(sizeof(MinigbmBufferHandle) - sizeof(native_handle_t)) /
++		sizeof(int32_t);
++	if (static_cast<size_t>(handle->numFds + handle->numInts) < dataWords)
++		return nullptr;
++
++	const auto *minigbm =
++		reinterpret_cast<const MinigbmBufferHandle *>(handle);
++	if (minigbm->magic != kMinigbmMagic || minigbm->numPlanes == 0 ||
++	    minigbm->numPlanes > kMinigbmMaxPlanes ||
++	    minigbm->numPlanes > static_cast<uint32_t>(handle->numFds))
++		return nullptr;
++
++	return minigbm;
++}
++
++} /* namespace libcamera::android */
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 67adb71..4001d06 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -30,12 +30,22 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	configuredMax_ = tuningData["maxPosition"].get<int32_t>(800);
+ 	coarseStep_ = tuningData["coarseStep"].get<int32_t>(100);
+ 	fineStep_ = tuningData["fineStep"].get<int32_t>(25);
++	fineRange_ = tuningData["fineRange"].get<int32_t>(coarseStep_);
++	configuredInitialPosition_ = tuningData["initialPosition"].get<int32_t>(
++		configuredMin_ + (configuredMax_ - configuredMin_) / 2);
+ 	settleTimeMs_ = tuningData["settleTimeMs"].get<unsigned int>(200);
++	settleFrames_ = tuningData["settleFrames"].get<unsigned int>(0);
+ 	startupDelayMs_ = tuningData["startupDelayMs"].get<unsigned int>(2000);
+ 	measureTimeMs_ = tuningData["measureTimeMs"].get<unsigned int>(100);
+ 	measureSamples_ = tuningData["measureSamples"].get<unsigned int>(2);
++	fastMeasureTimeMs_ =
++		tuningData["fastMeasureTimeMs"].get<unsigned int>(0);
++	fastMeasureSamples_ =
++		tuningData["fastMeasureSamples"].get<unsigned int>(1);
+ 	focusTolerance_ =
+ 		tuningData["focusTolerance"].get<double>(0.03);
++	finalFocusTolerance_ =
++		tuningData["finalFocusTolerance"].get<double>(0.25);
+ 	restartRatio_ = tuningData["restartRatio"].get<double>(0.7);
+ 	monitorWindowMs_ = tuningData["monitorWindowMs"].get<unsigned int>(250);
+ 	restartHoldMs_ = tuningData["restartHoldMs"].get<unsigned int>(1000);
+@@ -43,10 +53,15 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	bool continuous = tuningData["continuous"].get<bool>(true);
+ 
+ 	if (configuredMin_ < 0 || configuredMax_ <= configuredMin_ ||
+-	    coarseStep_ <= 0 || fineStep_ <= 0 ||
+-	    fineStep_ > coarseStep_ || !settleTimeMs_ || !measureTimeMs_ ||
+-	    !measureSamples_ || !monitorWindowMs_ || !restartHoldMs_ ||
++	    coarseStep_ <= 0 || fineStep_ <= 0 || fineRange_ <= 0 ||
++	    fineStep_ > coarseStep_ || fineStep_ > fineRange_ ||
++	    configuredInitialPosition_ < configuredMin_ ||
++	    configuredInitialPosition_ > configuredMax_ ||
++	    !settleTimeMs_ || !measureTimeMs_ ||
++	    !measureSamples_ || !fastMeasureSamples_ ||
++	    !monitorWindowMs_ || !restartHoldMs_ ||
+ 	    focusTolerance_ < 0.0 || focusTolerance_ >= 1.0 ||
++	    finalFocusTolerance_ < 0.0 || finalFocusTolerance_ >= 1.0 ||
+ 	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0) {
+ 		LOG(IPASoftAf, Error) << "Invalid autofocus tuning data";
+ 		return -EINVAL;
+@@ -88,14 +103,17 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
+ 			<< lensMin << "-" << lensMax;
+ 		return -EINVAL;
+ 	}
++	initialPosition_ = std::clamp(configuredInitialPosition_,
++				      minPosition_, maxPosition_);
+ 
+ 	mode_ = defaultMode_;
+ 	metering_ = controls::AfMeteringAuto;
+ 	focusWindow_ = {};
+ 	state_ = controls::AfStateIdle;
+ 	phase_ = ScanPhase::Idle;
+-	currentPosition_ = minPosition_;
+-	bestPosition_ = minPosition_;
++	currentPosition_ = initialPosition_;
++	bestPosition_ = initialPosition_;
++	lastFocusedPosition_ = initialPosition_;
+ 	bestMetric_ = 0.0;
+ 	positionMetrics_.clear();
+ 	focusedMetric_ = 0.0;
+@@ -105,14 +123,16 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
+ 	firstScan_ = true;
+ 
+ 	if (mode_ == controls::AfModeContinuous)
+-		startScan(context);
++		startScan(context, false);
+ 	else
+-		requestPosition(context, minPosition_);
++		requestPosition(context, initialPosition_);
+ 
+ 	LOG(IPASoftAf, Info)
+ 		<< "Autofocus range " << minPosition_ << "-" << maxPosition_
++		<< ", initial position " << initialPosition_
+ 		<< ", coarse step " << coarseStep_
+-		<< ", fine step " << fineStep_;
++		<< ", fine range/step " << fineRange_ << "/" << fineStep_
++		<< ", settle frames " << settleFrames_;
+ 
+ 	return 0;
+ }
+@@ -174,7 +194,7 @@ void Af::queueRequest(IPAContext &context,
+ 	}
+ 
+ 	if (restartContinuous)
+-		startScan(context);
++		startScan(context, false);
+ 
+ 	const auto &trigger = requestControls.get(controls::AfTrigger);
+ 	if (!trigger || mode_ != controls::AfModeAuto)
+@@ -182,7 +202,7 @@ void Af::queueRequest(IPAContext &context,
+ 
+ 	if (*trigger == controls::AfTriggerStart) {
+ 		if (phase_ == ScanPhase::Idle)
+-			startScan(context);
++			startScan(context, true);
+ 	} else if (*trigger == controls::AfTriggerCancel) {
+ 		phase_ = ScanPhase::Idle;
+ 		state_ = controls::AfStateIdle;
+@@ -204,21 +224,73 @@ void Af::prepare(IPAContext &context,
+ 	params->focusWindow = mapped.boundedTo(output);
+ }
+ 
+-void Af::buildCoarsePositions()
++void Af::buildCoarsePositions(int32_t center)
+ {
+ 	positions_.clear();
+-	positions_.push_back(minPosition_);
+-	for (int32_t position = minPosition_ + coarseStep_;
+-	     position < maxPosition_; position += coarseStep_)
+-		positions_.push_back(position);
+-	if (positions_.back() != maxPosition_)
+-		positions_.push_back(maxPosition_);
++	positions_.push_back(center);
++
++	const int32_t lower = std::max(minPosition_, center - coarseStep_);
++	const int32_t upper = std::min(maxPosition_, center + coarseStep_);
++	if (lower != center)
++		positions_.push_back(lower);
++	if (upper != center)
++		positions_.push_back(upper);
++}
++
++void Af::buildFastPositions(int32_t center)
++{
++	/*
++	 * Android camera clients commonly impose a five-second timeout on an
++	 * explicit AF trigger. Cover the full calibrated range with the previous
++	 * focused position as the first sample, then verify the selected result.
++	 * Continuous AF performs the slower local refinement separately.
++	 */
++	positions_.clear();
++	for (int32_t position : { center, minPosition_, maxPosition_ }) {
++		if (std::find(positions_.begin(), positions_.end(), position) ==
++		    positions_.end())
++			positions_.push_back(position);
++	}
++	if (positions_.size() < 3) {
++		const int32_t midpoint =
++			minPosition_ + (maxPosition_ - minPosition_) / 2;
++		if (std::find(positions_.begin(), positions_.end(), midpoint) ==
++		    positions_.end())
++			positions_.push_back(midpoint);
++	}
++}
++
++bool Af::extendCoarsePositions()
++{
++	if (positions_.empty() || positionMetrics_.size() != positions_.size())
++		return false;
++
++	auto best = std::max_element(positionMetrics_.begin(),
++				     positionMetrics_.end());
++	const std::size_t bestIndex = best - positionMetrics_.begin();
++	auto [minimum, maximum] = std::minmax_element(positions_.begin(),
++						      positions_.end());
++	int32_t next;
++
++	if (positions_[bestIndex] == *minimum && *minimum > minPosition_)
++		next = std::max(minPosition_, *minimum - coarseStep_);
++	else if (positions_[bestIndex] == *maximum && *maximum < maxPosition_)
++		next = std::min(maxPosition_, *maximum + coarseStep_);
++	else
++		return false;
++
++	if (std::find(positions_.begin(), positions_.end(), next) !=
++	    positions_.end())
++		return false;
++
++	positions_.push_back(next);
++	return true;
+ }
+ 
+ void Af::buildFinePositions()
+ {
+-	int32_t start = std::max(minPosition_, bestPosition_ - coarseStep_);
+-	int32_t end = std::min(maxPosition_, bestPosition_ + coarseStep_);
++	int32_t start = std::max(minPosition_, bestPosition_ - fineRange_);
++	int32_t end = std::min(maxPosition_, bestPosition_ + fineRange_);
+ 
+ 	positions_.clear();
+ 	positions_.push_back(start);
+@@ -235,22 +307,28 @@ void Af::buildFinePositions()
+ 
+ void Af::requestPosition(IPAContext &context, int32_t position)
+ {
++	const bool moved = position != currentPosition_;
+ 	currentPosition_ = position;
+ 	context.activeState.af.lensPosition = position;
+ 	settleUntil_ = std::chrono::steady_clock::now() +
+ 		std::chrono::milliseconds(settleTimeMs_);
+ 	measurementStarted_ = false;
++	settleFramesRemaining_ = moved ? settleFrames_ : 0;
+ 	samples_ = 0;
+ 	metricSum_ = 0.0;
+ 
+ 	LOG(IPASoftAf, Debug) << "Requesting lens position " << position;
+ }
+ 
+-void Af::startScan(IPAContext &context)
++void Af::startScan(IPAContext &context, bool fast)
+ {
+-	buildCoarsePositions();
++	fastScan_ = fast;
++	if (fastScan_)
++		buildFastPositions(lastFocusedPosition_);
++	else
++		buildCoarsePositions(lastFocusedPosition_);
+ 	positionIndex_ = 0;
+-	bestPosition_ = minPosition_;
++	bestPosition_ = lastFocusedPosition_;
+ 	bestMetric_ = -std::numeric_limits<double>::infinity();
+ 	positionMetrics_.clear();
+ 	phase_ = ScanPhase::Coarse;
+@@ -261,6 +339,9 @@ void Af::startScan(IPAContext &context)
+ 	scanNotBefore_ = std::chrono::steady_clock::now() +
+ 		std::chrono::milliseconds(firstScan_ ? startupDelayMs_ : 0);
+ 	requestPosition(context, positions_.front());
++	/* A new metering window also needs the queued pre-window frame flushed. */
++	if (fastScan_)
++		settleFramesRemaining_ = settleFrames_;
+ }
+ 
+ void Af::selectBestPosition()
+@@ -311,6 +392,19 @@ void Af::finishPosition(IPAContext &context, double metric)
+ 	}
+ 
+ 	if (phase_ == ScanPhase::Coarse) {
++		if (fastScan_) {
++			selectBestPosition();
++			phase_ = ScanPhase::FinalSettle;
++			requestPosition(context, bestPosition_);
++			return;
++		}
++
++		if (extendCoarsePositions()) {
++			positionIndex_ = positions_.size() - 1;
++			requestPosition(context, positions_.back());
++			return;
++		}
++
+ 		selectBestPosition();
+ 		buildFinePositions();
+ 		positionIndex_ = 0;
+@@ -347,24 +441,40 @@ void Af::process(IPAContext &context,
+ {
+ 	double metric = focusMetric(stats);
+ 	auto now = std::chrono::steady_clock::now();
++	const unsigned int activeMeasureTimeMs =
++		fastScan_ ? fastMeasureTimeMs_ : measureTimeMs_;
++	const unsigned int activeMeasureSamples =
++		fastScan_ ? fastMeasureSamples_ : measureSamples_;
+ 
+ 	if (metric >= 0.0 && phase_ == ScanPhase::FinalSettle) {
+ 		if (now >= settleUntil_) {
+-			if (!measurementStarted_) {
++			if (settleFramesRemaining_) {
++				settleFramesRemaining_--;
++			} else if (!measurementStarted_) {
+ 				measurementStarted_ = true;
+ 				measureUntil_ = now +
+-					std::chrono::milliseconds(measureTimeMs_);
++					std::chrono::milliseconds(activeMeasureTimeMs);
++				metricSum_ += metric;
++				samples_++;
++			} else {
++				metricSum_ += metric;
++				samples_++;
+ 			}
+ 
+-			metricSum_ += metric;
+-			samples_++;
+-			if (now >= measureUntil_ && samples_ >= measureSamples_) {
++			if (!settleFramesRemaining_ && measurementStarted_ &&
++			    now >= measureUntil_ && samples_ >= activeMeasureSamples) {
+ 				phase_ = ScanPhase::Idle;
+ 				focusedMetric_ = metricSum_ / samples_;
++				const double minimumFinalMetric =
++					bestMetric_ * (1.0 - finalFocusTolerance_);
+ 				state_ = std::isfinite(focusedMetric_) &&
+-						 focusedMetric_ > 0.0
++						 focusedMetric_ > 0.0 &&
++						 (!std::isfinite(bestMetric_) ||
++						  focusedMetric_ >= minimumFinalMetric)
+ 						 ? controls::AfStateFocused
+ 						 : controls::AfStateFailed;
++				if (state_ == controls::AfStateFocused)
++					lastFocusedPosition_ = currentPosition_;
+ 				restartNotBefore_ = now +
+ 					std::chrono::milliseconds(restartDelayMs_);
+ 				monitorWindowStart_ = now;
+@@ -382,16 +492,22 @@ void Af::process(IPAContext &context,
+ 		   (phase_ == ScanPhase::Coarse ||
+ 		    phase_ == ScanPhase::Fine)) {
+ 		if (now >= scanNotBefore_ && now >= settleUntil_) {
+-			if (!measurementStarted_) {
++			if (settleFramesRemaining_) {
++				settleFramesRemaining_--;
++			} else if (!measurementStarted_) {
+ 				firstScan_ = false;
+ 				measurementStarted_ = true;
+ 				measureUntil_ = now +
+-					std::chrono::milliseconds(measureTimeMs_);
++					std::chrono::milliseconds(activeMeasureTimeMs);
++				metricSum_ += metric;
++				samples_++;
++			} else {
++				metricSum_ += metric;
++				samples_++;
+ 			}
+ 
+-			metricSum_ += metric;
+-			samples_++;
+-			if (now >= measureUntil_ && samples_ >= measureSamples_)
++			if (!settleFramesRemaining_ && measurementStarted_ &&
++			    now >= measureUntil_ && samples_ >= activeMeasureSamples)
+ 				finishPosition(context, metricSum_ / samples_);
+ 		}
+ 	} else if (metric >= 0.0 &&
+@@ -425,7 +541,7 @@ void Af::process(IPAContext &context,
+ 						<< "Restarting continuous autofocus: metric "
+ 						<< monitorMetric << " fell below "
+ 						<< focusedMetric_ * restartRatio_;
+-					startScan(context);
++					startScan(context, false);
+ 				}
+ 			} else {
+ 				lowContrast_ = false;
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index de3a3c8..96df797 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -42,11 +42,13 @@ private:
+ 		FinalSettle,
+ 	};
+ 
+-	void startScan(IPAContext &context);
++	void startScan(IPAContext &context, bool fast = false);
+ 	void requestPosition(IPAContext &context, int32_t position);
+ 	void finishPosition(IPAContext &context, double metric);
+ 	void selectBestPosition();
+-	void buildCoarsePositions();
++	void buildCoarsePositions(int32_t center);
++	void buildFastPositions(int32_t center);
++	bool extendCoarsePositions();
+ 	void buildFinePositions();
+ 	static double focusMetric(const SwIspStats *stats);
+ 
+@@ -54,11 +56,17 @@ private:
+ 	int32_t configuredMax_ = 800;
+ 	int32_t coarseStep_ = 100;
+ 	int32_t fineStep_ = 25;
++	int32_t fineRange_ = 100;
++	int32_t configuredInitialPosition_ = 600;
+ 	unsigned int settleTimeMs_ = 200;
++	unsigned int settleFrames_ = 0;
+ 	unsigned int startupDelayMs_ = 2000;
+ 	unsigned int measureTimeMs_ = 100;
+ 	unsigned int measureSamples_ = 2;
++	unsigned int fastMeasureTimeMs_ = 0;
++	unsigned int fastMeasureSamples_ = 1;
+ 	double focusTolerance_ = 0.03;
++	double finalFocusTolerance_ = 0.25;
+ 	double restartRatio_ = 0.7;
+ 	unsigned int monitorWindowMs_ = 250;
+ 	unsigned int restartHoldMs_ = 1000;
+@@ -67,6 +75,8 @@ private:
+ 
+ 	int32_t minPosition_ = 0;
+ 	int32_t maxPosition_ = 0;
++	int32_t initialPosition_ = 0;
++	int32_t lastFocusedPosition_ = 0;
+ 	int32_t mode_ = 0;
+ 	int32_t metering_ = 0;
+ 	int32_t state_ = 0;
+@@ -84,7 +94,9 @@ private:
+ 	std::chrono::steady_clock::time_point restartNotBefore_;
+ 	std::chrono::steady_clock::time_point lowContrastSince_;
+ 	bool firstScan_ = true;
++	bool fastScan_ = false;
+ 	bool measurementStarted_ = false;
++	unsigned int settleFramesRemaining_ = 0;
+ 	unsigned int samples_ = 0;
+ 	double metricSum_ = 0.0;
+ 	double bestMetric_ = 0.0;
+diff --git a/src/libcamera/base/thread.cpp b/src/libcamera/base/thread.cpp
+index bcb25ba..92523d0 100644
+--- a/src/libcamera/base/thread.cpp
++++ b/src/libcamera/base/thread.cpp
+@@ -11,6 +11,7 @@
+ #include <list>
+ #include <optional>
+ #include <pthread.h>
++#include <sched.h>
+ #include <sys/syscall.h>
+ #include <sys/types.h>
+ #include <unistd.h>
+@@ -462,7 +463,12 @@ void Thread::setThreadAffinityInternal()
+ 		return;
+ 
+ 	const cpu_set_t &cpuset = data_->cpuset_.value();
++#if defined(__ANDROID__)
++	sched_setaffinity(pthread_gettid_np(thread_.native_handle()),
++			  sizeof(cpuset), &cpuset);
++#else
+ 	pthread_setaffinity_np(thread_.native_handle(), sizeof(cpuset), &cpuset);
++#endif
+ }
+ 
+ /**
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 7ec71cf..7b277da 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -436,7 +436,13 @@ protected:
+ 
+ private:
+ 	static constexpr unsigned int kMaxQueuedRequestsDevice = 4;
+-	static constexpr unsigned int kNumInternalBuffers = 4;
++	/*
++	 * Keep only one buffer being processed and one being captured. A deeper
++	 * queue adds several frames of latency to controls produced by the software
++	 * ISP (notably lens controls from contrast autofocus), as the queued raw
++	 * frames predate the new control value.
++	 */
++	static constexpr unsigned int kNumInternalBuffers = 2;
+ 
+ 	struct EntityData {
+ 		std::unique_ptr<V4L2VideoDevice> video;
+@@ -1402,12 +1408,15 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 		}
+ 
+ 		const unsigned int bufferCount = cfg.bufferCount;
+-		if (!bufferCount)
++		if (!bufferCount) {
++			/*
++			 * A zero buffer count means that the application left the
++			 * choice to the pipeline handler. Applying the default is not
++			 * an adjustment to an application requirement.
++			 */
+ 			cfg.bufferCount = kNumBuffersDefault;
+-		else if (bufferCount > kNumBuffersMax)
++		} else if (bufferCount > kNumBuffersMax) {
+ 			cfg.bufferCount = kNumBuffersMax;
+-
+-		if (cfg.bufferCount != bufferCount) {
+ 			LOG(SimplePipeline, Debug)
+ 				<< "Adjusting bufferCount from " << bufferCount
+ 				<< " to " << cfg.bufferCount;
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 3e8d088..5c6cd89 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -437,7 +437,8 @@ int DebayerCpu::getInputConfig(PixelFormat inputFormat, DebayerInputConfig &conf
+ 						   formats::ARGB8888,
+ 						   formats::BGR888,
+ 						   formats::XBGR8888,
+-						   formats::ABGR8888 };
++						   formats::ABGR8888,
++						   formats::NV12 };
+ 
+ 	if ((bayerFormat.bitDepth == 8 || bayerFormat.bitDepth == 10 || bayerFormat.bitDepth == 12) &&
+ 	    bayerFormat.packing == BayerFormat::Packing::None &&
+@@ -476,6 +477,11 @@ int DebayerCpu::getInputConfig(PixelFormat inputFormat, DebayerInputConfig &conf
+ 
+ int DebayerCpu::getOutputConfig(PixelFormat outputFormat, DebayerOutputConfig &config)
+ {
++	if (outputFormat == formats::NV12) {
++		config.bpp = 12;
++		return 0;
++	}
++
+ 	if (outputFormat == formats::RGB888 || outputFormat == formats::BGR888) {
+ 		config.bpp = 24;
+ 		return 0;
+@@ -680,8 +686,20 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 		return -EINVAL;
+ 	}
+ 
++	outputIsNv12_ = outputCfg.pixelFormat == formats::NV12;
++	debayerBpp_ = outputIsNv12_ ? 24 : outputConfig_.bpp;
++	debayerStride_ = outputIsNv12_
++			 ? (outputCfg.size.width * debayerBpp_ / 8 + 7) & ~7
++			 : outputConfig_.stride;
++
++	if (outputIsNv12_)
++		debayerBuffer_.resize(debayerStride_ * outputCfg.size.height);
++	else
++		debayerBuffer_.clear();
++
+ 	int ret = setDebayerFunctions(inputCfg.pixelFormat,
+-				      outputCfg.pixelFormat,
++				      outputIsNv12_ ? formats::RGB888
++						    : outputCfg.pixelFormat,
+ 				      ccmEnabled);
+ 	if (ret != 0)
+ 		return -EINVAL;
+@@ -783,6 +801,12 @@ DebayerCpu::strideAndFrameSize(const PixelFormat &outputFormat, const Size &size
+ 	if (getOutputConfig(outputFormat, config) != 0)
+ 		return std::make_tuple(0, 0);
+ 
++	/* NV12 has one byte per line in the Y and interleaved UV planes. */
++	if (outputFormat == formats::NV12) {
++		unsigned int stride = (size.width + 7) & ~7;
++		return std::make_tuple(stride, stride * size.height * 3 / 2);
++	}
++
+ 	/* round up to multiple of 8 for 64 bits alignment */
+ 	unsigned int stride = (size.width * config.bpp / 8 + 7) & ~7;
+ 
+@@ -847,7 +871,7 @@ void DebayerCpuThread::process(uint32_t frame, const uint8_t *src, uint8_t *dst)
+ 	src += (window.y + yStart_) * debayer_->inputConfig_.stride +
+ 	       window.x * debayer_->inputConfig_.bpp / 8;
+ 	/* Adjust dst for yStart_ */
+-	dst += yStart_ * debayer_->outputConfig_.stride;
++	dst += yStart_ * debayer_->debayerStride_;
+ 
+ 	if (debayer_->inputConfig_.patternSize.height == 2)
+ 		process2(frame, src, dst);
+@@ -862,7 +886,7 @@ void DebayerCpuThread::process(uint32_t frame, const uint8_t *src, uint8_t *dst)
+ 
+ void DebayerCpuThread::process2(uint32_t frame, const uint8_t *src, uint8_t *dst)
+ {
+-	unsigned int outputStride = debayer_->outputConfig_.stride;
++	unsigned int outputStride = debayer_->debayerStride_;
+ 	unsigned int inputStride = debayer_->inputConfig_.stride;
+ 	Rectangle &window = debayer_->window_;
+ 	unsigned int yEnd = yEnd_;
+@@ -928,7 +952,7 @@ void DebayerCpuThread::process2(uint32_t frame, const uint8_t *src, uint8_t *dst
+ 
+ void DebayerCpuThread::process4(uint32_t frame, const uint8_t *src, uint8_t *dst)
+ {
+-	unsigned int outputStride = debayer_->outputConfig_.stride;
++	unsigned int outputStride = debayer_->debayerStride_;
+ 	unsigned int inputStride = debayer_->inputConfig_.stride;
+ 
+ 	/*
+@@ -1072,8 +1096,8 @@ void DebayerCpu::applySharpness(Span<uint8_t> output, float sharpness)
+ 	if (sharpness <= 0.0f || outputSize_.width < 3 || outputSize_.height < 3)
+ 		return;
+ 
+-	const unsigned int bytesPerPixel = outputConfig_.bpp / 8;
+-	const unsigned int stride = outputConfig_.stride;
++	const unsigned int bytesPerPixel = debayerBpp_ / 8;
++	const unsigned int stride = debayerStride_;
+ 	std::array<std::vector<uint8_t>, 3> lines;
+ 	for (unsigned int i = 0; i < lines.size(); ++i) {
+ 		lines[i].resize(stride);
+@@ -1107,6 +1131,87 @@ void DebayerCpu::applySharpness(Span<uint8_t> output, float sharpness)
+ 	}
+ }
+ 
++bool DebayerCpu::convertRgbToNv12(Span<const uint8_t> input,
++				  const std::vector<Span<uint8_t>> &output)
++{
++	const unsigned int width = outputSize_.width;
++	const unsigned int height = outputSize_.height;
++	const unsigned int yLength = outputConfig_.stride * height;
++	const unsigned int uvLength = outputConfig_.stride * height / 2;
++
++	if (width % 2 || height % 2 || input.size() < debayerStride_ * height ||
++	    output.empty()) {
++		LOG(Debayer, Error) << "Invalid RGB to NV12 buffer geometry";
++		return false;
++	}
++
++	uint8_t *yPlane;
++	uint8_t *uvPlane;
++	if (output.size() == 1) {
++		if (output[0].size() < yLength + uvLength) {
++			LOG(Debayer, Error) << "Contiguous NV12 output buffer is too small";
++			return false;
++		}
++
++		yPlane = output[0].data();
++		uvPlane = yPlane + yLength;
++	} else {
++		if (output[0].size() < yLength || output[1].size() < uvLength) {
++			LOG(Debayer, Error) << "Multi-planar NV12 output buffer is too small";
++			return false;
++		}
++
++		yPlane = output[0].data();
++		uvPlane = output[1].data();
++	}
++
++	const auto clampByte = [](int value) {
++		return static_cast<uint8_t>(std::clamp(value, 0, 255));
++	};
++
++	for (unsigned int y = 0; y < height; ++y) {
++		const uint8_t *src = input.data() + y * debayerStride_;
++		uint8_t *dst = yPlane + y * outputConfig_.stride;
++		for (unsigned int x = 0; x < width; ++x) {
++			const int blue = src[x * 3];
++			const int green = src[x * 3 + 1];
++			const int red = src[x * 3 + 2];
++			dst[x] = clampByte(((66 * red + 129 * green + 25 * blue + 128) >> 8) + 16);
++		}
++		std::fill(dst + width, dst + outputConfig_.stride, 16);
++	}
++
++	for (unsigned int y = 0; y < height; y += 2) {
++		const uint8_t *src0 = input.data() + y * debayerStride_;
++		const uint8_t *src1 = src0 + debayerStride_;
++		uint8_t *dst = uvPlane + y / 2 * outputConfig_.stride;
++
++		for (unsigned int x = 0; x < width; x += 2) {
++			int blue = 0;
++			int green = 0;
++			int red = 0;
++			for (unsigned int row = 0; row < 2; ++row) {
++				const uint8_t *src = row ? src1 : src0;
++				for (unsigned int column = 0; column < 2; ++column) {
++					const unsigned int offset = (x + column) * 3;
++					blue += src[offset];
++					green += src[offset + 1];
++					red += src[offset + 2];
++				}
++			}
++
++			blue = (blue + 2) / 4;
++			green = (green + 2) / 4;
++			red = (red + 2) / 4;
++			dst[x] = clampByte(((-38 * red - 74 * green + 112 * blue + 128) >> 8) + 128);
++			dst[x + 1] = clampByte(((112 * red - 94 * green - 18 * blue + 128) >> 8) + 128);
++		}
++		std::fill(dst + width, dst + outputConfig_.stride, 128);
++	}
++
++	return true;
++}
++
+ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
+ {
+ 	bench_.startFrame();
+@@ -1142,10 +1247,12 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 	workPending_ = (1 << threads_.size()) - 1;
+ 	workPendingMutex_.unlock();
+ 
++	uint8_t *debayerOutput = outputIsNv12_ ? debayerBuffer_.data()
++					     : out.planes()[0].data();
+ 	for (auto &thread : threads_)
+ 		thread->invokeMethod(&DebayerCpuThread::process,
+ 				     ConnectionTypeQueued, frame,
+-				     in.planes()[0].data(), out.planes()[0].data());
++				     in.planes()[0].data(), debayerOutput);
+ 
+ 	{
+ 		MutexLocker locker(workPendingMutex_);
+@@ -1154,9 +1261,21 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 		});
+ 	}
+ 
+-	applySharpness(out.planes()[0], params.sharpness);
+-
+-	metadata.planes()[0].bytesused = out.planes()[0].size();
++	Span<uint8_t> debayerSpan(debayerOutput, debayerStride_ * outputSize_.height);
++	applySharpness(debayerSpan, params.sharpness);
++
++	if (outputIsNv12_) {
++		if (!convertRgbToNv12(debayerSpan, out.planes()))
++			metadata.status = FrameMetadata::FrameError;
++		else if (metadata.planes().size() == 1)
++			metadata.planes()[0].bytesused = outputConfig_.frameSize;
++		else {
++			metadata.planes()[0].bytesused = outputConfig_.stride * outputSize_.height;
++			metadata.planes()[1].bytesused = outputConfig_.stride * outputSize_.height / 2;
++		}
++	} else {
++		metadata.planes()[0].bytesused = out.planes()[0].size();
++	}
+ 
+ 	dmaSyncers.clear();
+ 
+diff --git a/src/libcamera/software_isp/debayer_cpu.h b/src/libcamera/software_isp/debayer_cpu.h
+index b8e01e5..576282b 100644
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -130,6 +130,8 @@ private:
+ 	void updateGammaTable(const DebayerParams &params);
+ 	void updateLookupTables(const DebayerParams &params);
+ 	void applySharpness(Span<uint8_t> output, float sharpness);
++	bool convertRgbToNv12(Span<const uint8_t> input,
++			      const std::vector<Span<uint8_t>> &output);
+ 
+ 	static constexpr unsigned int kRGBLookupSize = 256;
+ 	static constexpr unsigned int kGammaLookupSize = 1024;
+@@ -150,6 +152,10 @@ private:
+ 	LookupTable gammaLut_;
+ 	bool ccmEnabled_;
+ 	DebayerParams params_;
++	bool outputIsNv12_ = false;
++	unsigned int debayerBpp_ = 0;
++	unsigned int debayerStride_ = 0;
++	std::vector<uint8_t> debayerBuffer_;
+ 
+ 	debayerFn debayer0_;
+ 	debayerFn debayer1_;
+-- 
+2.49.0
+

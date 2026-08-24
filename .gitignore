@@ -13,3 +13,4 @@ known_hosts
 *.apk
 packaging/pkg/
 packaging/src/
+tests/waydroid-camera-probe/build/

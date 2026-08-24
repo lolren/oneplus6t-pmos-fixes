@@ -10,12 +10,13 @@ Validated on 23-24 August 2026:
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
 - kernel: `7.1.0-rc1-sdm845` (currently package r8);
-- libcamera: initially `99990.7.2-r2`, currently r22 (upstream 0.7.2);
+- libcamera: initially `99990.7.2-r2`, currently r23 (upstream 0.7.2);
 - PipeWire libcamera SPA plugin: `1.6.8-r6`;
 - Snapshot: `50.0-r3`;
 - NetworkManager: 1.56.1;
 - ModemManager: 1.25.95; and
 - provider database package: `mobile-broadband-provider-info-20251101-r1`.
+- Waydroid: 1.6.3, Android 13 ARMv7 mainline image.
 
 ## Cellular results
 
@@ -371,6 +372,77 @@ bypassed. The regenerated pmaports integration patch applies to
 audited staged tree, and the patch SHA-256 is
 `f063d147676f957580f425c430cc39407e60a4ec0edfa6dfb29d2f4788d5140a`.
 
+### r23 frame duration and Waydroid Camera3
+
+The generic r23 patch carries VBLANK through delayed controls, advertises
+`FrameDurationLimits` only for supporting sensors, applies a requested frame
+length before expanding exposure and reports active frame duration. The mode
+default remains unchanged until a client requests a range. Native CPU source
+tests completed with 48 passes, one expected failure, 30 hardware skips and no
+failure.
+
+The regenerated pmaports integration patch applies to
+`875bddba6538818f2c3c9849e184f40688ad5140`, adds fifteen libcamera patches and
+has SHA-256
+`1e4f4fa1d1445200d43e6e7ee63ea2ed200b6a0cd64ac2c44be970493955475a`.
+A clean pmbootstrap 3.11.1 aarch64 build completed with:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r23.apk` | `45f6bd97df378aa8820f4651675f1b11b5d55f1294fe8116d6f01265c832687d` |
+| `libcamera-ipa-99990.7.2-r23.apk` | `63dcf5ef5b1fdc29652b5c2e5e3e729681719c42f06c1183e010e71d94067bf2` |
+
+The phone-side offline simulation listed exactly the r22-to-r23 IPA and
+libcamera upgrades and no removal. The same transaction installed both;
+`/etc/apk/world` remained SHA-256
+`af487ff52d686ad8fe74e9c15f1e4d9bd5d2b5a2234a1a2aa58d9847c3903075`
+before and after. Exact r22 rollback APK hashes were rechecked first. PipeWire
+was restarted without a phone reboot. All three stable native camera paths
+enumerated and completed separate bounded 30-frame 800x600 captures. In the
+main rear control context, `FrameDurationLimits` enumerated as
+`[52752..66667]` microseconds alongside EV and autofocus controls.
+
+The Android-only patch was cross-compiled for ARMv7 API 33 with NDK
+29.0.14206865. It added explicit minigbm plane layouts, software NV12 output,
+Camera2 exposure/frame metadata, variable FPS translation and rear AF
+modes/triggers/regions. The checked-in build helper was then rerun from empty
+build and stage directories; all 195 compile steps, installation, HAL discovery
+copy, tuning installation and final hash checks completed. The final installed
+Waydroid runtime hashes were:
+
+| Runtime file | SHA-256 |
+| --- | --- |
+| `camera.libcamera.so` | `c0def226bb98703882d747d048678e21f8934dad3678dbc4b0674c9630dbe6ef` |
+| `libcamera.so` | `beb6b2a226ce4395f3f6627865183fef46a6df60bd287c203720bf6e6d2645d4` |
+| `libcamera-base.so` | `ee7afde21eeea3cd1c0a8f8b87f68abbaca1b29b48eb3452d89b69223a25e8b9` |
+| `ipa_soft_simple.so` | `266877375bb694d3f591280b2abbe0b3df114110a3d78ca3074a7aab06b7ad22` |
+| `ipa_soft_simple.so.sign` | `879f8183a0b1f58011f0bcc0da883c76fbd853809d252837c6f629c79e90c9b7` |
+
+A dated overlay backup was hash-verified before replacement. After a Waydroid
+restart, Android reported three closed, available devices. The final unattended
+Camera2 probe completed `PROBE_DONE valid=3 total=3`. Every camera returned
+valid YUV, JPEG and implementation-defined frames plus -1/0/+1 EV metadata.
+Both rear cameras reported AF states `[3, 4]`; the fixed-focus front reported
+`[0]`. In the final scene, all three showed measured pixel movement rather than
+requiring the sensor-limit exception. The result file SHA-256 was
+`deb7756daa3fd0c1f21a8a703a4c264a9e9417353888bd6f127fd5269cfd64c2`.
+Private JPEGs were not committed.
+
+The separately installed provider fragment was then tested through another
+Waydroid container/session restart. With the reference host video GID rendered
+as 27, its SHA-256 was
+`f7a52425dcde9996b4119ab1115e9f6df0550cf0890f8e9f9a3987848e4ed733`.
+Android completed boot, the provider process retained supplementary groups
+`27 1004 1006 1026`, and `dumpsys media.camera` again reported three closed,
+available devices. No duplicate-service or failed-override error was present.
+
+Temporary per-frame exposure debug logging was removed after the probe. A
+production restart retained three-camera enumeration. The Android framework
+did log a recoverable JPEG blob-footer warning and occasional close/flush
+timeout during the stress run; every JPEG decoded and each following camera
+opened. These warnings remain tracked for broader application compatibility
+testing.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.
@@ -378,11 +450,14 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r22/r6/r3 userspace stack is installed and required no reboot. Patched and
-r20/r6/r2 rollback APKs remain staged in separate user-owned offline
-repositories.
+The r23/r6/r3 native userspace stack and r23 Waydroid overlay are installed and
+required no phone reboot. Exact r22 libcamera and older r20/r6/r2 rollback APKs
+remain staged in separate user-owned offline repositories.
 An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution
 photo, video, flash expectations, screen-off/on, suspend/resume and an actual
 exact-version rollback test remain to be recorded. Android-level HDR, temporal
 denoise, calibrated CCM/lens shading and computational fusion remain
-unimplemented and are not represented as completed work.
+unimplemented and are not represented as completed work. Native continuous AF
+still needs a prolonged stable-scene hunting test and tuning. The Snapshot GUI
+also remains below the requested Android-camera control level. Waydroid needs
+broader third-party camera-app, Play Store and lifecycle testing.

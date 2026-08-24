@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: CC0-1.0
+
+cameras:
+  "/base/soc@0/cci@ac4a000/i2c-bus@0/camera@1a":
+    location: back
+    rotation: 270
+
+  "/base/soc@0/cci@ac4a000/i2c-bus@1/camera@10":
+    location: back
+    rotation: 270
+
+  "/base/soc@0/cci@ac4a000/i2c-bus@0/camera@10":
+    location: front
+    rotation: 90

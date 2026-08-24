@@ -1,0 +1,12 @@
+# Render @VIDEO_GID@ as the numeric postmarketOS video group before install.
+service vendor.camera-provider-2-4 /vendor/bin/hw/android.hardware.camera.provider@2.4-service
+    override
+    interface android.hardware.camera.provider@2.4::ICameraProvider legacy/0
+    class hal
+    user cameraserver
+    group audio camera input drmrpc @VIDEO_GID@
+    setenv LIBCAMERA_LOG_LEVELS HAL:DEBUG,Camera:INFO,Debayer:DEBUG,SoftwareIsp:DEBUG,IPASoftAf:DEBUG
+    setenv LIBCAMERA_LOG_FILE /data/local/tmp/libcamera-provider.log
+    ioprio rt 4
+    capabilities SYS_NICE
+    task_profiles CameraServiceCapacity MaxPerformance

@@ -5,10 +5,11 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8, libcamera/IPA r22, `pipewire-spa-libcamera` r6 and Snapshot r3 are
+Kernel r8, libcamera/IPA r23, `pipewire-spa-libcamera` r6 and Snapshot r3 are
 installed on the reference phone. The complete userspace set was built for
 aarch64, hash-verified, simulated offline and installed without a reboot. Exact
-r20/r6/r2 packages are retained as the preferred rollback baseline. The r21
+r22 libcamera packages are the immediate rollback, and the complete r20/r6/r2
+set is also retained. The r21
 libcamera build is also retained as diagnostic evidence but is superseded
 because its fixed highlight ceiling weakened positive EV compensation. Nothing
 in this work flashes a partition, changes a boot slot or reboots the phone.
@@ -59,12 +60,17 @@ The libcamera helpers convert register codes to real gain and provide the
 10-bit black level. Kernel patches expose the intended 16x gain range on
 IMX371 and IMX376 instead of the previous approximately 1.88x limit.
 
-The main IMX519 1280x720 and 1920x1080 modes are capable of 120 and 60 fps,
-but the simple pipeline does not request a frame duration. It therefore used
-those maximum rates for ordinary preview, limiting exposure to about 4.2 ms
-or 16.7 ms. The kernel patch keeps those maximum rates while making 30 fps the
-default. This permits substantially longer exposure and lower gain until the
-pipeline gains an explicit `FrameDurationLimits` implementation.
+The main IMX519 1280x720 and 1920x1080 modes are capable of 120 and 60 fps.
+Before explicit timing control, ordinary preview could inherit those rates and
+limit exposure to about 4.2 ms or 16.7 ms. The kernel patch keeps those maximum
+rates while making 30 fps the default.
+
+Libcamera r23 now advertises `FrameDurationLimits` when the sensor exposes
+VBLANK. A client may request a range down to a conservative 15 fps, allowing a
+frame of about 66.7 ms in low light. The mode default is unchanged until a
+client requests a range, and a fixed-rate video request stays fixed. VBLANK is
+applied before exposure because the V4L2 exposure limit grows only after frame
+length changes. Active frame duration is returned in request metadata.
 
 ### Highlight-aware exposure and open tone defaults
 
@@ -127,6 +133,12 @@ position is its centre. `LensPosition` is deliberately not advertised: the
 kernel value is an uncalibrated DAC code, while libcamera defines that control
 in dioptres. Advertising a knowingly false unit would break applications.
 
+The isolated continuous-AF regression tests did not hunt after a forced scene
+change. Longer use in Snapshot has since exposed an occasional unnecessary
+rescan while the scene appears stable. That is tracked as an open hysteresis
+and scene-change-classification bug; it is not hidden by disabling continuous
+focus.
+
 ### Snapshot tap-to-focus and still resolution
 
 Tap-to-focus is implemented through the normal application stack rather than
@@ -179,7 +191,8 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r22/r3 |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r23/r3 |
+| Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
@@ -218,12 +231,14 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The fourteen-patch libcamera 0.7.2 series is in
+The fifteen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
 50.0 three-patch application series have their own versioned directories under
 `patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
-all patches, tuning, checksums and package revision bumps.
+all patches, tuning, checksums and package revision bumps. The Android-only
+Camera3 patch, build helper and provider configuration are documented in
+[WAYDROID.md](WAYDROID.md).
 
 No APK, private photograph, raw capture, device identifier, Android camera
 library or vendor tuning blob is committed.
@@ -244,7 +259,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r22,
+The reference build produced `libcamera`/`libcamera-ipa` r23,
 `pipewire-spa-libcamera` r6, Snapshot r3 and the existing SDM845 kernel r8.
 See `packaging/pmaports/README.md` for hashes and rollback rules. These commands
 build packages only.
@@ -302,14 +317,25 @@ lenses were parked at DAC 0 after tests.
   were rejected.
 - Repeated captures on all three sensors completed without EGL, CSI or camera
   process errors in both isolated and installed tests.
+- The r23 integration patch applied to the pinned pmaports base, its APKBUILD
+  passed shell syntax validation, and a clean pmbootstrap 3.11.1 aarch64 build
+  produced libcamera SHA-256
+  `45f6bd97df378aa8820f4651675f1b11b5d55f1294fe8116d6f01265c832687d`
+  and IPA SHA-256
+  `63dcf5ef5b1fdc29652b5c2e5e3e729681719c42f06c1183e010e71d94067bf2`.
+- The offline r22-to-r23 simulation listed exactly two upgrades and no
+  removal. Installation left `/etc/apk/world` byte-identical. All three stable
+  camera paths then completed separate bounded 30-frame native captures; the
+  main rear enumerated `FrameDurationLimits [52752..66667]` in its selected
+  control context.
 - The full native libcamera test run had 48 passes, one expected failure, 30
   hardware skips and no failures. PipeWire passed 52 of 52 tests. Clean
-  aarch64 package builds completed for libcamera r22, PipeWire r6 and Snapshot
+  aarch64 package builds completed for libcamera r23, PipeWire r6 and Snapshot
   r3.
 
-The retained r8 plus r20/r6/r2 package set is the preferred rollback baseline.
-The reference phone now runs kernel r8 with the validated r22/r6/r3 userspace
-packages.
+The retained r22 libcamera APKs are the immediate rollback. The r8 plus
+r20/r6/r2 package set remains the complete older baseline. The reference phone
+now runs kernel r8 with the validated r23/r6/r3 userspace packages.
 
 ## Installation boundary
 
@@ -320,16 +346,14 @@ revision is userspace-only and did not require a kernel upgrade or reboot.
 
 To reproduce the completed installation safely:
 
-1. retain exact copies or verified rebuilds of the prior r20 libcamera, r6
-   PipeWire plugin and r2 Snapshot packages;
+1. retain exact copies or verified rebuilds of the prior r22 libcamera and IPA
+   packages;
 2. stage patched and rollback APKs in separate offline repositories;
-3. put aarch64 APKs and `APKINDEX.tar.gz` under each repository's `aarch64/`
-   directory, but put `snapshot-lang` under `noarch/`; include both globs when
-   generating the `aarch64/APKINDEX.tar.gz` index;
+3. put the aarch64 APKs and `APKINDEX.tar.gz` under each repository's
+   `aarch64/` directory;
 4. pass the repository root—not its `aarch64/` subdirectory—to apk-tools 3,
-   run `apk upgrade --simulate`, and from the r20/r6/r2 baseline require only
-   the two r20-to-r22 libcamera upgrades and two r2-to-r3 Snapshot upgrades,
-   with no removal;
+   run `apk upgrade --simulate`, and from the r22 baseline require only the two
+   r22-to-r23 libcamera upgrades, with no removal;
 5. record the exact-version rollback command and a hash of `/etc/apk/world`;
    and
 6. close camera applications before installation. No reboot is needed for

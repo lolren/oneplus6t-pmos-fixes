@@ -13,12 +13,14 @@ SCRIPTS = \
 
 PYTHON_SCRIPTS = scripts/v4l2-focus-control.py
 
+HOST_BUILD_SCRIPTS = scripts/build-waydroid-camera
+
 .PHONY: all test install
 
 all: test
 
 test:
-	sh -n $(SCRIPTS) tests/test-apn-selection.sh tests/test-messages-check.sh packaging/APKBUILD
+	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) tests/test-apn-selection.sh tests/test-messages-check.sh packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
 	python3 tests/test-ppm-metrics.py

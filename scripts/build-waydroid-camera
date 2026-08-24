@@ -1,0 +1,174 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	printf '%s\n' \
+		'usage: build-waydroid-camera PATCHED_LIBCAMERA_SOURCE BUILD_DIR STAGE_DIR' \
+		'' \
+		'Required environment:' \
+		'  ANDROID_NDK_ROOT       Android NDK root (tested: 29.0.14206865)' \
+		'  WAYDROID_DEPS_PREFIX   ARMv7 Android static dependency prefix' \
+		'' \
+		'Optional environment:' \
+		'  ANDROID_API            Android API level (default: 33)'
+}
+
+if [ "$#" -ne 3 ]; then
+	usage >&2
+	exit 2
+fi
+
+source_dir=$1
+build_dir=$2
+stage_dir=$3
+android_api=${ANDROID_API:-33}
+ndk_root=${ANDROID_NDK_ROOT:-}
+deps_prefix=${WAYDROID_DEPS_PREFIX:-}
+
+if [ -z "$ndk_root" ] || [ -z "$deps_prefix" ]; then
+	usage >&2
+	exit 2
+fi
+
+case "$android_api" in
+	*[!0-9]*|'')
+		printf 'ANDROID_API must be a positive integer: %s\n' "$android_api" >&2
+		exit 2
+		;;
+esac
+
+if [ ! -f "$source_dir/meson.build" ] || \
+	   [ ! -f "$source_dir/src/android/mm/minigbm_buffer.h" ]; then
+	printf '%s\n' \
+		'The source must be libcamera 0.7.2 with the native series and Waydroid patch applied.' >&2
+	exit 1
+fi
+
+if [ -e "$build_dir" ] &&
+	find "$build_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+	printf 'Refusing non-empty build directory: %s\n' "$build_dir" >&2
+	exit 1
+fi
+
+if [ -e "$stage_dir" ] &&
+	find "$stage_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+	printf 'Refusing non-empty stage directory: %s\n' "$stage_dir" >&2
+	exit 1
+fi
+
+toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64"
+compiler_prefix="$toolchain/bin/armv7a-linux-androideabi$android_api"
+libcxx="$toolchain/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so"
+
+for required in \
+	"$compiler_prefix-clang" \
+	"$compiler_prefix-clang++" \
+	"$toolchain/bin/llvm-ar" \
+	"$toolchain/bin/llvm-ranlib" \
+	"$toolchain/bin/llvm-strip" \
+	"$libcxx" \
+	"$deps_prefix/lib/libcrypto.a" \
+	"$deps_prefix/lib/libexif.a" \
+	"$deps_prefix/lib/libjpeg.a" \
+	"$deps_prefix/lib/libyuv.a" \
+	"$deps_prefix/lib/pkgconfig/libcrypto.pc" \
+	"$deps_prefix/lib/pkgconfig/libexif.pc" \
+	"$deps_prefix/lib/pkgconfig/libjpeg.pc" \
+	"$deps_prefix/lib/pkgconfig/libyuv.pc"
+do
+	if [ ! -e "$required" ]; then
+		printf 'Missing required Android build input: %s\n' "$required" >&2
+		exit 1
+	fi
+done
+
+for command in cmake meson ninja openssl pkg-config python3 sha256sum; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+case "$toolchain$deps_prefix" in
+	*"'"*)
+		printf '%s\n' 'NDK and dependency paths containing a single quote are unsupported.' >&2
+		exit 1
+		;;
+esac
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+build_tmp=$(mktemp -d "${TMPDIR:-/tmp}/waydroid-camera-build.XXXXXX")
+trap 'rm -rf -- "$build_tmp"' EXIT HUP INT TERM
+cross_file="$build_tmp/android-armv7a.ini"
+
+cat >"$cross_file" <<EOF
+[binaries]
+c = '$compiler_prefix-clang'
+cpp = '$compiler_prefix-clang++'
+ar = '$toolchain/bin/llvm-ar'
+strip = '$toolchain/bin/llvm-strip'
+ranlib = '$toolchain/bin/llvm-ranlib'
+pkg-config = 'pkg-config'
+cmake = 'cmake'
+
+[properties]
+needs_exe_wrapper = true
+pkg_config_libdir = '$deps_prefix/lib/pkgconfig'
+
+[built-in options]
+c_args = ['-fPIC']
+cpp_args = ['-fPIC']
+c_link_args = []
+cpp_link_args = []
+
+[host_machine]
+system = 'android'
+cpu_family = 'arm'
+cpu = 'armv7a'
+endian = 'little'
+EOF
+
+mkdir -p "$build_dir" "$stage_dir"
+meson setup "$build_dir" "$source_dir" \
+	--cross-file "$cross_file" \
+	--buildtype release \
+	--prefix /vendor \
+	-Dandroid=enabled \
+	-Dandroid_platform=generic \
+	-Dpipelines=simple \
+	-Dipas=simple \
+	-Dcam=disabled \
+	-Ddocumentation=disabled \
+	-Dgstreamer=disabled \
+	-Dlc-compliance=disabled \
+	-Dpycamera=disabled \
+	-Dqcam=disabled \
+	-Dsoftisp-gpu=disabled \
+	-Dtest=false \
+	-Dtracing=disabled \
+	-Dudev=disabled \
+	-Dv4l2=disabled \
+	-Dwrap_mode=default
+
+meson compile -C "$build_dir"
+DESTDIR="$stage_dir" meson install -C "$build_dir"
+
+install -Dm0644 "$stage_dir/vendor/lib/libcamera-hal.so" \
+	"$stage_dir/vendor/lib/hw/camera.libcamera.so"
+install -Dm0755 "$libcxx" "$stage_dir/vendor/lib/libc++_shared.so"
+install -Dm0644 "$project_dir/config/waydroid/camera_hal.yaml" \
+	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml"
+for tuning in imx371.yaml imx376.yaml imx519.yaml; do
+	install -Dm0644 "$project_dir/config/libcamera/simple/$tuning" \
+		"$stage_dir/vendor/share/libcamera/ipa/simple/$tuning"
+done
+
+sha256sum \
+	"$stage_dir/vendor/lib/hw/camera.libcamera.so" \
+	"$stage_dir/vendor/lib/libcamera.so" \
+	"$stage_dir/vendor/lib/libcamera-base.so" \
+	"$stage_dir/vendor/lib/libc++_shared.so" \
+	"$stage_dir/vendor/lib/libcamera/ipa/ipa_soft_simple.so" \
+	"$stage_dir/vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign" \
+	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml"
