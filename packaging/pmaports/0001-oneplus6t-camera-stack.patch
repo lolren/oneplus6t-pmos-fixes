@@ -1,6 +1,6 @@
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..da53bd8209f42b223098bd4b813c6f7866c32a35
+index 0000000..da53bd8
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
 @@ -0,0 +1,213 @@
@@ -219,7 +219,7 @@ index 0000000000000000000000000000000000000000..da53bd8209f42b223098bd4b813c6f78
 +2.49.0
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..3712f5da4b4da863898170b273dd4d7bacc5c747
+index 0000000..3712f5d
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
 @@ -0,0 +1,27 @@
@@ -252,7 +252,7 @@ index 0000000000000000000000000000000000000000..3712f5da4b4da863898170b273dd4d7b
 +2.49.0
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
+index 0000000..fbaf326
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
 @@ -0,0 +1,27 @@
@@ -285,7 +285,7 @@ index 0000000000000000000000000000000000000000..fbaf3268affd0205ffcf3e528d50a009
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..9cc55fdbf44c0f6437c9f44623aa9e7921fa40c1
+index 0000000..9cc55fd
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
 @@ -0,0 +1,30 @@
@@ -321,7 +321,7 @@ index 0000000000000000000000000000000000000000..9cc55fdbf44c0f6437c9f44623aa9e79
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..d45679a9acf83c5952017e4de56f139dbce0ee9f
+index 0000000..d45679a
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
 @@ -0,0 +1,53 @@
@@ -379,7 +379,7 @@ index 0000000000000000000000000000000000000000..d45679a9acf83c5952017e4de56f139d
 +2.49.0
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
-index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..b38ed5a7c7f3e37597927eb3fb7f9e1fca951c19 100644
+index d0a1016..b38ed5a 100644
 --- a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
 +++ b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
 @@ -5,7 +5,7 @@ maintainer="Casey Connolly <kcxt@postmarketos.org>"
@@ -415,7 +415,7 @@ index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..b38ed5a7c7f3e37597927eb3fb7f9e1f
  "
 diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..ffbd5a9ccdd3924584d8d55a16185aaba9b62554
+index 0000000..ffbd5a9
 --- /dev/null
 +++ b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 @@ -0,0 +1,41 @@
@@ -462,7 +462,7 @@ index 0000000000000000000000000000000000000000..ffbd5a9ccdd3924584d8d55a16185aab
 +
 diff --git a/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..85127939677c83597e7dfb563d7f3c814cc67f8b
+index 0000000..8512793
 --- /dev/null
 +++ b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
 @@ -0,0 +1,42 @@
@@ -510,7 +510,7 @@ index 0000000000000000000000000000000000000000..85127939677c83597e7dfb563d7f3c81
 +
 diff --git a/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..0ca52b765fcdf1792c30a09f6edabab38dbcd848
+index 0000000..0ca52b7
 --- /dev/null
 +++ b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
 @@ -0,0 +1,40 @@
@@ -556,7 +556,7 @@ index 0000000000000000000000000000000000000000..0ca52b765fcdf1792c30a09f6edabab3
 +
 diff --git a/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..8fd15b86b7e0208fadd16b1d3fe770733a46e872
+index 0000000..8fd15b8
 --- /dev/null
 +++ b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
 @@ -0,0 +1,50 @@
@@ -612,7 +612,7 @@ index 0000000000000000000000000000000000000000..8fd15b86b7e0208fadd16b1d3fe77073
 +
 diff --git a/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..5bf300075d47a3d79c266aff9b9495fc7f260420
+index 0000000..5bf3000
 --- /dev/null
 +++ b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
 @@ -0,0 +1,105 @@
@@ -723,7 +723,7 @@ index 0000000000000000000000000000000000000000..5bf300075d47a3d79c266aff9b9495fc
 +
 diff --git a/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..635f8a376e444069c2fcd5c30ebb9ba203d2ab58
+index 0000000..635f8a3
 --- /dev/null
 +++ b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
 @@ -0,0 +1,383 @@
@@ -1112,7 +1112,7 @@ index 0000000000000000000000000000000000000000..635f8a376e444069c2fcd5c30ebb9ba2
 +
 diff --git a/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..3f47da3c341d7c7830c2e0299798a75c4f3083ec
+index 0000000..3f47da3
 --- /dev/null
 +++ b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
 @@ -0,0 +1,753 @@
@@ -1871,7 +1871,7 @@ index 0000000000000000000000000000000000000000..3f47da3c341d7c7830c2e0299798a75c
 +
 diff --git a/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..06e25c0d491c40f5e72c0fd33b32097df459b553
+index 0000000..06e25c0
 --- /dev/null
 +++ b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 @@ -0,0 +1,39 @@
@@ -1916,7 +1916,7 @@ index 0000000000000000000000000000000000000000..06e25c0d491c40f5e72c0fd33b32097d
 +
 diff --git a/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..f25b8746b07c57a232fb0d4c83e88cceaae95a6c
+index 0000000..f25b874
 --- /dev/null
 +++ b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 @@ -0,0 +1,370 @@
@@ -2292,7 +2292,7 @@ index 0000000000000000000000000000000000000000..f25b8746b07c57a232fb0d4c83e88cce
 +
 diff --git a/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..3cd7ff5542a18e4ea9a0eb595ce519d3c304e680
+index 0000000..3cd7ff5
 --- /dev/null
 +++ b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 @@ -0,0 +1,329 @@
@@ -2627,7 +2627,7 @@ index 0000000000000000000000000000000000000000..3cd7ff5542a18e4ea9a0eb595ce519d3
 +
 diff --git a/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..95967c1dd15168276e660c4e4a688eb31bc736c5
+index 0000000..95967c1
 --- /dev/null
 +++ b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 @@ -0,0 +1,112 @@
@@ -2745,7 +2745,7 @@ index 0000000000000000000000000000000000000000..95967c1dd15168276e660c4e4a688eb3
 +
 diff --git a/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..29fdf18b2321cc6084b9718e246aec7cea164e9c
+index 0000000..29fdf18
 --- /dev/null
 +++ b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
 @@ -0,0 +1,443 @@
@@ -3194,7 +3194,7 @@ index 0000000000000000000000000000000000000000..29fdf18b2321cc6084b9718e246aec7c
 +
 diff --git a/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..032a61dd30c62df6ab1547021939649156b5b3b0
+index 0000000..032a61d
 --- /dev/null
 +++ b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 @@ -0,0 +1,385 @@
@@ -3583,8 +3583,148 @@ index 0000000000000000000000000000000000000000..032a61dd30c62df6ab15470219396491
 +-- 
 +2.49.0
 +
+diff --git a/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch b/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch
+new file mode 100644
+index 0000000..2b56326
+--- /dev/null
++++ b/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch
+@@ -0,0 +1,134 @@
++From 0da3ab9085057a20abeb362f9481b7d241500bf6 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 18:41:56 +0100
++Subject: [PATCH] ipa: simple: Add exposure compensation control
++
++Expose the standard ExposureValue control from the simple IPA. Convert EV values into a bounded power-of-two shift of the configured AGC histogram target, preserving the existing highlight protection and reporting the active compensation in request metadata.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/ipa/simple/algorithms/agc.cpp | 46 +++++++++++++++++++++++++++----
++ src/ipa/simple/algorithms/agc.h   |  3 ++
++ src/ipa/simple/ipa_context.h      |  1 +
++ 3 files changed, 44 insertions(+), 6 deletions(-)
++
++diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
++index d99da65..c5e0bf7 100644
++--- a/src/ipa/simple/algorithms/agc.cpp
+++++ b/src/ipa/simple/algorithms/agc.cpp
++@@ -107,9 +107,12 @@ Agc::Agc()
++ {
++ }
++ 
++-int Agc::init([[maybe_unused]] IPAContext &context,
++-	      const ValueNode &tuningData)
+++int Agc::init(IPAContext &context, const ValueNode &tuningData)
++ {
+++	context.ctrlMap[&controls::ExposureValue] =
+++		ControlInfo(-1.0f, 1.0f, 0.0f);
+++	context.activeState.agc.exposureValue = 0.0f;
+++
++ 	exposureOptimal_ =
++ 		tuningData["target"].get<double>(kDefaultExposureOptimal);
++ 
++@@ -166,6 +169,21 @@ int Agc::init([[maybe_unused]] IPAContext &context,
++ 	return 0;
++ }
++ 
+++void Agc::queueRequest(IPAContext &context,
+++		       [[maybe_unused]] const uint32_t frame,
+++		       [[maybe_unused]] IPAFrameContext &frameContext,
+++		       const ControlList &controls)
+++{
+++	const auto &exposureValue = controls.get(controls::ExposureValue);
+++	if (!exposureValue.has_value())
+++		return;
+++
+++	context.activeState.agc.exposureValue = exposureValue.value();
+++	LOG(IPASoftExposure, Debug)
+++		<< "Setting exposure compensation to " << exposureValue.value()
+++		<< " EV";
+++}
+++
++ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 			 double exposureMSV,
++ 			 const std::optional<double> &highlightValue)
++@@ -173,7 +191,12 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 	int32_t &exposure = frameContext.sensor.exposure;
++ 	double &again = frameContext.sensor.gain;
++ 
++-	double error = exposureOptimal_ - exposureMSV;
+++	const double evScale =
+++		std::exp2(context.activeState.agc.exposureValue);
+++	const double target = std::clamp(
+++		exposureOptimal_ * evScale,
+++		1.0, static_cast<double>(kExposureBinsCount));
+++	double error = target - exposureMSV;
++ 
++ 	/*
++ 	 * Compute a proportional correction factor. The sign of the error
++@@ -192,14 +215,23 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++ 	 * Constrain the mean-based correction with a prediction of the brightest
++ 	 * post-white-balance channel. This protects coloured highlights that can
++ 	 * clip even when the raw luminance mean is below its target.
+++	 *
+++	 * Exposure compensation deliberately changes that trade-off, so move the
+++	 * highlight ceiling and its hysteresis by the same number of stops as the
+++	 * mean target. At zero EV this is exactly the original highlight policy.
++ 	 */
++ 	if (highlightValue && *highlightValue > 0.0) {
++-		double highlightFactor = highlightTarget_ / *highlightValue;
+++		const double effectiveHighlightTarget = highlightTarget_ * evScale;
+++		const double effectiveHighlightSatisfactory =
+++			kHighlightSatisfactory * evScale;
+++		double highlightFactor =
+++			effectiveHighlightTarget / *highlightValue;
++ 
++-		if (*highlightValue > highlightTarget_) {
+++		if (*highlightValue > effectiveHighlightTarget) {
++ 			/* Hold steady inside the highlight hysteresis region. */
++ 			if (*highlightValue <=
++-			    highlightTarget_ + kHighlightSatisfactory)
+++			    effectiveHighlightTarget +
+++			    effectiveHighlightSatisfactory)
++ 				highlightFactor = 1.0;
++ 		} else {
++ 			/* Never let the predicted highlight exceed its target. */
++@@ -273,6 +305,8 @@ void Agc::process(IPAContext &context,
++ 		context.configuration.agc.lineDuration * frameContext.sensor.exposure;
++ 	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
++ 	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
+++	metadata.set(controls::ExposureValue,
+++		     context.activeState.agc.exposureValue);
++ 
++ 	if (!context.activeState.agc.valid) {
++ 		/*
++diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
++index d3ae79f..806039c 100644
++--- a/src/ipa/simple/algorithms/agc.h
+++++ b/src/ipa/simple/algorithms/agc.h
++@@ -22,6 +22,9 @@ public:
++ 	~Agc() = default;
++ 
++ 	int init(IPAContext &context, const ValueNode &tuningData) override;
+++	void queueRequest(IPAContext &context, const uint32_t frame,
+++			  IPAFrameContext &frameContext,
+++			  const ControlList &controls) override;
++ 
++ 	void process(IPAContext &context, const uint32_t frame,
++ 		     IPAFrameContext &frameContext,
++diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
++index f1a9966..ba80b75 100644
++--- a/src/ipa/simple/ipa_context.h
+++++ b/src/ipa/simple/ipa_context.h
++@@ -39,6 +39,7 @@ struct IPAActiveState {
++ 	struct {
++ 		int32_t exposure;
++ 		double again;
+++		float exposureValue;
++ 		bool valid;
++ 	} agc;
++ 
++-- 
++2.49.0
++
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa4880262434ab8639 100644
+index 3857ef2..b40d5c7 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -3592,11 +3732,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa48802624
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=20
++pkgrel=22
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,19 @@ _tuning_files="
+@@ -59,6 +59,20 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -3613,10 +3753,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa48802624
 +	0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 +	0014-ipa-simple-Add-autofocus-metering-windows.patch
 +	0015-ipa-simple-Add-software-ISP-sharpness-control.patch
++	0016-ipa-simple-Add-exposure-compensation-control.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +188,26 @@ sha512sums="
+@@ -175,13 +189,27 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -3633,6 +3774,7 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa48802624
 +4aae3b8da08c1b2cebb71b47a51abf1434393fe1007ad473f0dfdc36637e1ff17fb5620ac1af03ac96d4c0ea5f967a0d5710239583e4910361fe0f297468a413  0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 +4d4e761233a8230358cd66cd4fc5ae8b6ac4492f7543dee3fc1a60c87f122ee165fa2c3b040c8ea05b182f17c76bee75765a6edb65add1efa009a58bbb16ab8f  0014-ipa-simple-Add-autofocus-metering-windows.patch
 +2dd891668804b38f5a7404eca08e37a2b72eed38f38bb504f97ecfc6eaf39e785a77a9e9864ccad6824d98d874a3d0ac7fdd74b830fc29fc206d25c0dab1fbbe  0015-ipa-simple-Add-software-ISP-sharpness-control.patch
++c95fb64c5dea27724bdf8617d96a34273e0e40348080061a012dd1e742163b671e4bf0a4cf0ec99bd40f19d758f6e99c8f4e85b3411d0e41b2e578c764bebbc2  0016-ipa-simple-Add-exposure-compensation-control.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -3647,7 +3789,7 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa48802624
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..f9776605f986a64b6cc8fb4381b4d3042afdd38f 100644
+index e903d96..f977660 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
 @@ -6,6 +6,19 @@ algorithms:
@@ -3671,7 +3813,7 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..f9776605f986a64b6cc8fb4381b4d304
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..3dfe4882d0de42b1c6ebb3d8164ad304186e3ab4 100644
+index 2c5ea9e..3dfe488 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
 @@ -7,36 +7,33 @@ algorithms:
@@ -3738,7 +3880,7 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..3dfe4882d0de42b1c6ebb3d8164ad304
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..c106c9aeffde308ef4a895700069b252d845a956 100644
+index e903d96..c106c9a 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
 @@ -6,6 +6,34 @@ algorithms:
@@ -3778,7 +3920,7 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..c106c9aeffde308ef4a895700069b252
  ...
 diff --git a/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..36a0ca8d956959c03dd78b44df488e4615ac89f6
+index 0000000..36a0ca8
 --- /dev/null
 +++ b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
 @@ -0,0 +1,233 @@
@@ -4017,7 +4159,7 @@ index 0000000000000000000000000000000000000000..36a0ca8d956959c03dd78b44df488e46
 +
 diff --git a/temp/pipewire/APKBUILD b/temp/pipewire/APKBUILD
 new file mode 100644
-index 0000000000000000000000000000000000000000..f2f96b9cbf7663ff1aee39d27bf09ff3d5347a4e
+index 0000000..f2f96b9
 --- /dev/null
 +++ b/temp/pipewire/APKBUILD
 @@ -0,0 +1,339 @@
@@ -4362,7 +4504,7 @@ index 0000000000000000000000000000000000000000..f2f96b9cbf7663ff1aee39d27bf09ff3
 +"
 diff --git a/temp/pipewire/pipewire-launcher.sh b/temp/pipewire/pipewire-launcher.sh
 new file mode 100644
-index 0000000000000000000000000000000000000000..95d66a702aae8e7d8bb8e37d99dc4cf9b9623cfc
+index 0000000..95d66a7
 --- /dev/null
 +++ b/temp/pipewire/pipewire-launcher.sh
 @@ -0,0 +1,31 @@
@@ -4399,7 +4541,7 @@ index 0000000000000000000000000000000000000000..95d66a702aae8e7d8bb8e37d99dc4cf9
 +[ -f "/usr/share/pipewire/pipewire-pulse.conf" ] && exec /usr/bin/pipewire-pulse &
 diff --git a/temp/pipewire/pipewire-pulse.initd b/temp/pipewire/pipewire-pulse.initd
 new file mode 100644
-index 0000000000000000000000000000000000000000..162e6074de56cd123728acd921962e42887a46ba
+index 0000000..162e607
 --- /dev/null
 +++ b/temp/pipewire/pipewire-pulse.initd
 @@ -0,0 +1,16 @@
@@ -4421,7 +4563,7 @@ index 0000000000000000000000000000000000000000..162e6074de56cd123728acd921962e42
 +}
 diff --git a/temp/pipewire/pipewire.desktop b/temp/pipewire/pipewire.desktop
 new file mode 100644
-index 0000000000000000000000000000000000000000..d80505003409a797418a782c0f9f50c829c44251
+index 0000000..d805050
 --- /dev/null
 +++ b/temp/pipewire/pipewire.desktop
 @@ -0,0 +1,10 @@
@@ -4437,7 +4579,7 @@ index 0000000000000000000000000000000000000000..d80505003409a797418a782c0f9f50c8
 +X-systemd-skip=true
 diff --git a/temp/pipewire/pipewire.initd b/temp/pipewire/pipewire.initd
 new file mode 100644
-index 0000000000000000000000000000000000000000..1c458078fbcc004bd6c3a6accfede0d7a580f3b4
+index 0000000..1c45807
 --- /dev/null
 +++ b/temp/pipewire/pipewire.initd
 @@ -0,0 +1,17 @@
@@ -4460,7 +4602,7 @@ index 0000000000000000000000000000000000000000..1c458078fbcc004bd6c3a6accfede0d7
 +}
 diff --git a/temp/pipewire/pipewire.post-install b/temp/pipewire/pipewire.post-install
 new file mode 100644
-index 0000000000000000000000000000000000000000..4dacf08451a0e5c87ba5951f83a78f2621786312
+index 0000000..4dacf08
 --- /dev/null
 +++ b/temp/pipewire/pipewire.post-install
 @@ -0,0 +1,11 @@
@@ -4477,7 +4619,7 @@ index 0000000000000000000000000000000000000000..4dacf08451a0e5c87ba5951f83a78f26
 +exit 0
 diff --git a/temp/pipewire/pipewire.post-upgrade b/temp/pipewire/pipewire.post-upgrade
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ddfd3bcd80965c769f6559ced10cd8699d0c558
+index 0000000..4ddfd3b
 --- /dev/null
 +++ b/temp/pipewire/pipewire.post-upgrade
 @@ -0,0 +1,31 @@
@@ -4514,7 +4656,7 @@ index 0000000000000000000000000000000000000000..4ddfd3bcd80965c769f6559ced10cd86
 +
 diff --git a/temp/pipewire/systemd-units-wo-libsystemd.patch b/temp/pipewire/systemd-units-wo-libsystemd.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..f12ebc035e5a7c1f95dd7262d9201cc68e3cbe8f
+index 0000000..f12ebc0
 --- /dev/null
 +++ b/temp/pipewire/systemd-units-wo-libsystemd.patch
 @@ -0,0 +1,78 @@
@@ -4598,7 +4740,7 @@ index 0000000000000000000000000000000000000000..f12ebc035e5a7c1f95dd7262d9201cc6
 +
 diff --git a/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..618aa32c12dd0fca852cf07321b8c79ca20c56b4
+index 0000000..618aa32
 --- /dev/null
 +++ b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 @@ -0,0 +1,156 @@
@@ -4760,7 +4902,7 @@ index 0000000000000000000000000000000000000000..618aa32c12dd0fca852cf07321b8c79c
 +
 diff --git a/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..b4aa45f5749bfcb269cbf74110c9953e6e6011e3
+index 0000000..b4aa45f
 --- /dev/null
 +++ b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
 @@ -0,0 +1,857 @@
@@ -5621,17 +5763,719 @@ index 0000000000000000000000000000000000000000..b4aa45f5749bfcb269cbf74110c9953e
 +-- 
 +2.49.0
 +
+diff --git a/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch b/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch
+new file mode 100644
+index 0000000..5755964
+--- /dev/null
++++ b/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch
+@@ -0,0 +1,696 @@
++From 4d03680153cde55834c13a1673856621009df70d Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 18:22:05 +0100
++Subject: [PATCH] snapshot: add visible focus and image controls
++
++---
++ aperture/src/viewfinder.rs  | 102 +++++++++++++++++----
++ data/resources/ui/camera.ui | 173 +++++++++++++++++++++++++++++++++++-
++ src/focus-control.c         |  67 ++++++++++++--
++ src/widgets/camera.rs       | 118 +++++++++++++++++++++++-
++ src/widgets/window.rs       |   3 +
++ 5 files changed, 438 insertions(+), 25 deletions(-)
++
++diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
++index d130250..88e024f 100644
++--- a/aperture/src/viewfinder.rs
+++++ b/aperture/src/viewfinder.rs
++@@ -646,6 +646,11 @@ impl Viewfinder {
++         imp.clear_focus_state();
++         let generation = imp.focus_generation.get();
++ 
+++        let widget_width = self.width().max(1) as f64;
+++        let widget_height = self.height().max(1) as f64;
+++        let indicator_point = (widget_x / widget_width, widget_y / widget_height);
+++        self.show_focus_indicator(generation, serial, indicator_point);
+++
++         let serial_arg = serial.to_string();
++         let x_arg = format!("{focus_x:.8}");
++         let y_arg = format!("{focus_y:.8}");
++@@ -665,15 +670,12 @@ impl Viewfinder {
++             }
++         };
++ 
++-        let widget_width = self.width().max(1) as f64;
++-        let widget_height = self.height().max(1) as f64;
++-        let indicator_point = (widget_x / widget_width, widget_y / widget_height);
++         glib::spawn_future_local(glib::clone!(
++             #[weak(rename_to = viewfinder)]
++             self,
++             async move {
++                 match process.wait_check_future().await {
++-                    Ok(()) => viewfinder.show_focus_indicator(generation, serial, indicator_point),
+++                    Ok(()) => viewfinder.schedule_focus_reset(generation, serial),
++                     Err(err) => log::debug!("Tap-to-focus was not applied: {err}"),
++                 }
++             }
++@@ -722,7 +724,7 @@ impl Viewfinder {
++         imp.focus_overlay.set_visible(true);
++         imp.focus_overlay.queue_draw();
++         let indicator_handler = glib::timeout_add_local_once(
++-            Duration::from_millis(1600),
+++            Duration::from_millis(2400),
++             glib::clone!(
++                 #[weak(rename_to = viewfinder)]
++                 self,
++@@ -737,6 +739,15 @@ impl Viewfinder {
++             ),
++         );
++         imp.focus_indicator_handler.replace(Some(indicator_handler));
+++    }
+++
+++    fn schedule_focus_reset(&self, generation: u64, serial: u64) {
+++        let imp = self.imp();
+++        if imp.focus_generation.get() != generation
+++            || self.camera().and_then(|camera| camera.target_object()) != Some(serial)
+++        {
+++            return;
+++        }
++ 
++         let reset_handler = glib::timeout_add_seconds_local_once(
++             8,
++@@ -780,24 +791,85 @@ impl Viewfinder {
++         });
++     }
++ 
+++    /// Applies software-ISP image adjustments to the active camera.
+++    pub fn set_image_adjustments(
+++        &self,
+++        exposure: f64,
+++        saturation: f64,
+++        contrast: f64,
+++        sharpness: f64,
+++    ) {
+++        if !matches!(self.state(), ViewfinderState::Ready) {
+++            return;
+++        }
+++
+++        let Some(serial) = self.camera().and_then(|camera| camera.target_object()) else {
+++            log::debug!("Image adjustments unavailable: camera has no PipeWire serial");
+++            return;
+++        };
+++
+++        let arguments = [
+++            serial.to_string(),
+++            format!("{:.4}", exposure.clamp(-1.0, 1.0)),
+++            format!("{:.4}", saturation.clamp(0.0, 2.0)),
+++            format!("{:.4}", contrast.clamp(0.0, 2.0)),
+++            format!("{:.4}", sharpness.clamp(0.0, 2.0)),
+++        ];
+++        let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
+++        let process = match launcher.spawn(&[
+++            OsStr::new(FOCUS_HELPER),
+++            OsStr::new("adjust"),
+++            OsStr::new(&arguments[0]),
+++            OsStr::new(&arguments[1]),
+++            OsStr::new(&arguments[2]),
+++            OsStr::new(&arguments[3]),
+++            OsStr::new(&arguments[4]),
+++        ]) {
+++            Ok(process) => process,
+++            Err(err) => {
+++                log::warn!("Could not start image-adjustment helper: {err}");
+++                return;
+++            }
+++        };
+++
+++        glib::spawn_future_local(async move {
+++            if let Err(err) = process.wait_check_future().await {
+++                log::debug!("Image adjustments were not applied: {err}");
+++            }
+++        });
+++    }
+++
+++    /// Sets Camerabin's capture-wide digital zoom factor.
+++    pub fn set_zoom(&self, zoom: f64) {
+++        let camerabin = self.imp().camerabin();
+++        let max_zoom = camerabin.property::<f32>("max-zoom") as f64;
+++        camerabin.set_property("zoom", zoom.clamp(1.0, max_zoom.min(4.0)) as f32);
+++    }
+++
++     fn draw_focus_indicator(&self, context: &gtk::cairo::Context, width: i32, height: i32) {
++         let Some((x, y)) = self.imp().focus_point.get() else {
++             return;
++         };
++         let center_x = x * width as f64;
++         let center_y = y * height as f64;
++-        let radius = (width.min(height) as f64 * 0.055).clamp(18.0, 34.0);
++-        let corner = radius * 0.45;
+++        let radius = (width.min(height) as f64 * 0.075).clamp(28.0, 48.0);
+++        let left = center_x - radius;
+++        let top = center_y - radius;
+++        let size = radius * 2.0;
+++
+++        // A dark keyline keeps the reticle legible against bright scenes.
+++        context.set_source_rgba(0.0, 0.0, 0.0, 0.72);
+++        context.set_line_width(5.0);
+++        context.rectangle(left, top, size, size);
+++        let _ = context.stroke();
++ 
++-        context.set_source_rgba(1.0, 0.84, 0.16, 0.96);
+++        context.set_source_rgba(1.0, 0.84, 0.16, 1.0);
++         context.set_line_width(2.5);
++-        for (horizontal, vertical) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
++-            let corner_x = center_x + horizontal * radius;
++-            let corner_y = center_y + vertical * radius;
++-            context.move_to(corner_x - horizontal * corner, corner_y);
++-            context.line_to(corner_x, corner_y);
++-            context.line_to(corner_x, corner_y - vertical * corner);
++-        }
+++        context.rectangle(left, top, size, size);
+++        context.move_to(center_x - 5.0, center_y);
+++        context.line_to(center_x + 5.0, center_y);
+++        context.move_to(center_x, center_y - 5.0);
+++        context.line_to(center_x, center_y + 5.0);
++         let _ = context.stroke();
++     }
++ 
++diff --git a/data/resources/ui/camera.ui b/data/resources/ui/camera.ui
++index accf906..c05b2d5 100644
++--- a/data/resources/ui/camera.ui
+++++ b/data/resources/ui/camera.ui
++@@ -523,8 +523,173 @@
++                   </object>
++                 </property>
++                 <property name="sheet">
++-                  <object class="QrBottomSheet" id="qr_bottom_sheet">
++-                    <property name="width-request">360</property>
+++                  <object class="GtkStack" id="sheet_stack">
+++                    <property name="transition-type">crossfade</property>
+++                    <child>
+++                      <object class="GtkStackPage">
+++                        <property name="name">qr</property>
+++                        <property name="child">
+++                          <object class="QrBottomSheet" id="qr_bottom_sheet">
+++                            <property name="width-request">360</property>
+++                          </object>
+++                        </property>
+++                      </object>
+++                    </child>
+++                    <child>
+++                      <object class="GtkStackPage">
+++                        <property name="name">image-controls</property>
+++                        <property name="child">
+++                          <object class="GtkBox">
+++                            <property name="orientation">vertical</property>
+++                            <property name="spacing">12</property>
+++                            <property name="margin-start">12</property>
+++                            <property name="margin-end">12</property>
+++                            <property name="margin-top">24</property>
+++                            <property name="margin-bottom">24</property>
+++                            <child>
+++                              <object class="AdwPreferencesGroup">
+++                                <property name="title" translatable="yes">Image Controls</property>
+++                                <property name="description" translatable="yes">Adjust the live preview and saved photo</property>
+++                                <child>
+++                                  <object class="AdwActionRow">
+++                                    <property name="title" translatable="yes">Exposure</property>
+++                                    <child>
+++                                      <object class="GtkScale" id="exposure_scale">
+++                                        <property name="width-request">175</property>
+++                                        <property name="valign">center</property>
+++                                        <property name="digits">1</property>
+++                                        <property name="draw-value">True</property>
+++                                        <property name="value-pos">right</property>
+++                                        <property name="adjustment">
+++                                          <object class="GtkAdjustment">
+++                                            <property name="lower">-1</property>
+++                                            <property name="upper">1</property>
+++                                            <property name="step-increment">0.1</property>
+++                                            <property name="page-increment">0.2</property>
+++                                          </object>
+++                                        </property>
+++                                      </object>
+++                                    </child>
+++                                  </object>
+++                                </child>
+++                                <child>
+++                                  <object class="AdwActionRow">
+++                                    <property name="title" translatable="yes">Colour</property>
+++                                    <child>
+++                                      <object class="GtkScale" id="saturation_scale">
+++                                        <property name="width-request">175</property>
+++                                        <property name="valign">center</property>
+++                                        <property name="digits">1</property>
+++                                        <property name="draw-value">True</property>
+++                                        <property name="value-pos">right</property>
+++                                        <property name="adjustment">
+++                                          <object class="GtkAdjustment">
+++                                            <property name="lower">0</property>
+++                                            <property name="upper">2</property>
+++                                            <property name="value">1.25</property>
+++                                            <property name="step-increment">0.1</property>
+++                                            <property name="page-increment">0.2</property>
+++                                          </object>
+++                                        </property>
+++                                      </object>
+++                                    </child>
+++                                  </object>
+++                                </child>
+++                                <child>
+++                                  <object class="AdwActionRow">
+++                                    <property name="title" translatable="yes">Contrast</property>
+++                                    <child>
+++                                      <object class="GtkScale" id="contrast_scale">
+++                                        <property name="width-request">175</property>
+++                                        <property name="valign">center</property>
+++                                        <property name="digits">1</property>
+++                                        <property name="draw-value">True</property>
+++                                        <property name="value-pos">right</property>
+++                                        <property name="adjustment">
+++                                          <object class="GtkAdjustment">
+++                                            <property name="lower">0</property>
+++                                            <property name="upper">2</property>
+++                                            <property name="value">1.05</property>
+++                                            <property name="step-increment">0.1</property>
+++                                            <property name="page-increment">0.2</property>
+++                                          </object>
+++                                        </property>
+++                                      </object>
+++                                    </child>
+++                                  </object>
+++                                </child>
+++                                <child>
+++                                  <object class="AdwActionRow">
+++                                    <property name="title" translatable="yes">Detail</property>
+++                                    <child>
+++                                      <object class="GtkScale" id="sharpness_scale">
+++                                        <property name="width-request">175</property>
+++                                        <property name="valign">center</property>
+++                                        <property name="digits">1</property>
+++                                        <property name="draw-value">True</property>
+++                                        <property name="value-pos">right</property>
+++                                        <property name="adjustment">
+++                                          <object class="GtkAdjustment">
+++                                            <property name="lower">0</property>
+++                                            <property name="upper">2</property>
+++                                            <property name="value">1</property>
+++                                            <property name="step-increment">0.1</property>
+++                                            <property name="page-increment">0.2</property>
+++                                          </object>
+++                                        </property>
+++                                      </object>
+++                                    </child>
+++                                  </object>
+++                                </child>
+++                                <child>
+++                                  <object class="AdwActionRow">
+++                                    <property name="title" translatable="yes">Zoom</property>
+++                                    <child>
+++                                      <object class="GtkScale" id="zoom_scale">
+++                                        <property name="width-request">175</property>
+++                                        <property name="valign">center</property>
+++                                        <property name="digits">1</property>
+++                                        <property name="draw-value">True</property>
+++                                        <property name="value-pos">right</property>
+++                                        <property name="adjustment">
+++                                          <object class="GtkAdjustment">
+++                                            <property name="lower">1</property>
+++                                            <property name="upper">4</property>
+++                                            <property name="value">1</property>
+++                                            <property name="step-increment">0.1</property>
+++                                            <property name="page-increment">0.5</property>
+++                                          </object>
+++                                        </property>
+++                                      </object>
+++                                    </child>
+++                                  </object>
+++                                </child>
+++                              </object>
+++                            </child>
+++                            <child>
+++                              <object class="GtkButton" id="reset_image_controls">
+++                                <property name="label" translatable="yes">Reset</property>
+++                                <property name="halign">center</property>
+++                                <style>
+++                                  <class name="pill"/>
+++                                </style>
+++                              </object>
+++                            </child>
+++                            <child>
+++                              <object class="GtkLabel">
+++                                <property name="label" translatable="yes">HDR is unavailable until the camera pipeline supports multi-frame capture.</property>
+++                                <property name="wrap">True</property>
+++                                <property name="justify">center</property>
+++                                <style>
+++                                  <class name="dim-label"/>
+++                                  <class name="caption"/>
+++                                </style>
+++                              </object>
+++                            </child>
+++                          </object>
+++                        </property>
+++                      </object>
+++                    </child>
++                   </object>
++                 </property>
++               </object>
++@@ -589,6 +754,10 @@
++   </menu>
++   <menu id="primary_menu">
++     <section>
+++      <item>
+++        <attribute name="label" translatable="yes">_Image Controls</attribute>
+++        <attribute name="action">win.image-controls</attribute>
+++      </item>
++       <item>
++         <attribute name="label" translatable="yes">_Preferences</attribute>
++         <attribute name="action">win.preferences</attribute>
++diff --git a/src/focus-control.c b/src/focus-control.c
++index 683310e..23249bf 100644
++--- a/src/focus-control.c
+++++ b/src/focus-control.c
++@@ -1,5 +1,5 @@
++ /* SPDX-License-Identifier: GPL-3.0-or-later */
++-/* Submit a normalized tap-to-focus region to a libcamera PipeWire node. */
+++/* Submit focus and image-adjustment controls to a libcamera PipeWire node. */
++ 
++ #include <errno.h>
++ #include <math.h>
++@@ -25,6 +25,7 @@
++ enum operation {
++ 	OPERATION_FOCUS,
++ 	OPERATION_RESET,
+++	OPERATION_ADJUST,
++ };
++ 
++ enum stage {
++@@ -50,11 +51,19 @@ struct app {
++ 	double focus_x;
++ 	double focus_y;
++ 	double focus_size;
+++	double exposure_value;
+++	double saturation;
+++	double contrast;
+++	double sharpness;
++ 
++ 	uint32_t af_mode_id;
++ 	uint32_t af_trigger_id;
++ 	uint32_t af_metering_id;
++ 	uint32_t af_windows_id;
+++	uint32_t exposure_value_id;
+++	uint32_t saturation_id;
+++	uint32_t contrast_id;
+++	uint32_t sharpness_id;
++ 	int crop_x;
++ 	int crop_y;
++ 	unsigned int crop_width;
++@@ -159,6 +168,13 @@ static void add_int_property(struct spa_pod_builder *builder, uint32_t id,
++ 	spa_pod_builder_int(builder, value);
++ }
++ 
+++static void add_float_property(struct spa_pod_builder *builder, uint32_t id,
+++			       float value)
+++{
+++	spa_pod_builder_prop(builder, id, 0);
+++	spa_pod_builder_float(builder, value);
+++}
+++
++ static int apply_controls(struct app *app)
++ {
++ 	uint8_t buffer[512];
++@@ -172,6 +188,15 @@ static int apply_controls(struct app *app)
++ 		/* AfModeContinuous and AfMeteringAuto. */
++ 		add_int_property(&builder, app->af_mode_id, 2);
++ 		add_int_property(&builder, app->af_metering_id, 0);
+++	} else if (app->operation == OPERATION_ADJUST) {
+++		add_float_property(&builder, app->exposure_value_id,
+++				   (float)app->exposure_value);
+++		add_float_property(&builder, app->saturation_id,
+++				   (float)app->saturation);
+++		add_float_property(&builder, app->contrast_id,
+++				   (float)app->contrast);
+++		add_float_property(&builder, app->sharpness_id,
+++				   (float)app->sharpness);
++ 	} else {
++ 		double x = app->focus_x;
++ 		double y = app->focus_y;
++@@ -246,6 +271,14 @@ static void node_param(void *data, int seq, uint32_t id, uint32_t index,
++ 		app->af_metering_id = control_id;
++ 	else if (spa_streq(description, "AfWindows"))
++ 		app->af_windows_id = control_id;
+++	else if (spa_streq(description, "ExposureValue"))
+++		app->exposure_value_id = control_id;
+++	else if (spa_streq(description, "Saturation"))
+++		app->saturation_id = control_id;
+++	else if (spa_streq(description, "Contrast"))
+++		app->contrast_id = control_id;
+++	else if (spa_streq(description, "Sharpness"))
+++		app->sharpness_id = control_id;
++ }
++ 
++ static void request_controls(struct app *app)
++@@ -336,15 +369,23 @@ static void core_done(void *data, uint32_t id, int seq)
++ 	}
++ 
++ 	if (app->stage == STAGE_ENUM_CONTROLS) {
++-		if (app->af_mode_id == 0 || app->af_metering_id == 0 ||
++-		    (app->operation == OPERATION_FOCUS &&
++-		     (app->af_trigger_id == 0 || app->af_windows_id == 0))) {
+++		if ((app->operation == OPERATION_FOCUS &&
+++		     (app->af_mode_id == 0 || app->af_metering_id == 0 ||
+++		      app->af_trigger_id == 0 || app->af_windows_id == 0)) ||
+++		    (app->operation == OPERATION_RESET &&
+++		     (app->af_mode_id == 0 || app->af_metering_id == 0))) {
++ 			finish(app, 3, "camera does not support tap-to-focus");
++ 			return;
++ 		}
+++		if (app->operation == OPERATION_ADJUST &&
+++		    (app->exposure_value_id == 0 || app->saturation_id == 0 ||
+++		     app->contrast_id == 0 || app->sharpness_id == 0)) {
+++			finish(app, 3, "camera does not support image adjustments");
+++			return;
+++		}
++ 
++ 		if (apply_controls(app) < 0) {
++-			finish(app, 4, "camera rejected focus controls");
+++			finish(app, 4, "camera rejected controls");
++ 			return;
++ 		}
++ 		app->stage = STAGE_APPLY_CONTROLS;
++@@ -382,8 +423,9 @@ static void usage(const char *program)
++ {
++ 	fprintf(stderr,
++ 		"usage: %s focus SERIAL X Y SIZE\n"
++-		"       %s reset SERIAL\n",
++-		program, program);
+++		"       %s reset SERIAL\n"
+++		"       %s adjust SERIAL EXPOSURE SATURATION CONTRAST SHARPNESS\n",
+++		program, program, program);
++ }
++ 
++ int main(int argc, char **argv)
++@@ -408,6 +450,17 @@ int main(int argc, char **argv)
++ 	} else if (argc == 3 && spa_streq(argv[1], "reset") &&
++ 		   parse_uint64(argv[2], &app.target_serial)) {
++ 		app.operation = OPERATION_RESET;
+++	} else if (argc == 7 && spa_streq(argv[1], "adjust") &&
+++		   parse_uint64(argv[2], &app.target_serial) &&
+++		   parse_double(argv[3], &app.exposure_value) &&
+++		   parse_double(argv[4], &app.saturation) &&
+++		   parse_double(argv[5], &app.contrast) &&
+++		   parse_double(argv[6], &app.sharpness) &&
+++		   app.exposure_value >= -1.0 && app.exposure_value <= 1.0 &&
+++		   app.saturation >= 0.0 && app.saturation <= 2.0 &&
+++		   app.contrast >= 0.0 && app.contrast <= 2.0 &&
+++		   app.sharpness >= 0.0 && app.sharpness <= 2.0) {
+++		app.operation = OPERATION_ADJUST;
++ 	} else {
++ 		usage(argv[0]);
++ 		return 2;
++diff --git a/src/widgets/camera.rs b/src/widgets/camera.rs
++index 5108426..d8c8d96 100644
++--- a/src/widgets/camera.rs
+++++ b/src/widgets/camera.rs
++@@ -1,5 +1,6 @@
++ // SPDX-License-Identifier: GPL-3.0-or-later
++ use std::os::unix::io::OwnedFd;
+++use std::time::Duration;
++ 
++ use adw::prelude::*;
++ use adw::subclass::prelude::*;
++@@ -34,6 +35,7 @@ mod imp {
++ 
++         pub recording_duration: Cell<u32>,
++         pub recording_source: RefCell<Option<glib::source::SourceId>>,
+++        pub adjustment_handler: RefCell<Option<glib::source::SourceId>>,
++ 
++         #[property(get, set = Self::set_capture_mode, explicit_notify, default)]
++         capture_mode: Cell<crate::CaptureMode>,
++@@ -68,7 +70,21 @@ mod imp {
++         #[template_child]
++         pub bottom_sheet: TemplateChild<adw::BottomSheet>,
++         #[template_child]
+++        pub sheet_stack: TemplateChild<gtk::Stack>,
+++        #[template_child]
++         pub qr_bottom_sheet: TemplateChild<crate::QrBottomSheet>,
+++        #[template_child]
+++        pub exposure_scale: TemplateChild<gtk::Scale>,
+++        #[template_child]
+++        pub saturation_scale: TemplateChild<gtk::Scale>,
+++        #[template_child]
+++        pub contrast_scale: TemplateChild<gtk::Scale>,
+++        #[template_child]
+++        pub sharpness_scale: TemplateChild<gtk::Scale>,
+++        #[template_child]
+++        pub zoom_scale: TemplateChild<gtk::Scale>,
+++        #[template_child]
+++        pub reset_image_controls: TemplateChild<gtk::Button>,
++     }
++ 
++     #[glib::object_subclass]
++@@ -179,8 +195,12 @@ mod imp {
++             self.viewfinder.connect_state_notify(glib::clone!(
++                 #[weak]
++                 obj,
++-                move |_| {
+++                move |viewfinder| {
++                     obj.update_state();
+++                    if matches!(viewfinder.state(), aperture::ViewfinderState::Ready) {
+++                        obj.queue_image_adjustments();
+++                        viewfinder.set_zoom(obj.imp().zoom_scale.value());
+++                    }
++                 }
++             ));
++ 
++@@ -191,6 +211,7 @@ mod imp {
++                     match std::str::from_utf8(&code) {
++                         Ok(code) => {
++                             log::debug!("Detected QR code: {code}");
+++                            obj.imp().sheet_stack.set_visible_child_name("qr");
++                             obj.imp().bottom_sheet.set_open(true);
++                             obj.imp().qr_bottom_sheet.set_contents(code);
++                         }
++@@ -252,6 +273,29 @@ mod imp {
++                 }
++             ));
++ 
+++            for scale in [
+++                &*self.exposure_scale,
+++                &*self.saturation_scale,
+++                &*self.contrast_scale,
+++                &*self.sharpness_scale,
+++            ] {
+++                scale.connect_value_changed(glib::clone!(
+++                    #[weak]
+++                    obj,
+++                    move |_| obj.queue_image_adjustments()
+++                ));
+++            }
+++            self.zoom_scale.connect_value_changed(glib::clone!(
+++                #[weak]
+++                obj,
+++                move |scale| obj.imp().viewfinder.set_zoom(scale.value())
+++            ));
+++            self.reset_image_controls.connect_clicked(glib::clone!(
+++                #[weak]
+++                obj,
+++                move |_| obj.reset_image_controls()
+++            ));
+++
++             self.settings()
++                 .bind(
++                     "show-composition-guidelines",
++@@ -458,6 +502,7 @@ impl Camera {
++         if let Some(ref camera) = camera {
++             let id = id_from_pw(camera);
++             imp.settings().set_string("last-camera-id", &id).unwrap();
+++            self.set_image_control_defaults(camera);
++         }
++ 
++         if imp.viewfinder.is_recording() {
++@@ -560,6 +605,77 @@ impl Camera {
++             .set_draw_guidelines(!imp.guidelines.draw_guidelines());
++     }
++ 
+++    pub fn show_image_controls(&self) {
+++        let imp = self.imp();
+++        imp.sheet_stack.set_visible_child_name("image-controls");
+++        imp.bottom_sheet.set_open(true);
+++    }
+++
+++    fn queue_image_adjustments(&self) {
+++        let imp = self.imp();
+++        if let Some(handler) = imp.adjustment_handler.take() {
+++            handler.remove();
+++        }
+++
+++        let handler = glib::timeout_add_local_once(
+++            Duration::from_millis(120),
+++            glib::clone!(
+++                #[weak(rename_to = camera)]
+++                self,
+++                move || {
+++                    camera.imp().adjustment_handler.take();
+++                    camera.apply_image_adjustments();
+++                }
+++            ),
+++        );
+++        imp.adjustment_handler.replace(Some(handler));
+++    }
+++
+++    fn apply_image_adjustments(&self) {
+++        let imp = self.imp();
+++        imp.viewfinder.set_image_adjustments(
+++            imp.exposure_scale.value(),
+++            imp.saturation_scale.value(),
+++            imp.contrast_scale.value(),
+++            imp.sharpness_scale.value(),
+++        );
+++    }
+++
+++    fn reset_image_controls(&self) {
+++        let imp = self.imp();
+++        if let Some(camera) = imp.viewfinder.camera() {
+++            self.set_image_control_defaults(&camera);
+++            return;
+++        }
+++
+++        imp.exposure_scale.set_value(0.0);
+++        imp.saturation_scale.set_value(1.25);
+++        imp.contrast_scale.set_value(1.05);
+++        imp.sharpness_scale.set_value(1.0);
+++        imp.zoom_scale.set_value(1.0);
+++        self.queue_image_adjustments();
+++    }
+++
+++    fn set_image_control_defaults(&self, camera: &aperture::Camera) {
+++        let imp = self.imp();
+++        let model = camera.display_name().to_ascii_lowercase();
+++        let (contrast, saturation) = if model.contains("imx371") {
+++            (1.10, 1.25)
+++        } else if model.contains("imx376") {
+++            (1.05, 1.15)
+++        } else {
+++            // IMX519, and a conservative fallback for other colour sensors.
+++            (1.05, 1.25)
+++        };
+++
+++        imp.exposure_scale.set_value(0.0);
+++        imp.saturation_scale.set_value(saturation);
+++        imp.contrast_scale.set_value(contrast);
+++        imp.sharpness_scale.set_value(1.0);
+++        imp.zoom_scale.set_value(1.0);
+++        self.queue_image_adjustments();
+++    }
+++
++     pub fn is_recording_active(&self) -> bool {
++         self.imp().viewfinder.is_recording()
++     }
++diff --git a/src/widgets/window.rs b/src/widgets/window.rs
++index 2596f15..12d26ae 100644
++--- a/src/widgets/window.rs
+++++ b/src/widgets/window.rs
++@@ -139,6 +139,9 @@ mod imp {
++             klass.install_action("win.preferences", None, |window, _, _| {
++                 window.show_preferences_window();
++             });
+++            klass.install_action("win.image-controls", None, |window, _, _| {
+++                window.imp().camera.show_image_controls();
+++            });
++         }
++ 
++         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
++-- 
++2.49.0
++
 diff --git a/temp/snapshot/APKBUILD b/temp/snapshot/APKBUILD
 new file mode 100644
-index 0000000000000000000000000000000000000000..c82146245c20868425c1b7ebfaf12b2409cf11d3
+index 0000000..7772821
 --- /dev/null
 +++ b/temp/snapshot/APKBUILD
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,73 @@
 +# Contributor: Thomas Aldrian <aldrian.thom@proton.me>
 +maintainer="team/gnome <achill@achill.org>"
 +pkgname=snapshot
 +pkgver=50.0
-+pkgrel=2
++pkgrel=3
 +pkgdesc="Take pictures and videos"
 +url="https://gitlab.gnome.org/GNOME/snapshot"
 +arch="all"
@@ -5667,6 +6511,7 @@ index 0000000000000000000000000000000000000000..c82146245c20868425c1b7ebfaf12b24
 +	cargo-auditable.patch
 +	0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 +	0002-snapshot-Add-sensor-region-tap-to-focus.patch
++	0003-snapshot-add-visible-focus-and-image-controls.patch
 +	"
 +options="net" # cargo fetch for rustix update
 +
@@ -5697,10 +6542,11 @@ index 0000000000000000000000000000000000000000..c82146245c20868425c1b7ebfaf12b24
 +236fdfe1f2c91ce4d24e9823c1d9d9448171f10065d4608ce0a0c9a003d48666dff98f458980aa1567ecb090c75be754de25fd845ad330d4d8fea2b20aed1d7a  cargo-auditable.patch
 +d2446fc5e0b93fdcaa6a47465dfa8e7c44d45f123b3f5c96684df052938c8ec926f1e635f7ad6440b95c1ca65bdecd383ffbb6dbf0cf2f9376bb84287ffab698  0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 +9a9b6e85d18143a851a8cf876e486460bdf6dd9ca31a205592cfa06d363c69922a2e1d845436402f4a77768c9226eeb9a3f6451e35a310361a3a3432addb4172  0002-snapshot-Add-sensor-region-tap-to-focus.patch
++42d68e57c77a75961741681314698574aa612f2b92e35d59d7e94e980503c70bcfe7c129f64f085ca7a9df360f22c9c1ca461f7c2f94d45d0ec55defb7a27253  0003-snapshot-add-visible-focus-and-image-controls.patch
 +"
 diff --git a/temp/snapshot/cargo-auditable.patch b/temp/snapshot/cargo-auditable.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..740f5479e6bff86ec75ef8b6c3eb8e6e67e20501
+index 0000000..740f547
 --- /dev/null
 +++ b/temp/snapshot/cargo-auditable.patch
 @@ -0,0 +1,37 @@

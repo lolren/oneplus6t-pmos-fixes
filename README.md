@@ -111,23 +111,20 @@ hardware-binned Quad Bayer fix, corrected gain models, rear contrast-detect
 autofocus, filtered GPU scaling, centered statistics, highlight-aware exposure
 and conservative open tone defaults. The current revision also adds a standard
 software-ISP sharpness control, 2048x1536 still selection and real
-crop/orientation-aware tap-to-focus in GNOME Snapshot.
+crop/orientation-aware tap-to-focus in GNOME Snapshot. It also provides
+standard ±1 EV compensation plus live Exposure, Colour, Contrast, Detail and
+1x–4x Zoom controls with a visible tap-focus reticle.
 
-Kernel r8, libcamera/IPA r20, `pipewire-spa-libcamera` r6 and Snapshot r2 are
-installed. Exact r19/r5/r1 userspace packages remain staged for rollback. The
-installed stack passed bounded captures and control enumeration on all three
-sensors, physical focus transport on both rear cameras, safe rejection on the
-fixed-focus front camera and 2048x1536 negotiation on every camera. HDR, flash
-integration, calibrated colour/lens shading, temporal denoise and Android
-computational processing are not claimed. See [docs/CAMERA.md](docs/CAMERA.md)
-for the feature matrix, evidence, build route and installation boundary.
-
-The next camera candidate adds standard ±1 EV exposure compensation and a
-Snapshot image-controls sheet with Exposure, Colour, Contrast, Detail and
-capture-wide 1x–4x digital Zoom. Tap-to-focus now draws a complete
-high-contrast reticle immediately at the tapped point. Snapshot r3 completed a
-clean aarch64 package build; this candidate is not described as installed
-until its matching libcamera package and on-phone checks pass.
+Kernel r8, libcamera/IPA r22, `pipewire-spa-libcamera` r6 and Snapshot r3 are
+installed. Exact r20/r6/r2 userspace packages remain staged as the preferred
+rollback set; the intermediate r21 build is retained only as diagnostic
+evidence. The installed stack passed bounded captures and control enumeration
+on all three sensors, physical focus transport on both rear cameras, safe
+rejection on the fixed-focus front camera, 2048x1536 negotiation on every
+camera and measured live exposure compensation. HDR, flash integration,
+calibrated colour/lens shading, temporal denoise and Android computational
+processing are not claimed. See [docs/CAMERA.md](docs/CAMERA.md) for the feature matrix, evidence,
+build route and installation boundary.
 
 ### Camera requirements, installation and use
 
@@ -137,6 +134,21 @@ Snapshot 50.0 sources documented here. Building requires a current
 `pmbootstrap`, a reviewed pmaports checkout and enough space for clean aarch64
 buildroots. Installing requires root, but building does not.
 
+Apply the reviewed integration patch to the documented pmaports base, then
+build the four package recipes:
+
+```sh
+git checkout 875bddba6538818f2c3c9849e184f40688ad5140
+git apply --check --whitespace=nowarn \
+  /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
+git apply --whitespace=nowarn \
+  /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
+pmbootstrap -p "$PWD" build --arch aarch64 libcamera
+pmbootstrap -p "$PWD" build --arch aarch64 pipewire
+pmbootstrap -p "$PWD" build --arch aarch64 snapshot
+pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
+```
+
 Do not copy individual libraries into `/usr`, unload camera modules, or install
 only part of the userspace set. Follow the offline, atomic simulation and
 rollback procedure in [packaging/pmaports/README.md](packaging/pmaports/README.md).
@@ -144,7 +156,25 @@ Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
 
-After the controls candidate is installed:
+apk-tools 3 expects the repository root, then reads its `aarch64/` index and
+fetches `snapshot-lang` from `noarch/`. Stage files accordingly, index both
+sets, and simulate before installing:
+
+```sh
+mkdir -p patched/aarch64 patched/noarch
+# Put aarch64 APKs in patched/aarch64/ and snapshot-lang in patched/noarch/.
+apk index --allow-untrusted -o patched/aarch64/APKINDEX.tar.gz \
+  patched/aarch64/*.apk patched/noarch/*.apk
+apk upgrade --simulate --interactive=no --allow-untrusted --network=no \
+  --repository "$PWD/patched" \
+  libcamera libcamera-ipa pipewire-spa-libcamera snapshot snapshot-lang
+```
+
+Use `--allow-untrusted` only for locally built APKs whose source, version and
+hashes you verified. If and only if the simulation lists the expected camera
+upgrades and no removal, rerun the same command without `--simulate`.
+
+On the installed controls revision:
 
 1. open **Camera**;
 2. tap an object in either rear preview to request focus—the yellow square
@@ -164,10 +194,10 @@ mapping stage.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Cameras: installed r8/r20/r6/r2 stack passes three-camera capture,
+- Cameras: installed r8/r22/r6/r3 stack passes three-camera capture,
   autofocus, tap-focus transport, sharpness, colour, highlight regulation,
-  grid, 30 fps and full-frame negotiation tests; the exact prior userspace
-  package set is retained.
+  exposure compensation, grid, 30 fps and full-frame negotiation tests; the
+  exact prior userspace package set is retained.
 - Next priorities: Waydroid with Play Store and camera validation, followed by
   native GPS and a Waydroid location bridge. See [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.

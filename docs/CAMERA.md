@@ -5,16 +5,13 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8, libcamera/IPA r20, `pipewire-spa-libcamera` r6 and Snapshot r2 are
+Kernel r8, libcamera/IPA r22, `pipewire-spa-libcamera` r6 and Snapshot r3 are
 installed on the reference phone. The complete userspace set was built for
 aarch64, hash-verified, simulated offline and installed without a reboot. Exact
-r19/r5/r1 packages are retained as the rollback baseline. Nothing in this work
-flashes a partition, changes a boot slot or reboots the phone.
-
-A userspace candidate adds libcamera exposure compensation and Snapshot r3
-controls. Snapshot r3 has passed a clean aarch64 package build; the installed
-r20/r6/r2 stack remains the rollback-safe baseline until paired installation
-and live validation finish.
+r20/r6/r2 packages are retained as the preferred rollback baseline. The r21
+libcamera build is also retained as diagnostic evidence but is superseded
+because its fixed highlight ceiling weakened positive EV compensation. Nothing
+in this work flashes a partition, changes a boot slot or reboots the phone.
 
 ## Hardware map
 
@@ -102,9 +99,12 @@ private diagnostic evidence and are not copied, redistributed or represented
 as compatible calibration.
 
 The simple AGC also exposes the standard `ExposureValue` control from -1 to +1
-EV. It shifts the configured histogram target by a power of two while retaining
-the per-channel highlight constraint, and reports the active value in request
-metadata. This is exposure compensation, not fixed manual shutter control.
+EV. It shifts both the configured histogram target and the protective
+per-channel highlight ceiling by the same power of two, then reports the active
+value in request metadata. Zero EV preserves the original highlight policy;
+positive EV deliberately trades highlight headroom for brightness instead of
+being cancelled by a fixed ceiling. This is exposure compensation, not fixed
+manual shutter control.
 
 ### Rear autofocus
 
@@ -179,7 +179,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r3 candidate |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r22/r3 |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
@@ -188,7 +188,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Gamma | Yes | Yes | Yes | `0.1..10` |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
-| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; r3 candidate |
+| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; installed r3 |
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
 | Flash integration | No | No | No | LEDs exist but are not a libcamera flash device |
@@ -244,8 +244,8 @@ pmbootstrap -p "$PWD" build --arch aarch64 snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r20,
-`pipewire-spa-libcamera` r6, Snapshot r2 and the existing SDM845 kernel r8.
+The reference build produced `libcamera`/`libcamera-ipa` r22,
+`pipewire-spa-libcamera` r6, Snapshot r3 and the existing SDM845 kernel r8.
 See `packaging/pmaports/README.md` for hashes and rollback rules. These commands
 build packages only.
 
@@ -271,6 +271,19 @@ lenses were parked at DAC 0 after tests.
   to DAC 400; the fixed-focus front returned the expected unsupported result.
 - Main, secondary and front nodes each negotiated three bounded 2048x1536
   frames through PipeWire.
+- After installing r22, all three nodes accepted combined Exposure,
+  Saturation, Contrast and Sharpness updates at -1, +1 and 0 EV, and each
+  completed a separate bounded three-frame RGBA capture. The controls were
+  reset to sensor defaults after the test.
+- A live IMX519 regression sequence measured mean luminance 107.58 at 0 EV,
+  76.74 at -1 EV, 84.92 after returning to 0 EV, 124.34 at +1 EV and 116.94
+  after the final return to 0 EV. Against the average 0-EV samples, -1 EV was
+  0.744x and +1 EV was 1.205x. The changing scene and AGC settling make this a
+  directional control test, not photometric calibration.
+- Snapshot 50.0-r3 started through its normal application service without a
+  panic or assertion and terminated cleanly after the smoke test. The phone
+  remained locked, so visible slider, reticle and saved-file acceptance still
+  require a later touchscreen check; no lock was bypassed.
 - The r18 filtered front-camera runtime completed a bounded 30-frame
   800x600 capture from the 2304x1728 input at approximately 30 fps.
 - With the same staged scenes in separate bounded runs, average chroma changed
@@ -291,11 +304,11 @@ lenses were parked at DAC 0 after tests.
   process errors in both isolated and installed tests.
 - The full native libcamera test run had 48 passes, one expected failure, 30
   hardware skips and no failures. PipeWire passed 52 of 52 tests. Clean
-  aarch64 package builds completed for libcamera r20, PipeWire r6 and Snapshot
-  r2.
+  aarch64 package builds completed for libcamera r22, PipeWire r6 and Snapshot
+  r3.
 
-The retained r8 plus r19/r5/r1 package set is the rollback baseline. The
-reference phone now runs kernel r8 with the validated r20/r6/r2 userspace
+The retained r8 plus r20/r6/r2 package set is the preferred rollback baseline.
+The reference phone now runs kernel r8 with the validated r22/r6/r3 userspace
 packages.
 
 ## Installation boundary
@@ -307,13 +320,16 @@ revision is userspace-only and did not require a kernel upgrade or reboot.
 
 To reproduce the completed installation safely:
 
-1. retain exact copies or verified rebuilds of the prior r19 libcamera, r5
-   PipeWire plugin and r1 Snapshot packages;
+1. retain exact copies or verified rebuilds of the prior r20 libcamera, r6
+   PipeWire plugin and r2 Snapshot packages;
 2. stage patched and rollback APKs in separate offline repositories;
-3. place the noarch Snapshot language APK in the indexed `aarch64` repository
-   alongside the four aarch64 APKs;
-4. run `apk upgrade --simulate` and require exactly five upgrades and no
-   removal;
+3. put aarch64 APKs and `APKINDEX.tar.gz` under each repository's `aarch64/`
+   directory, but put `snapshot-lang` under `noarch/`; include both globs when
+   generating the `aarch64/APKINDEX.tar.gz` index;
+4. pass the repository root—not its `aarch64/` subdirectory—to apk-tools 3,
+   run `apk upgrade --simulate`, and from the r20/r6/r2 baseline require only
+   the two r20-to-r22 libcamera upgrades and two r2-to-r3 Snapshot upgrades,
+   with no removal;
 5. record the exact-version rollback command and a hash of `/etc/apk/world`;
    and
 6. close camera applications before installation. No reboot is needed for

@@ -3,10 +3,10 @@
 Work is intentionally serialized on the reference phone so camera, audio,
 location and Android-container failures cannot obscure one another.
 
-1. Complete the native camera stack: install the audited userspace packages,
-   validate all three cameras, tap-to-focus, exposure, still resolution and
-   detail, retain an exact rollback set, then publish the reproducible patch
-   series and evidence.
+1. Complete the native camera stack: r22/r6/r3 is installed and its three
+   sensors, lower-level controls, exposure and application startup are
+   validated. Retain the exact rollback set and finish the unlocked
+   touchscreen reticle, sliders, zoom and saved-image acceptance check.
 2. Install Waydroid with Play Store support, then validate that every camera
    exposed to Android opens and captures without destabilizing the native
    camera stack.

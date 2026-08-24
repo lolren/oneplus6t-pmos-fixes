@@ -1,4 +1,4 @@
-From 2d2ab62e6f9f695d3947fe4404caff5c182bed57 Mon Sep 17 00:00:00 2001
+From 0da3ab9085057a20abeb362f9481b7d241500bf6 Mon Sep 17 00:00:00 2001
 From: Lolren <loren.bufanu@gmail.com>
 Date: Mon, 24 Aug 2026 18:41:56 +0100
 Subject: [PATCH] ipa: simple: Add exposure compensation control
@@ -7,13 +7,13 @@ Expose the standard ExposureValue control from the simple IPA. Convert EV values
 
 Signed-off-by: Lolren <loren.bufanu@gmail.com>
 ---
- src/ipa/simple/algorithms/agc.cpp | 29 ++++++++++++++++++++++++++---
- src/ipa/simple/algorithms/agc.h   |  3 +++
+ src/ipa/simple/algorithms/agc.cpp | 46 +++++++++++++++++++++++++++----
+ src/ipa/simple/algorithms/agc.h   |  3 ++
  src/ipa/simple/ipa_context.h      |  1 +
- 3 files changed, 30 insertions(+), 3 deletions(-)
+ 3 files changed, 44 insertions(+), 6 deletions(-)
 
 diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
-index d99da65..92c18b0 100644
+index d99da65..c5e0bf7 100644
 --- a/src/ipa/simple/algorithms/agc.cpp
 +++ b/src/ipa/simple/algorithms/agc.cpp
 @@ -107,9 +107,12 @@ Agc::Agc()
@@ -53,19 +53,48 @@ index d99da65..92c18b0 100644
  void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
  			 double exposureMSV,
  			 const std::optional<double> &highlightValue)
-@@ -173,7 +191,10 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+@@ -173,7 +191,12 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
  	int32_t &exposure = frameContext.sensor.exposure;
  	double &again = frameContext.sensor.gain;
  
 -	double error = exposureOptimal_ - exposureMSV;
++	const double evScale =
++		std::exp2(context.activeState.agc.exposureValue);
 +	const double target = std::clamp(
-+		exposureOptimal_ * std::exp2(context.activeState.agc.exposureValue),
++		exposureOptimal_ * evScale,
 +		1.0, static_cast<double>(kExposureBinsCount));
 +	double error = target - exposureMSV;
  
  	/*
  	 * Compute a proportional correction factor. The sign of the error
-@@ -273,6 +294,8 @@ void Agc::process(IPAContext &context,
+@@ -192,14 +215,23 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ 	 * Constrain the mean-based correction with a prediction of the brightest
+ 	 * post-white-balance channel. This protects coloured highlights that can
+ 	 * clip even when the raw luminance mean is below its target.
++	 *
++	 * Exposure compensation deliberately changes that trade-off, so move the
++	 * highlight ceiling and its hysteresis by the same number of stops as the
++	 * mean target. At zero EV this is exactly the original highlight policy.
+ 	 */
+ 	if (highlightValue && *highlightValue > 0.0) {
+-		double highlightFactor = highlightTarget_ / *highlightValue;
++		const double effectiveHighlightTarget = highlightTarget_ * evScale;
++		const double effectiveHighlightSatisfactory =
++			kHighlightSatisfactory * evScale;
++		double highlightFactor =
++			effectiveHighlightTarget / *highlightValue;
+ 
+-		if (*highlightValue > highlightTarget_) {
++		if (*highlightValue > effectiveHighlightTarget) {
+ 			/* Hold steady inside the highlight hysteresis region. */
+ 			if (*highlightValue <=
+-			    highlightTarget_ + kHighlightSatisfactory)
++			    effectiveHighlightTarget +
++			    effectiveHighlightSatisfactory)
+ 				highlightFactor = 1.0;
+ 		} else {
+ 			/* Never let the predicted highlight exceed its target. */
+@@ -273,6 +305,8 @@ void Agc::process(IPAContext &context,
  		context.configuration.agc.lineDuration * frameContext.sensor.exposure;
  	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
  	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);

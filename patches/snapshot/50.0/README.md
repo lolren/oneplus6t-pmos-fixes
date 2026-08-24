@@ -21,11 +21,17 @@ uses the standard libcamera `ExposureValue`, `Saturation`, `Contrast` and
 matches the preview. It does not expose a false HDR switch.
 
 All three patches reapplied cleanly to Snapshot 50.0 and the exact aarch64 r3
-package build passed. With the installed r2 lower layers, the helper accepted
-focus/reset on both rear nodes, moved the main physical lens from parked DAC 0
-to DAC 400 and rejected the fixed-focus front node. All three nodes negotiated
-2048x1536 through PipeWire.
+package build passed. Snapshot r3 and its matching libcamera r22 controls are
+installed on the reference phone. The helper accepted focus/reset on both rear
+nodes, moved the main physical lens from parked DAC 0 to DAC 400 and rejected
+the fixed-focus front node. All three nodes negotiated 2048x1536 through
+PipeWire and accepted the combined image-control operation.
 
-The r3 package and matching exposure-control libcamera package must be upgraded
-together. Its visible reticle, sliders and zoom still require on-phone UI and
-saved-image acceptance before this candidate is called installed.
+The installed Snapshot package has SHA-256
+`5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7`;
+the matching `snapshot-lang` package has
+`8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108`.
+The application started without panic or assertion in the logged-in graphical
+session and was then terminated cleanly. Because the phone was locked during
+unattended validation, the visible reticle, sliders, zoom and saved-image path
+remain touchscreen acceptance checks; no lock was bypassed.

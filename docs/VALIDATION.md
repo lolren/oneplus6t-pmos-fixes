@@ -10,9 +10,9 @@ Validated on 23-24 August 2026:
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
 - kernel: `7.1.0-rc1-sdm845` (currently package r8);
-- libcamera: initially `99990.7.2-r2`, currently r20 (upstream 0.7.2);
+- libcamera: initially `99990.7.2-r2`, currently r22 (upstream 0.7.2);
 - PipeWire libcamera SPA plugin: `1.6.8-r6`;
-- Snapshot: `50.0-r2`;
+- Snapshot: `50.0-r3`;
 - NetworkManager: 1.56.1;
 - ModemManager: 1.25.95; and
 - provider database package: `mobile-broadband-provider-info-20251101-r1`.
@@ -249,9 +249,10 @@ verified APK completed the upgrade. The exact version pin added by direct
 `apk add` was then removed from `/etc/apk/world`; its SHA-256 returned to the
 pre-install value
 `9460e1c7012bb4027b2c8c7e626afc2569cb4ec2998e9096a15207237c9b09a2`.
-All five target versions remained installed. A clean reproduction must place
-the noarch APK in the indexed `aarch64` repository before simulation so the
-upgrade remains one transaction.
+All five target versions remained installed. The later apk-tools 3 layout test
+clarified the clean reproduction: include the noarch APK while generating the
+native index, store the APK itself under `noarch/`, and pass the repository
+root. See the r21/r22 record below.
 
 Installed camera enumeration found the three stable sensor IDs and production
 tuning files. Main and secondary advertised `Sharpness 0..2`, saturation,
@@ -301,6 +302,75 @@ resolved rear actuators read DAC 0. Visual review found a clear improvement
 over r19, but calibrated CCM/LSC, temporal denoise, HDR and proprietary
 multi-frame processing remain absent, so Android image parity is not claimed.
 
+### r21/r22 exposure and Snapshot r3 controls
+
+The next userspace revision added standard ±1 EV compensation and Snapshot's
+visible focus reticle plus Exposure, Colour, Contrast, Detail, Zoom and Reset
+controls. The source patches applied cleanly to exact libcamera 0.7.2 and
+Snapshot 50.0 parents. Snapshot r3 and the initial libcamera r21 candidate both
+completed clean aarch64 package builds.
+
+Starting from r20/r6/r2, the offline solver listed only two libcamera upgrades
+and two Snapshot upgrades. apk-tools 3 then exposed an important repository
+layout detail: the native index was read from `aarch64/`, but the package
+declared `A:noarch` was fetched from `noarch/`. Because that file had only been
+placed beside the native index, the first live transaction completed the three
+aarch64 upgrades and stopped at the language package. The verified noarch APK
+was installed directly, and the exact pin introduced by that command was then
+removed without removing the installed language data. `/etc/apk/world`
+returned to its pre-transaction SHA-256
+`71247b09e8b6edb0d5540c45499ea76d98d27666f9750f6532c6e201a906547b`.
+The documented reproduction now stages `snapshot-lang` under `noarch/`, indexes
+both directories and passes the repository root. A separate apk-tools 3.0.7
+fetch test resolved that path and produced a byte-identical file.
+
+A live r21 luminance sequence found that the fixed highlight guard cancelled
+most positive compensation: -1 EV measured 0.904x baseline, while +1 EV was
+only 1.010x. r21 was therefore superseded rather than declared complete. r22
+moves the highlight ceiling and hysteresis by the same power-of-two EV scale as
+the mean target; zero EV remains identical to the prior highlight policy. The
+Android HAL build also compiled with the corrected algorithm.
+
+Reference final package hashes are:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r22.apk` | `0900e38b7945778e1e0c9219db9ad5a1fc31bcc7a9a154aa4dd7830fc3519644` |
+| `libcamera-ipa-99990.7.2-r22.apk` | `6e56cbd696d8575d19a9aedf54093421718470ee67c1597dcb261d4dce41c9e9` |
+| `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
+| `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
+
+The r21-to-r22 simulation and installation listed exactly `libcamera-ipa` and
+`libcamera`, with no removal and zero size change. The world-file hash remained
+the value above. Only PipeWire and WirePlumber were restarted; no kernel module
+was unloaded and no reboot occurred. All three sensors were rediscovered.
+
+Each sensor accepted combined Exposure, Saturation, Contrast and Sharpness
+updates at -1, +1 and 0 EV, then completed a bounded three-frame RGBA capture.
+The IMX519 live sequence measured:
+
+| Requested EV | Mean luminance |
+| ---: | ---: |
+| 0, initial | 107.58 |
+| -1 | 76.74 |
+| 0, after -1 | 84.92 |
+| +1 | 124.34 |
+| 0, final | 116.94 |
+
+Relative to the average of the three 0-EV samples, -1 EV measured 0.744x and
++1 EV measured 1.205x. The values are a directional live-control regression
+test, not photometric calibration; the scene and AGC settling changed between
+samples. The helper restored 0 EV afterward.
+
+Snapshot 50.0-r3 launched through its normal application service without a
+panic, assertion or template error and terminated cleanly after the smoke test.
+The phone remained locked, so the visible reticle, sliders, zoom and a saved
+full-resolution image remain touchscreen acceptance tests. No lock was
+bypassed. The regenerated pmaports integration patch applies to
+`875bddba6538818f2c3c9849e184f40688ad5140`; all 38 resulting files matched the
+audited staged tree, and the patch SHA-256 is
+`f063d147676f957580f425c430cc39407e60a4ec0edfa6dfb29d2f4788d5140a`.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.
@@ -308,8 +378,9 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r20/r6/r2 userspace transaction is complete and required no reboot. Patched
-and rollback APKs remain staged in separate user-owned offline repositories.
+The r22/r6/r3 userspace stack is installed and required no reboot. Patched and
+r20/r6/r2 rollback APKs remain staged in separate user-owned offline
+repositories.
 An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution
 photo, video, flash expectations, screen-off/on, suspend/resume and an actual
 exact-version rollback test remain to be recorded. Android-level HDR, temporal
