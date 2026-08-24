@@ -122,6 +122,41 @@ integration, calibrated colour/lens shading, temporal denoise and Android
 computational processing are not claimed. See [docs/CAMERA.md](docs/CAMERA.md)
 for the feature matrix, evidence, build route and installation boundary.
 
+The next camera candidate adds standard ±1 EV exposure compensation and a
+Snapshot image-controls sheet with Exposure, Colour, Contrast, Detail and
+capture-wide 1x–4x digital Zoom. Tap-to-focus now draws a complete
+high-contrast reticle immediately at the tapped point. Snapshot r3 completed a
+clean aarch64 package build; this candidate is not described as installed
+until its matching libcamera package and on-phone checks pass.
+
+### Camera requirements, installation and use
+
+The camera packages target the OnePlus 6T on postmarketOS edge with the
+matching SDM845 kernel and the exact libcamera 0.7.2, PipeWire 1.6.8 and
+Snapshot 50.0 sources documented here. Building requires a current
+`pmbootstrap`, a reviewed pmaports checkout and enough space for clean aarch64
+buildroots. Installing requires root, but building does not.
+
+Do not copy individual libraries into `/usr`, unload camera modules, or install
+only part of the userspace set. Follow the offline, atomic simulation and
+rollback procedure in [packaging/pmaports/README.md](packaging/pmaports/README.md).
+Keep the prior exact-version APKs before changing the phone, close camera apps,
+and require the simulation to show only the documented upgrades with no
+removals. This userspace update does not require a reboot.
+
+After the controls candidate is installed:
+
+1. open **Camera**;
+2. tap an object in either rear preview to request focus—the yellow square
+   appears immediately, while the front camera correctly remains fixed-focus;
+3. open the main menu and choose **Image Controls**;
+4. adjust Exposure, Colour, Contrast, Detail or Zoom; and
+5. use **Reset** to restore the tuned defaults for the active sensor.
+
+The sliders affect both preview and saved output. HDR is intentionally shown as
+unavailable because the open pipeline has no valid multi-frame merge and tone
+mapping stage.
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS

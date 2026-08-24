@@ -11,6 +11,11 @@ aarch64, hash-verified, simulated offline and installed without a reboot. Exact
 r19/r5/r1 packages are retained as the rollback baseline. Nothing in this work
 flashes a partition, changes a boot slot or reboots the phone.
 
+A userspace candidate adds libcamera exposure compensation and Snapshot r3
+controls. Snapshot r3 has passed a clean aarch64 package build; the installed
+r20/r6/r2 stack remains the rollback-safe baseline until paired installation
+and live validation finish.
+
 ## Hardware map
 
 Use the stable media-path camera IDs in scripts. `/dev/v4l-subdev*` numbers can
@@ -96,6 +101,11 @@ or flat field were available. Android/vendor matrices were inspected only as
 private diagnostic evidence and are not copied, redistributed or represented
 as compatible calibration.
 
+The simple AGC also exposes the standard `ExposureValue` control from -1 to +1
+EV. It shifts the configured histogram target by a power of two while retaining
+the per-channel highlight constraint, and reports the active value in request
+metadata. This is exposure compensation, not fixed manual shutter control.
+
 ### Rear autofocus
 
 The simple IPA gains contrast-detect autofocus for both rear cameras:
@@ -131,10 +141,11 @@ through a phone-specific actuator command:
    crop and inverse orientation, then atomically sends `AfModeAuto`, window
    metering, one focus rectangle and `AfTriggerStart`.
 
-Snapshot shows a focus marker only after the helper accepts the request. Eight
-seconds later it restores continuous autofocus. Camera changes and stale async
-callbacks clear the marker safely. The fixed-focus front camera has no AF
-controls and is rejected without showing false success.
+Snapshot r3 draws a complete yellow focus square immediately so touch feedback
+is never hidden behind PipeWire discovery. Only an accepted helper request
+schedules the eight-second return to continuous autofocus. Camera changes and
+stale async callbacks clear the marker safely. The fixed-focus front camera has
+no AF controls and is rejected without claiming focus success.
 
 Snapshot preview remains inexpensive. For a still, it separately selects the
 largest 4:3 mode not exceeding 2048x1536, avoiding the previous behavior where
@@ -168,6 +179,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r3 candidate |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
@@ -176,6 +188,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Gamma | Yes | Yes | Yes | `0.1..10` |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
+| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; r3 candidate |
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
 | Flash integration | No | No | No | LEDs exist but are not a libcamera flash device |
@@ -205,10 +218,10 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The thirteen-patch libcamera 0.7.2 series is in
+The fourteen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
-50.0 two-patch application series have their own versioned directories under
+50.0 three-patch application series have their own versioned directories under
 `patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
 all patches, tuning, checksums and package revision bumps.
 

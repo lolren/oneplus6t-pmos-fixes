@@ -1,0 +1,696 @@
+From 4d03680153cde55834c13a1673856621009df70d Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 18:22:05 +0100
+Subject: [PATCH] snapshot: add visible focus and image controls
+
+---
+ aperture/src/viewfinder.rs  | 102 +++++++++++++++++----
+ data/resources/ui/camera.ui | 173 +++++++++++++++++++++++++++++++++++-
+ src/focus-control.c         |  67 ++++++++++++--
+ src/widgets/camera.rs       | 118 +++++++++++++++++++++++-
+ src/widgets/window.rs       |   3 +
+ 5 files changed, 438 insertions(+), 25 deletions(-)
+
+diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
+index d130250..88e024f 100644
+--- a/aperture/src/viewfinder.rs
++++ b/aperture/src/viewfinder.rs
+@@ -646,6 +646,11 @@ impl Viewfinder {
+         imp.clear_focus_state();
+         let generation = imp.focus_generation.get();
+ 
++        let widget_width = self.width().max(1) as f64;
++        let widget_height = self.height().max(1) as f64;
++        let indicator_point = (widget_x / widget_width, widget_y / widget_height);
++        self.show_focus_indicator(generation, serial, indicator_point);
++
+         let serial_arg = serial.to_string();
+         let x_arg = format!("{focus_x:.8}");
+         let y_arg = format!("{focus_y:.8}");
+@@ -665,15 +670,12 @@ impl Viewfinder {
+             }
+         };
+ 
+-        let widget_width = self.width().max(1) as f64;
+-        let widget_height = self.height().max(1) as f64;
+-        let indicator_point = (widget_x / widget_width, widget_y / widget_height);
+         glib::spawn_future_local(glib::clone!(
+             #[weak(rename_to = viewfinder)]
+             self,
+             async move {
+                 match process.wait_check_future().await {
+-                    Ok(()) => viewfinder.show_focus_indicator(generation, serial, indicator_point),
++                    Ok(()) => viewfinder.schedule_focus_reset(generation, serial),
+                     Err(err) => log::debug!("Tap-to-focus was not applied: {err}"),
+                 }
+             }
+@@ -722,7 +724,7 @@ impl Viewfinder {
+         imp.focus_overlay.set_visible(true);
+         imp.focus_overlay.queue_draw();
+         let indicator_handler = glib::timeout_add_local_once(
+-            Duration::from_millis(1600),
++            Duration::from_millis(2400),
+             glib::clone!(
+                 #[weak(rename_to = viewfinder)]
+                 self,
+@@ -737,6 +739,15 @@ impl Viewfinder {
+             ),
+         );
+         imp.focus_indicator_handler.replace(Some(indicator_handler));
++    }
++
++    fn schedule_focus_reset(&self, generation: u64, serial: u64) {
++        let imp = self.imp();
++        if imp.focus_generation.get() != generation
++            || self.camera().and_then(|camera| camera.target_object()) != Some(serial)
++        {
++            return;
++        }
+ 
+         let reset_handler = glib::timeout_add_seconds_local_once(
+             8,
+@@ -780,24 +791,85 @@ impl Viewfinder {
+         });
+     }
+ 
++    /// Applies software-ISP image adjustments to the active camera.
++    pub fn set_image_adjustments(
++        &self,
++        exposure: f64,
++        saturation: f64,
++        contrast: f64,
++        sharpness: f64,
++    ) {
++        if !matches!(self.state(), ViewfinderState::Ready) {
++            return;
++        }
++
++        let Some(serial) = self.camera().and_then(|camera| camera.target_object()) else {
++            log::debug!("Image adjustments unavailable: camera has no PipeWire serial");
++            return;
++        };
++
++        let arguments = [
++            serial.to_string(),
++            format!("{:.4}", exposure.clamp(-1.0, 1.0)),
++            format!("{:.4}", saturation.clamp(0.0, 2.0)),
++            format!("{:.4}", contrast.clamp(0.0, 2.0)),
++            format!("{:.4}", sharpness.clamp(0.0, 2.0)),
++        ];
++        let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
++        let process = match launcher.spawn(&[
++            OsStr::new(FOCUS_HELPER),
++            OsStr::new("adjust"),
++            OsStr::new(&arguments[0]),
++            OsStr::new(&arguments[1]),
++            OsStr::new(&arguments[2]),
++            OsStr::new(&arguments[3]),
++            OsStr::new(&arguments[4]),
++        ]) {
++            Ok(process) => process,
++            Err(err) => {
++                log::warn!("Could not start image-adjustment helper: {err}");
++                return;
++            }
++        };
++
++        glib::spawn_future_local(async move {
++            if let Err(err) = process.wait_check_future().await {
++                log::debug!("Image adjustments were not applied: {err}");
++            }
++        });
++    }
++
++    /// Sets Camerabin's capture-wide digital zoom factor.
++    pub fn set_zoom(&self, zoom: f64) {
++        let camerabin = self.imp().camerabin();
++        let max_zoom = camerabin.property::<f32>("max-zoom") as f64;
++        camerabin.set_property("zoom", zoom.clamp(1.0, max_zoom.min(4.0)) as f32);
++    }
++
+     fn draw_focus_indicator(&self, context: &gtk::cairo::Context, width: i32, height: i32) {
+         let Some((x, y)) = self.imp().focus_point.get() else {
+             return;
+         };
+         let center_x = x * width as f64;
+         let center_y = y * height as f64;
+-        let radius = (width.min(height) as f64 * 0.055).clamp(18.0, 34.0);
+-        let corner = radius * 0.45;
++        let radius = (width.min(height) as f64 * 0.075).clamp(28.0, 48.0);
++        let left = center_x - radius;
++        let top = center_y - radius;
++        let size = radius * 2.0;
++
++        // A dark keyline keeps the reticle legible against bright scenes.
++        context.set_source_rgba(0.0, 0.0, 0.0, 0.72);
++        context.set_line_width(5.0);
++        context.rectangle(left, top, size, size);
++        let _ = context.stroke();
+ 
+-        context.set_source_rgba(1.0, 0.84, 0.16, 0.96);
++        context.set_source_rgba(1.0, 0.84, 0.16, 1.0);
+         context.set_line_width(2.5);
+-        for (horizontal, vertical) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+-            let corner_x = center_x + horizontal * radius;
+-            let corner_y = center_y + vertical * radius;
+-            context.move_to(corner_x - horizontal * corner, corner_y);
+-            context.line_to(corner_x, corner_y);
+-            context.line_to(corner_x, corner_y - vertical * corner);
+-        }
++        context.rectangle(left, top, size, size);
++        context.move_to(center_x - 5.0, center_y);
++        context.line_to(center_x + 5.0, center_y);
++        context.move_to(center_x, center_y - 5.0);
++        context.line_to(center_x, center_y + 5.0);
+         let _ = context.stroke();
+     }
+ 
+diff --git a/data/resources/ui/camera.ui b/data/resources/ui/camera.ui
+index accf906..c05b2d5 100644
+--- a/data/resources/ui/camera.ui
++++ b/data/resources/ui/camera.ui
+@@ -523,8 +523,173 @@
+                   </object>
+                 </property>
+                 <property name="sheet">
+-                  <object class="QrBottomSheet" id="qr_bottom_sheet">
+-                    <property name="width-request">360</property>
++                  <object class="GtkStack" id="sheet_stack">
++                    <property name="transition-type">crossfade</property>
++                    <child>
++                      <object class="GtkStackPage">
++                        <property name="name">qr</property>
++                        <property name="child">
++                          <object class="QrBottomSheet" id="qr_bottom_sheet">
++                            <property name="width-request">360</property>
++                          </object>
++                        </property>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkStackPage">
++                        <property name="name">image-controls</property>
++                        <property name="child">
++                          <object class="GtkBox">
++                            <property name="orientation">vertical</property>
++                            <property name="spacing">12</property>
++                            <property name="margin-start">12</property>
++                            <property name="margin-end">12</property>
++                            <property name="margin-top">24</property>
++                            <property name="margin-bottom">24</property>
++                            <child>
++                              <object class="AdwPreferencesGroup">
++                                <property name="title" translatable="yes">Image Controls</property>
++                                <property name="description" translatable="yes">Adjust the live preview and saved photo</property>
++                                <child>
++                                  <object class="AdwActionRow">
++                                    <property name="title" translatable="yes">Exposure</property>
++                                    <child>
++                                      <object class="GtkScale" id="exposure_scale">
++                                        <property name="width-request">175</property>
++                                        <property name="valign">center</property>
++                                        <property name="digits">1</property>
++                                        <property name="draw-value">True</property>
++                                        <property name="value-pos">right</property>
++                                        <property name="adjustment">
++                                          <object class="GtkAdjustment">
++                                            <property name="lower">-1</property>
++                                            <property name="upper">1</property>
++                                            <property name="step-increment">0.1</property>
++                                            <property name="page-increment">0.2</property>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="AdwActionRow">
++                                    <property name="title" translatable="yes">Colour</property>
++                                    <child>
++                                      <object class="GtkScale" id="saturation_scale">
++                                        <property name="width-request">175</property>
++                                        <property name="valign">center</property>
++                                        <property name="digits">1</property>
++                                        <property name="draw-value">True</property>
++                                        <property name="value-pos">right</property>
++                                        <property name="adjustment">
++                                          <object class="GtkAdjustment">
++                                            <property name="lower">0</property>
++                                            <property name="upper">2</property>
++                                            <property name="value">1.25</property>
++                                            <property name="step-increment">0.1</property>
++                                            <property name="page-increment">0.2</property>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="AdwActionRow">
++                                    <property name="title" translatable="yes">Contrast</property>
++                                    <child>
++                                      <object class="GtkScale" id="contrast_scale">
++                                        <property name="width-request">175</property>
++                                        <property name="valign">center</property>
++                                        <property name="digits">1</property>
++                                        <property name="draw-value">True</property>
++                                        <property name="value-pos">right</property>
++                                        <property name="adjustment">
++                                          <object class="GtkAdjustment">
++                                            <property name="lower">0</property>
++                                            <property name="upper">2</property>
++                                            <property name="value">1.05</property>
++                                            <property name="step-increment">0.1</property>
++                                            <property name="page-increment">0.2</property>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="AdwActionRow">
++                                    <property name="title" translatable="yes">Detail</property>
++                                    <child>
++                                      <object class="GtkScale" id="sharpness_scale">
++                                        <property name="width-request">175</property>
++                                        <property name="valign">center</property>
++                                        <property name="digits">1</property>
++                                        <property name="draw-value">True</property>
++                                        <property name="value-pos">right</property>
++                                        <property name="adjustment">
++                                          <object class="GtkAdjustment">
++                                            <property name="lower">0</property>
++                                            <property name="upper">2</property>
++                                            <property name="value">1</property>
++                                            <property name="step-increment">0.1</property>
++                                            <property name="page-increment">0.2</property>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="AdwActionRow">
++                                    <property name="title" translatable="yes">Zoom</property>
++                                    <child>
++                                      <object class="GtkScale" id="zoom_scale">
++                                        <property name="width-request">175</property>
++                                        <property name="valign">center</property>
++                                        <property name="digits">1</property>
++                                        <property name="draw-value">True</property>
++                                        <property name="value-pos">right</property>
++                                        <property name="adjustment">
++                                          <object class="GtkAdjustment">
++                                            <property name="lower">1</property>
++                                            <property name="upper">4</property>
++                                            <property name="value">1</property>
++                                            <property name="step-increment">0.1</property>
++                                            <property name="page-increment">0.5</property>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </child>
++                              </object>
++                            </child>
++                            <child>
++                              <object class="GtkButton" id="reset_image_controls">
++                                <property name="label" translatable="yes">Reset</property>
++                                <property name="halign">center</property>
++                                <style>
++                                  <class name="pill"/>
++                                </style>
++                              </object>
++                            </child>
++                            <child>
++                              <object class="GtkLabel">
++                                <property name="label" translatable="yes">HDR is unavailable until the camera pipeline supports multi-frame capture.</property>
++                                <property name="wrap">True</property>
++                                <property name="justify">center</property>
++                                <style>
++                                  <class name="dim-label"/>
++                                  <class name="caption"/>
++                                </style>
++                              </object>
++                            </child>
++                          </object>
++                        </property>
++                      </object>
++                    </child>
+                   </object>
+                 </property>
+               </object>
+@@ -589,6 +754,10 @@
+   </menu>
+   <menu id="primary_menu">
+     <section>
++      <item>
++        <attribute name="label" translatable="yes">_Image Controls</attribute>
++        <attribute name="action">win.image-controls</attribute>
++      </item>
+       <item>
+         <attribute name="label" translatable="yes">_Preferences</attribute>
+         <attribute name="action">win.preferences</attribute>
+diff --git a/src/focus-control.c b/src/focus-control.c
+index 683310e..23249bf 100644
+--- a/src/focus-control.c
++++ b/src/focus-control.c
+@@ -1,5 +1,5 @@
+ /* SPDX-License-Identifier: GPL-3.0-or-later */
+-/* Submit a normalized tap-to-focus region to a libcamera PipeWire node. */
++/* Submit focus and image-adjustment controls to a libcamera PipeWire node. */
+ 
+ #include <errno.h>
+ #include <math.h>
+@@ -25,6 +25,7 @@
+ enum operation {
+ 	OPERATION_FOCUS,
+ 	OPERATION_RESET,
++	OPERATION_ADJUST,
+ };
+ 
+ enum stage {
+@@ -50,11 +51,19 @@ struct app {
+ 	double focus_x;
+ 	double focus_y;
+ 	double focus_size;
++	double exposure_value;
++	double saturation;
++	double contrast;
++	double sharpness;
+ 
+ 	uint32_t af_mode_id;
+ 	uint32_t af_trigger_id;
+ 	uint32_t af_metering_id;
+ 	uint32_t af_windows_id;
++	uint32_t exposure_value_id;
++	uint32_t saturation_id;
++	uint32_t contrast_id;
++	uint32_t sharpness_id;
+ 	int crop_x;
+ 	int crop_y;
+ 	unsigned int crop_width;
+@@ -159,6 +168,13 @@ static void add_int_property(struct spa_pod_builder *builder, uint32_t id,
+ 	spa_pod_builder_int(builder, value);
+ }
+ 
++static void add_float_property(struct spa_pod_builder *builder, uint32_t id,
++			       float value)
++{
++	spa_pod_builder_prop(builder, id, 0);
++	spa_pod_builder_float(builder, value);
++}
++
+ static int apply_controls(struct app *app)
+ {
+ 	uint8_t buffer[512];
+@@ -172,6 +188,15 @@ static int apply_controls(struct app *app)
+ 		/* AfModeContinuous and AfMeteringAuto. */
+ 		add_int_property(&builder, app->af_mode_id, 2);
+ 		add_int_property(&builder, app->af_metering_id, 0);
++	} else if (app->operation == OPERATION_ADJUST) {
++		add_float_property(&builder, app->exposure_value_id,
++				   (float)app->exposure_value);
++		add_float_property(&builder, app->saturation_id,
++				   (float)app->saturation);
++		add_float_property(&builder, app->contrast_id,
++				   (float)app->contrast);
++		add_float_property(&builder, app->sharpness_id,
++				   (float)app->sharpness);
+ 	} else {
+ 		double x = app->focus_x;
+ 		double y = app->focus_y;
+@@ -246,6 +271,14 @@ static void node_param(void *data, int seq, uint32_t id, uint32_t index,
+ 		app->af_metering_id = control_id;
+ 	else if (spa_streq(description, "AfWindows"))
+ 		app->af_windows_id = control_id;
++	else if (spa_streq(description, "ExposureValue"))
++		app->exposure_value_id = control_id;
++	else if (spa_streq(description, "Saturation"))
++		app->saturation_id = control_id;
++	else if (spa_streq(description, "Contrast"))
++		app->contrast_id = control_id;
++	else if (spa_streq(description, "Sharpness"))
++		app->sharpness_id = control_id;
+ }
+ 
+ static void request_controls(struct app *app)
+@@ -336,15 +369,23 @@ static void core_done(void *data, uint32_t id, int seq)
+ 	}
+ 
+ 	if (app->stage == STAGE_ENUM_CONTROLS) {
+-		if (app->af_mode_id == 0 || app->af_metering_id == 0 ||
+-		    (app->operation == OPERATION_FOCUS &&
+-		     (app->af_trigger_id == 0 || app->af_windows_id == 0))) {
++		if ((app->operation == OPERATION_FOCUS &&
++		     (app->af_mode_id == 0 || app->af_metering_id == 0 ||
++		      app->af_trigger_id == 0 || app->af_windows_id == 0)) ||
++		    (app->operation == OPERATION_RESET &&
++		     (app->af_mode_id == 0 || app->af_metering_id == 0))) {
+ 			finish(app, 3, "camera does not support tap-to-focus");
+ 			return;
+ 		}
++		if (app->operation == OPERATION_ADJUST &&
++		    (app->exposure_value_id == 0 || app->saturation_id == 0 ||
++		     app->contrast_id == 0 || app->sharpness_id == 0)) {
++			finish(app, 3, "camera does not support image adjustments");
++			return;
++		}
+ 
+ 		if (apply_controls(app) < 0) {
+-			finish(app, 4, "camera rejected focus controls");
++			finish(app, 4, "camera rejected controls");
+ 			return;
+ 		}
+ 		app->stage = STAGE_APPLY_CONTROLS;
+@@ -382,8 +423,9 @@ static void usage(const char *program)
+ {
+ 	fprintf(stderr,
+ 		"usage: %s focus SERIAL X Y SIZE\n"
+-		"       %s reset SERIAL\n",
+-		program, program);
++		"       %s reset SERIAL\n"
++		"       %s adjust SERIAL EXPOSURE SATURATION CONTRAST SHARPNESS\n",
++		program, program, program);
+ }
+ 
+ int main(int argc, char **argv)
+@@ -408,6 +450,17 @@ int main(int argc, char **argv)
+ 	} else if (argc == 3 && spa_streq(argv[1], "reset") &&
+ 		   parse_uint64(argv[2], &app.target_serial)) {
+ 		app.operation = OPERATION_RESET;
++	} else if (argc == 7 && spa_streq(argv[1], "adjust") &&
++		   parse_uint64(argv[2], &app.target_serial) &&
++		   parse_double(argv[3], &app.exposure_value) &&
++		   parse_double(argv[4], &app.saturation) &&
++		   parse_double(argv[5], &app.contrast) &&
++		   parse_double(argv[6], &app.sharpness) &&
++		   app.exposure_value >= -1.0 && app.exposure_value <= 1.0 &&
++		   app.saturation >= 0.0 && app.saturation <= 2.0 &&
++		   app.contrast >= 0.0 && app.contrast <= 2.0 &&
++		   app.sharpness >= 0.0 && app.sharpness <= 2.0) {
++		app.operation = OPERATION_ADJUST;
+ 	} else {
+ 		usage(argv[0]);
+ 		return 2;
+diff --git a/src/widgets/camera.rs b/src/widgets/camera.rs
+index 5108426..d8c8d96 100644
+--- a/src/widgets/camera.rs
++++ b/src/widgets/camera.rs
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: GPL-3.0-or-later
+ use std::os::unix::io::OwnedFd;
++use std::time::Duration;
+ 
+ use adw::prelude::*;
+ use adw::subclass::prelude::*;
+@@ -34,6 +35,7 @@ mod imp {
+ 
+         pub recording_duration: Cell<u32>,
+         pub recording_source: RefCell<Option<glib::source::SourceId>>,
++        pub adjustment_handler: RefCell<Option<glib::source::SourceId>>,
+ 
+         #[property(get, set = Self::set_capture_mode, explicit_notify, default)]
+         capture_mode: Cell<crate::CaptureMode>,
+@@ -68,7 +70,21 @@ mod imp {
+         #[template_child]
+         pub bottom_sheet: TemplateChild<adw::BottomSheet>,
+         #[template_child]
++        pub sheet_stack: TemplateChild<gtk::Stack>,
++        #[template_child]
+         pub qr_bottom_sheet: TemplateChild<crate::QrBottomSheet>,
++        #[template_child]
++        pub exposure_scale: TemplateChild<gtk::Scale>,
++        #[template_child]
++        pub saturation_scale: TemplateChild<gtk::Scale>,
++        #[template_child]
++        pub contrast_scale: TemplateChild<gtk::Scale>,
++        #[template_child]
++        pub sharpness_scale: TemplateChild<gtk::Scale>,
++        #[template_child]
++        pub zoom_scale: TemplateChild<gtk::Scale>,
++        #[template_child]
++        pub reset_image_controls: TemplateChild<gtk::Button>,
+     }
+ 
+     #[glib::object_subclass]
+@@ -179,8 +195,12 @@ mod imp {
+             self.viewfinder.connect_state_notify(glib::clone!(
+                 #[weak]
+                 obj,
+-                move |_| {
++                move |viewfinder| {
+                     obj.update_state();
++                    if matches!(viewfinder.state(), aperture::ViewfinderState::Ready) {
++                        obj.queue_image_adjustments();
++                        viewfinder.set_zoom(obj.imp().zoom_scale.value());
++                    }
+                 }
+             ));
+ 
+@@ -191,6 +211,7 @@ mod imp {
+                     match std::str::from_utf8(&code) {
+                         Ok(code) => {
+                             log::debug!("Detected QR code: {code}");
++                            obj.imp().sheet_stack.set_visible_child_name("qr");
+                             obj.imp().bottom_sheet.set_open(true);
+                             obj.imp().qr_bottom_sheet.set_contents(code);
+                         }
+@@ -252,6 +273,29 @@ mod imp {
+                 }
+             ));
+ 
++            for scale in [
++                &*self.exposure_scale,
++                &*self.saturation_scale,
++                &*self.contrast_scale,
++                &*self.sharpness_scale,
++            ] {
++                scale.connect_value_changed(glib::clone!(
++                    #[weak]
++                    obj,
++                    move |_| obj.queue_image_adjustments()
++                ));
++            }
++            self.zoom_scale.connect_value_changed(glib::clone!(
++                #[weak]
++                obj,
++                move |scale| obj.imp().viewfinder.set_zoom(scale.value())
++            ));
++            self.reset_image_controls.connect_clicked(glib::clone!(
++                #[weak]
++                obj,
++                move |_| obj.reset_image_controls()
++            ));
++
+             self.settings()
+                 .bind(
+                     "show-composition-guidelines",
+@@ -458,6 +502,7 @@ impl Camera {
+         if let Some(ref camera) = camera {
+             let id = id_from_pw(camera);
+             imp.settings().set_string("last-camera-id", &id).unwrap();
++            self.set_image_control_defaults(camera);
+         }
+ 
+         if imp.viewfinder.is_recording() {
+@@ -560,6 +605,77 @@ impl Camera {
+             .set_draw_guidelines(!imp.guidelines.draw_guidelines());
+     }
+ 
++    pub fn show_image_controls(&self) {
++        let imp = self.imp();
++        imp.sheet_stack.set_visible_child_name("image-controls");
++        imp.bottom_sheet.set_open(true);
++    }
++
++    fn queue_image_adjustments(&self) {
++        let imp = self.imp();
++        if let Some(handler) = imp.adjustment_handler.take() {
++            handler.remove();
++        }
++
++        let handler = glib::timeout_add_local_once(
++            Duration::from_millis(120),
++            glib::clone!(
++                #[weak(rename_to = camera)]
++                self,
++                move || {
++                    camera.imp().adjustment_handler.take();
++                    camera.apply_image_adjustments();
++                }
++            ),
++        );
++        imp.adjustment_handler.replace(Some(handler));
++    }
++
++    fn apply_image_adjustments(&self) {
++        let imp = self.imp();
++        imp.viewfinder.set_image_adjustments(
++            imp.exposure_scale.value(),
++            imp.saturation_scale.value(),
++            imp.contrast_scale.value(),
++            imp.sharpness_scale.value(),
++        );
++    }
++
++    fn reset_image_controls(&self) {
++        let imp = self.imp();
++        if let Some(camera) = imp.viewfinder.camera() {
++            self.set_image_control_defaults(&camera);
++            return;
++        }
++
++        imp.exposure_scale.set_value(0.0);
++        imp.saturation_scale.set_value(1.25);
++        imp.contrast_scale.set_value(1.05);
++        imp.sharpness_scale.set_value(1.0);
++        imp.zoom_scale.set_value(1.0);
++        self.queue_image_adjustments();
++    }
++
++    fn set_image_control_defaults(&self, camera: &aperture::Camera) {
++        let imp = self.imp();
++        let model = camera.display_name().to_ascii_lowercase();
++        let (contrast, saturation) = if model.contains("imx371") {
++            (1.10, 1.25)
++        } else if model.contains("imx376") {
++            (1.05, 1.15)
++        } else {
++            // IMX519, and a conservative fallback for other colour sensors.
++            (1.05, 1.25)
++        };
++
++        imp.exposure_scale.set_value(0.0);
++        imp.saturation_scale.set_value(saturation);
++        imp.contrast_scale.set_value(contrast);
++        imp.sharpness_scale.set_value(1.0);
++        imp.zoom_scale.set_value(1.0);
++        self.queue_image_adjustments();
++    }
++
+     pub fn is_recording_active(&self) -> bool {
+         self.imp().viewfinder.is_recording()
+     }
+diff --git a/src/widgets/window.rs b/src/widgets/window.rs
+index 2596f15..12d26ae 100644
+--- a/src/widgets/window.rs
++++ b/src/widgets/window.rs
+@@ -139,6 +139,9 @@ mod imp {
+             klass.install_action("win.preferences", None, |window, _, _| {
+                 window.show_preferences_window();
+             });
++            klass.install_action("win.image-controls", None, |window, _, _| {
++                window.imp().camera.show_image_controls();
++            });
+         }
+ 
+         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+-- 
+2.49.0
+
