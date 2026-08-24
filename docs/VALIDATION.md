@@ -10,8 +10,9 @@ Validated on 23-24 August 2026:
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
 - kernel: `7.1.0-rc1-sdm845` (currently package r8);
-- libcamera: initially `99990.7.2-r2`, currently r19 (upstream 0.7.2);
-- Snapshot: `50.0-r1`;
+- libcamera: initially `99990.7.2-r2`, currently r20 (upstream 0.7.2);
+- PipeWire libcamera SPA plugin: `1.6.8-r6`;
+- Snapshot: `50.0-r2`;
 - NetworkManager: 1.56.1;
 - ModemManager: 1.25.95; and
 - provider database package: `mobile-broadband-provider-info-20251101-r1`.
@@ -76,9 +77,10 @@ the touchscreen with the screen on.
 
 The first signed camera revision, kernel r5 plus libcamera/IPA r3, was installed
 and booted earlier with approval. Kernel r8 plus libcamera/IPA r18 was
-subsequently installed and booted with approval and is the current rollback
-baseline. Its front IMX371 hardware-binned mode restores colour, while the
-full-resolution proprietary remosaic path remains intentionally absent.
+subsequently installed and booted with approval. The r19 userspace revision
+then became the rollback baseline for the current r20 work. The front IMX371
+hardware-binned mode restores colour, while the full-resolution proprietary
+remosaic path remains intentionally absent.
 
 The r19 userspace work was first tested without replacing that installed
 stack. Its libcamera APKs were extracted under the login user's
@@ -177,7 +179,7 @@ Legacy tuning without either new highlight key preserved gamma 2.2, contrast
 and an out-of-range adjustment default were both rejected. The native build
 completed 48 tests, one expected failure and 30 hardware skips with no failure.
 
-### Controls and final builds
+### r19 controls and builds
 
 Identity CCM tuning exposes saturation on all three sensors. Saturation 0
 produced measured average chroma 0; saturation 2 increased average chroma from
@@ -185,7 +187,7 @@ approximately 6.4 to 10.1 in the controlled scene. Contrast and gamma remain
 available. HDR was not exposed because the simple ISP has no valid
 multi-exposure merge or tone-map stage.
 
-The final integration diff applies cleanly to pmaports
+The r19 integration diff applied cleanly to pmaports
 `073ff887b0e18c4c80bd94098fda035e0e20d28b`. Clean aarch64 package builds
 completed for:
 
@@ -213,8 +215,91 @@ and no camera process remained after cleanup.
 
 The r8 IMX519 module has matching `7.1.0-rc1-sdm845` vermagic and a PKCS#7
 SHA-512 build-key signature. The kernel package was checked to ensure the
-discarded actuator diagnostic experiment is absent. Kernel r8 and userspace r19
-are installed; the exact userspace r18 APKs remain staged for rollback.
+discarded actuator diagnostic experiment is absent. Kernel r8 remains
+installed; the exact userspace r19 set is now the rollback baseline for r20.
+
+### r20 detail, tap-to-focus and Snapshot
+
+The current source additions were audited and built independently against
+libcamera v0.7.2, PipeWire 1.6.8 and Snapshot 50.0. Each exported patch series
+was reapplied from its exact clean upstream tag with
+`git am --whitespace=error-all`, and the resulting trees matched the audited
+source commits byte for byte. Native CPU and EGL libcamera builds passed 48
+tests, one expected failure and 30 hardware skips with no failure. PipeWire
+passed all 52 tests. Exact aarch64 package builds completed for libcamera r20,
+PipeWire r6 and Snapshot r2.
+
+The current pmaports integration patch applies to
+`875bddba6538818f2c3c9849e184f40688ad5140`. Its 36 resulting files matched the
+audited staged tree byte for byte. Reference package hashes are:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r20.apk` | `63f72a082088085c04ec42975ffadb5aa386d66a024c54394a3b5180fc628764` |
+| `libcamera-ipa-99990.7.2-r20.apk` | `4c61f6b27f6b9f843b32bb292d57056cf9bafe321dfdb7648acbf28a47f649a8` |
+| `pipewire-spa-libcamera-1.6.8-r6.apk` | `658658c3b9df142a6462e3a73457b44a378d6820dba0c6b05a14d18f865635d4` |
+| `snapshot-50.0-r2.apk` | `f096f4a566fe5801fce8b784759f83222eeeba15a36829bf10f129ab764d4cc6` |
+| `snapshot-lang-50.0-r2.apk` | `a86902e92caee59ca42113ccda42b08813e9975185012389f17826f114dbdaec` |
+
+The offline simulation showed exactly the five expected r19/r5/r1 to
+r20/r6/r2 upgrades and no removal. Four packages upgraded together; the
+noarch language package had been placed outside the indexed architecture
+directory and therefore failed that first transaction. Installing that one
+verified APK completed the upgrade. The exact version pin added by direct
+`apk add` was then removed from `/etc/apk/world`; its SHA-256 returned to the
+pre-install value
+`9460e1c7012bb4027b2c8c7e626afc2569cb4ec2998e9096a15207237c9b09a2`.
+All five target versions remained installed. A clean reproduction must place
+the noarch APK in the indexed `aarch64` repository before simulation so the
+upgrade remains one transaction.
+
+Installed camera enumeration found the three stable sensor IDs and production
+tuning files. Main and secondary advertised `Sharpness 0..2`, saturation,
+gamma, contrast, `AfMode`, `AfTrigger`, `AfMetering` and `AfWindows`; the fixed
+front advertised the four image controls and no autofocus. Bounded captures
+completed for 300 main frames, 300 secondary frames and 180 front frames. Both
+rear runs reached `Focused` and the lenses were parked afterward.
+
+In a separately staged front scene, the sharpness endpoints measured:
+
+| Sharpness | Edge signal | Laplacian signal |
+| ---: | ---: | ---: |
+| 0 | 2.34 | 3.17 |
+| 1, production default | 2.72 | 4.35 |
+| 2 | 2.99 | 5.52 |
+
+Exposure changed somewhat between runs, so these values establish control
+ordering rather than an absolute image-quality score. Private visual review
+kept default 1: it improves detail without forcing the visibly stronger
+maximum. The installed final frames measured the following scene-dependent
+regression signals; the scenes differed from earlier revisions and therefore
+must not be used for a before/after quality claim:
+
+| Camera | Luma | Chroma | Edge | Laplacian |
+| --- | ---: | ---: | ---: | ---: |
+| Front | 141.1 | 13.5 | 2.72 | 4.35 |
+| Main | 139.7 | 50.2 | 2.67 | 2.41 |
+| Secondary | 127.9 | 28.5 | 3.70 | 4.77 |
+
+For live tap-focus transport, a negotiated 640x480 main PipeWire stream
+published effective crop `1368,1042,1920,1440`, maximum crop
+`1048,1042,2560,1440` and libcamera orientation 6. The exact installed Snapshot
+helper accepted focus and reset commands on both rear nodes. The main physical
+lens moved from parked DAC 0 to DAC 400. The front node returned the expected
+`camera does not support tap-to-focus` result. Main, secondary and front also
+each negotiated three bounded 2048x1536 frames. Source-level orientation tests
+covered all eight libcamera orientations.
+
+The phone was locked during unattended validation, so Snapshot correctly did
+not keep its preview active. An actual touchscreen tap, focus marker and saved
+2048x1536 file remain user-interface acceptance tests after unlock; the lower
+layer control path and full-frame caps are validated. No lock was bypassed.
+
+PipeWire and WirePlumber remained active with zero restarts after validation.
+No camera process remained, both flash channels read 0 and both dynamically
+resolved rear actuators read DAC 0. Visual review found a clear improvement
+over r19, but calibrated CCM/LSC, temporal denoise, HDR and proprietary
+multi-frame processing remain absent, so Android image parity is not claimed.
 
 ## Remaining validation
 
@@ -223,9 +308,10 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r19 userspace transaction is complete and required no reboot. Patched and
-rollback APKs remain staged in separate user-owned offline repositories.
-Application-level preview, still/video, flash expectations, screen-off/on,
-suspend/resume and an actual exact-version rollback test remain to be recorded.
-Android-level HDR, denoise, calibrated CCM/lens shading and computational
-fusion remain unimplemented and are not represented as completed work.
+The r20/r6/r2 userspace transaction is complete and required no reboot. Patched
+and rollback APKs remain staged in separate user-owned offline repositories.
+An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution
+photo, video, flash expectations, screen-off/on, suspend/resume and an actual
+exact-version rollback test remain to be recorded. Android-level HDR, temporal
+denoise, calibrated CCM/lens shading and computational fusion remain
+unimplemented and are not represented as completed work.

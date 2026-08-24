@@ -9,7 +9,7 @@ safe, understands its newer SIM GID1 field, adds an evidence-backed
 compatibility overlay for older releases, and never guesses when several
 carriers share one MCC/MNC.
 
-Validated on 23 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
+Validated on 23-24 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
 ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
 
 ## Safety boundary
@@ -106,20 +106,21 @@ evidence and the completed touchscreen confirmation.
 
 ## Cameras
 
-The reproducible camera stack now covers all three sensors. It retains the
-front IMX371 hardware-binned Quad Bayer fix and adds corrected gain models,
-rear one-shot/continuous autofocus, filtered GPU scaling that removes the
-regular grid, centered statistics, per-channel highlight-aware automatic
-exposure, sensor-specific open tone defaults, a saturation control and a
-30 fps default for ordinary main-camera preview.
+The reproducible camera stack covers all three sensors. It retains the IMX371
+hardware-binned Quad Bayer fix, corrected gain models, rear contrast-detect
+autofocus, filtered GPU scaling, centered statistics, highlight-aware exposure
+and conservative open tone defaults. The current revision also adds a standard
+software-ISP sharpness control, 2048x1536 still selection and real
+crop/orientation-aware tap-to-focus in GNOME Snapshot.
 
-Kernel r8 and libcamera/IPA r19 are installed. The r19 packages passed isolated
-live colour and light-step tests before installation, then passed installed
-enumeration, bounded capture and repeated-open tests on all three sensors. The
-exact r18 packages remain staged for rollback. HDR, flash integration,
-calibrated colour/lens shading and Android computational processing are not
-claimed. See [docs/CAMERA.md](docs/CAMERA.md) for the feature matrix, evidence,
-build route and installation boundary.
+Kernel r8, libcamera/IPA r20, `pipewire-spa-libcamera` r6 and Snapshot r2 are
+installed. Exact r19/r5/r1 userspace packages remain staged for rollback. The
+installed stack passed bounded captures and control enumeration on all three
+sensors, physical focus transport on both rear cameras, safe rejection on the
+fixed-focus front camera and 2048x1536 negotiation on every camera. HDR, flash
+integration, calibrated colour/lens shading, temporal denoise and Android
+computational processing are not claimed. See [docs/CAMERA.md](docs/CAMERA.md)
+for the feature matrix, evidence, build route and installation boundary.
 
 ## Project status
 
@@ -128,9 +129,12 @@ build route and installation boundary.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Cameras: installed r8/r19 stack passes three-camera, autofocus, colour,
-  highlight regulation, grid, 30 fps and repeated-open tests; exact r18
-  rollback packages are retained.
+- Cameras: installed r8/r20/r6/r2 stack passes three-camera capture,
+  autofocus, tap-focus transport, sharpness, colour, highlight regulation,
+  grid, 30 fps and full-frame negotiation tests; the exact prior userspace
+  package set is retained.
+- Next priorities: Waydroid with Play Store and camera validation, followed by
+  native GPS and a Waydroid location bridge. See [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements are not included in this
   camera revision.

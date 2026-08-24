@@ -5,11 +5,11 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8 and libcamera/IPA r19 are installed on the reference phone. The r19
-userspace packages were first tested from an isolated user-owned runtime, then
-installed in an offline two-package transaction. Exact r18 packages are
-retained as the rollback baseline. Nothing in this work flashes a partition,
-changes a boot slot or reboots the phone.
+Kernel r8, libcamera/IPA r20, `pipewire-spa-libcamera` r6 and Snapshot r2 are
+installed on the reference phone. The complete userspace set was built for
+aarch64, hash-verified, simulated offline and installed without a reboot. Exact
+r19/r5/r1 packages are retained as the rollback baseline. Nothing in this work
+flashes a partition, changes a boot slot or reboots the phone.
 
 ## Hardware map
 
@@ -82,13 +82,15 @@ rejected.
 The generic `Adjust` algorithm also accepts tuned defaults while retaining the
 normal libcamera controls as application overrides:
 
-| Sensor | Gamma | Contrast | Saturation |
-| --- | ---: | ---: | ---: |
-| Front IMX371 | 2.0 | 1.10 | 1.25 |
-| Secondary IMX376 | 2.1 | 1.05 | 1.15 |
-| Main IMX519 | 2.2 | 1.05 | 1.25 |
+| Sensor | Gamma | Contrast | Saturation | Sharpness |
+| --- | ---: | ---: | ---: | ---: |
+| Front IMX371 | 2.0 | 1.10 | 1.25 | 1.0 |
+| Secondary IMX376 | 2.1 | 1.05 | 1.15 | 1.0 |
+| Main IMX519 | 2.2 | 1.05 | 1.25 | 1.0 |
 
-These are conservative open tone defaults selected from bounded captures. The
+These are conservative open tone/detail defaults selected from bounded
+captures. Sharpness 1 applies a restrained five-tap unsharp mask; 0 disables
+it and 2 is the supported maximum. The
 CCMs remain identity matrices because no colour chart, calibrated illuminants
 or flat field were available. Android/vendor matrices were inspected only as
 private diagnostic evidence and are not copied, redistributed or represented
@@ -100,6 +102,7 @@ The simple IPA gains contrast-detect autofocus for both rear cameras:
 
 - standard `AfModeAuto` and `AfModeContinuous` modes;
 - standard `AfTriggerStart` and `AfTriggerCancel` input;
+- standard `AfMetering` and sensor-coordinate `AfWindows` input;
 - `AfStateIdle`, `Scanning`, `Focused` and `Failed` metadata;
 - a central two-dimensional Sobel focus statistic normalized by luminance;
 - coarse and fine scans with actuator settling and measurement windows;
@@ -113,6 +116,29 @@ Positions within 10% of the peak metric form a plateau, and the selected
 position is its centre. `LensPosition` is deliberately not advertised: the
 kernel value is an uncalibrated DAC code, while libcamera defines that control
 in dioptres. Advertising a knowingly false unit would break applications.
+
+### Snapshot tap-to-focus and still resolution
+
+Tap-to-focus is implemented through the normal application stack rather than
+through a phone-specific actuator command:
+
+1. libcamera exposes `AfMetering` and `AfWindows` and evaluates focus statistics
+   only inside the requested sensor rectangle;
+2. PipeWire transports rectangle-array controls and publishes the maximum
+   sensor crop, effective stream crop and libcamera orientation after format
+   negotiation; and
+3. Snapshot removes letterboxing from the tap, maps it through the effective
+   crop and inverse orientation, then atomically sends `AfModeAuto`, window
+   metering, one focus rectangle and `AfTriggerStart`.
+
+Snapshot shows a focus marker only after the helper accepts the request. Eight
+seconds later it restores continuous autofocus. Camera changes and stale async
+callbacks clear the marker safely. The fixed-focus front camera has no AF
+controls and is rejected without showing false success.
+
+Snapshot preview remains inexpensive. For a still, it separately selects the
+largest 4:3 mode not exceeding 2048x1536, avoiding the previous behavior where
+the preview-sized stream also limited the saved picture.
 
 ### GPU grid and crop fix
 
@@ -145,23 +171,27 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
+| Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
 | Contrast | Yes | Yes | Yes | `0..2` |
 | Gamma | Yes | Yes | Yes | `0.1..10` |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
+| Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
+| Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
 | Flash integration | No | No | No | LEDs exist but are not a libcamera flash device |
 | Manual exposure/AWB | No | No | No | Not implemented by the simple IPA |
 | Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
-| Denoise/sharpening | No | No | No | No equivalent algorithms in this pipeline |
+| Temporal denoise | No | No | No | No equivalent algorithm in this pipeline |
 
 The IMX371 and IMX376 kernel drivers contain wide-dynamic-range register
 hooks. That is not Android-style HDR: the software ISP cannot merge the
 resulting exposures or tone-map them. Enabling the register switch and naming
 it HDR would return invalid or unmerged data, so `HdrMode` remains absent.
 
-Android parity also includes proprietary tuning, lens shading, temporal
-denoise, sharpening, multi-frame fusion and scene processing. Those cannot be
-claimed from autofocus and demosaic fixes alone.
+Android parity also includes proprietary tuning, calibrated lens shading,
+temporal denoise, multi-frame fusion and scene processing. The open stack is
+materially improved but those missing stages prevent an honest claim of exact
+Android image parity.
 
 ## Patch layout
 
@@ -175,11 +205,12 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The eleven-patch libcamera 0.7.2 series is in
+The thirteen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
-`config/libcamera/simple/`. The single pmaports integration diff in
-`packaging/pmaports/` adds all patches, tuning, checksums and package revision
-bumps.
+`config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
+50.0 two-patch application series have their own versioned directories under
+`patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
+all patches, tuning, checksums and package revision bumps.
 
 No APK, private photograph, raw capture, device identifier, Android camera
 library or vendor tuning blob is committed.
@@ -190,17 +221,20 @@ Use the reviewed pmaports base and verify the integration diff before applying
 it:
 
 ```sh
-git checkout 073ff887b0e18c4c80bd94098fda035e0e20d28b
+git checkout 875bddba6538818f2c3c9849e184f40688ad5140
 git apply --check --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
 git apply --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
 
 pmbootstrap -p "$PWD" build --arch aarch64 libcamera
+pmbootstrap -p "$PWD" build --arch aarch64 pipewire
+pmbootstrap -p "$PWD" build --arch aarch64 snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r19 and SDM845
-kernel r8. See `packaging/pmaports/README.md` for hashes and rollback rules.
-These commands build packages only.
+The reference build produced `libcamera`/`libcamera-ipa` r20,
+`pipewire-spa-libcamera` r6, Snapshot r2 and the existing SDM845 kernel r8.
+See `packaging/pmaports/README.md` for hashes and rollback rules. These commands
+build packages only.
 
 ## Validation
 
@@ -214,6 +248,16 @@ lenses were parked at DAC 0 after tests.
   once and returned to the prior focus plateau without hunting.
 - Saturation 0 produced zero measured chroma; saturation 2 increased measured
   chroma relative to the default.
+- Sharpness 0, the tuned default 1 and maximum 2 produced ordered edge and
+  Laplacian detail signals in a staged front-camera scene. Default 1 was kept
+  because it improved detail without the visibly stronger maximum treatment.
+- The installed PipeWire node published effective crop
+  `1368,1042,1920,1440`, maximum crop `1048,1042,2560,1440` and orientation 6
+  for a 640x480 main stream. The installed Snapshot helper accepted focus and
+  reset on both rear cameras. The main lens physically moved from parked DAC 0
+  to DAC 400; the fixed-focus front returned the expected unsupported result.
+- Main, secondary and front nodes each negotiated three bounded 2048x1536
+  frames through PipeWire.
 - The r18 filtered front-camera runtime completed a bounded 30-frame
   800x600 capture from the 2304x1728 input at approximately 30 fps.
 - With the same staged scenes in separate bounded runs, average chroma changed
@@ -233,29 +277,34 @@ lenses were parked at DAC 0 after tests.
 - Repeated captures on all three sensors completed without EGL, CSI or camera
   process errors in both isolated and installed tests.
 - The full native libcamera test run had 48 passes, one expected failure, 30
-  hardware skips and no failures. Clean aarch64 builds completed for both
-  package recipes.
+  hardware skips and no failures. PipeWire passed 52 of 52 tests. Clean
+  aarch64 package builds completed for libcamera r20, PipeWire r6 and Snapshot
+  r2.
 
-The retained r8/r18 package set remains the rollback baseline. The reference
-phone now runs kernel r8 with the validated r19 userspace packages.
+The retained r8 plus r19/r5/r1 package set is the rollback baseline. The
+reference phone now runs kernel r8 with the validated r20/r6/r2 userspace
+packages.
 
 ## Installation boundary
 
 Do not unload camera modules on a running phone. A kernel package replaces
 modules under the current release path, so after any approved kernel upgrade
-do not open the camera or load modules before the approved reboot. The r19
-change is userspace-only and did not require a kernel upgrade or reboot.
+do not open the camera or load modules before the approved reboot. The current
+revision is userspace-only and did not require a kernel upgrade or reboot.
 
-To reproduce the completed r18-to-r19 installation safely:
+To reproduce the completed installation safely:
 
-1. retain exact copies or verified rebuilds of the installed r18 `libcamera`
-   and `libcamera-ipa` packages;
+1. retain exact copies or verified rebuilds of the prior r19 libcamera, r5
+   PipeWire plugin and r1 Snapshot packages;
 2. stage patched and rollback APKs in separate offline repositories;
-3. run `apk upgrade --simulate` and require exactly the two r18-to-r19
-   libcamera upgrades and no removal;
-4. record the exact-version rollback command; and
-5. close camera applications and obtain explicit approval for package
-   installation. No reboot is needed for this userspace-only revision.
+3. place the noarch Snapshot language APK in the indexed `aarch64` repository
+   alongside the four aarch64 APKs;
+4. run `apk upgrade --simulate` and require exactly five upgrades and no
+   removal;
+5. record the exact-version rollback command and a hash of `/etc/apk/world`;
+   and
+6. close camera applications before installation. No reboot is needed for
+   this userspace-only revision.
 
 Never use `apk upgrade --available` against a partial camera repository. It can
 remove unrelated installed packages.

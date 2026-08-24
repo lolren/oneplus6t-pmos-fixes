@@ -72,9 +72,24 @@ Split submissions by ownership and maturity:
 The sensor helpers, sensor-delay properties, configurable AGC target, focus
 statistic and autofocus can be reviewed as independent libcamera changes. The
 new per-channel statistics plus highlight constraint form one dependent series;
-the configurable `Adjust` defaults are independent. Before submission, add
-focused upstream unit coverage for histogram quantiles and tuning validation,
-and document the two-key backward-compatible AGC schema.
+the configurable `Adjust` defaults are independent. The `AfWindows` work should
+follow the autofocus series and gain focused coordinate/window tests. The
+software-ISP sharpness control is separately reviewable, with CPU/EGL parity
+and endpoint tests included in its submission. Before submission, add focused
+upstream unit coverage for histogram quantiles and tuning validation, and
+document the two-key backward-compatible AGC schema.
+
+The PipeWire rectangle-array transport is versioned under
+`patches/pipewire/1.6.8/`. It should be proposed only after libcamera's
+`AfWindows` semantics are accepted, and its published crop/orientation property
+names should first be discussed with PipeWire maintainers rather than treated
+as a stable private API.
+
+The Snapshot full-frame still patch is independently useful. Tap-to-focus in
+`patches/snapshot/50.0/` depends on both lower layers; upstream discussion
+should cover whether a small helper process is preferred to native PipeWire
+control handling in Aperture. Submit measured UI behavior only after the
+unlocked touchscreen acceptance test is complete.
 
 The EGL two-pass/mipmap patch should not be proposed unchanged while libcamera's
 official multipass GPU-ISP redesign is active; its measured OnePlus result is
