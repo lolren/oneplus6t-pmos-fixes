@@ -29,13 +29,14 @@ Do not unload live camera sensor or actuator modules for testing. On the tested
 kernel the IMX371 remove path warned in the Qualcomm camera-clock driver, and
 lockdown rejects unsigned trial modules. Test kernel changes through a normal,
 signed postmarketOS package. Installing that package and rebooting into it each
-require fresh explicit approval after the current r5/r3 APK baseline and exact
-rollback command have been recorded.
+require fresh explicit approval after the current r8/r19 state, retained r18
+APKs and exact rollback command have been recorded.
 
 Do not use `apk upgrade --available` with a partial local rollback repository.
 On apk-tools 3 it can reconcile the whole installed system against that partial
-index and remove unrelated packages. The tested camera rollback uses exact
-version constraints and must list only three downgrades in simulation.
+index and remove unrelated packages. The next userspace-camera rollback uses
+exact version constraints and must list only the two libcamera downgrades in
+simulation.
 
 Because the rebuilt r8 kernel keeps the same release string, its package replaces
 modules under the running kernel's module directory. After a successful kernel

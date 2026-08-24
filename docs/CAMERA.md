@@ -5,9 +5,11 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The final packages were built and tested from an isolated user-owned runtime.
-They have not been installed system-wide. Nothing in this work flashes a
-partition, changes a boot slot or reboots the phone.
+Kernel r8 and libcamera/IPA r19 are installed on the reference phone. The r19
+userspace packages were first tested from an isolated user-owned runtime, then
+installed in an offline two-package transaction. Exact r18 packages are
+retained as the rollback baseline. Nothing in this work flashes a partition,
+changes a boot slot or reboots the phone.
 
 ## Hardware map
 
@@ -62,6 +64,36 @@ or 16.7 ms. The kernel patch keeps those maximum rates while making 30 fps the
 default. This permits substantially longer exposure and lower gain until the
 pipeline gains an explicit `FrameDurationLimits` implementation.
 
+### Highlight-aware exposure and open tone defaults
+
+The previous AGC considered only a coarse raw-luminance mean. A frame could
+therefore satisfy that target while red or blue clipped after automatic white
+balance multiplied the channel. The software ISP now gathers separate linear
+red, green and blue histograms. When enabled by tuning, AGC predicts the
+brightest post-white-balance channel quantile and constrains the ordinary mean
+correction to keep it below a configurable target.
+
+The OnePlus tuning protects the 98th percentile at 0.95 on all three sensors.
+This is a highlight constraint, not HDR: it changes sensor exposure/gain but
+does not merge frames or tone-map an extended range. Omitting both new keys
+preserves the old AGC behavior; specifying only one or an out-of-range value is
+rejected.
+
+The generic `Adjust` algorithm also accepts tuned defaults while retaining the
+normal libcamera controls as application overrides:
+
+| Sensor | Gamma | Contrast | Saturation |
+| --- | ---: | ---: | ---: |
+| Front IMX371 | 2.0 | 1.10 | 1.25 |
+| Secondary IMX376 | 2.1 | 1.05 | 1.15 |
+| Main IMX519 | 2.2 | 1.05 | 1.25 |
+
+These are conservative open tone defaults selected from bounded captures. The
+CCMs remain identity matrices because no colour chart, calibrated illuminants
+or flat field were available. Android/vendor matrices were inspected only as
+private diagnostic evidence and are not copied, redistributed or represented
+as compatible calibration.
+
 ### Rear autofocus
 
 The simple IPA gains contrast-detect autofocus for both rear cameras:
@@ -109,7 +141,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
-| Automatic exposure | Yes | Yes | Yes | Existing simple AGC, corrected gain models |
+| Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
@@ -143,7 +175,7 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The nine-patch libcamera 0.7.2 series is in
+The eleven-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The single pmaports integration diff in
 `packaging/pmaports/` adds all patches, tuning, checksums and package revision
@@ -166,7 +198,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 libcamera
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r18 and SDM845
+The reference build produced `libcamera`/`libcamera-ipa` r19 and SDM845
 kernel r8. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only.
 
@@ -182,29 +214,48 @@ lenses were parked at DAC 0 after tests.
   once and returned to the prior focus plateau without hunting.
 - Saturation 0 produced zero measured chroma; saturation 2 increased measured
   chroma relative to the default.
-- The final r18 filtered front-camera runtime completed a bounded 30-frame
+- The r18 filtered front-camera runtime completed a bounded 30-frame
   800x600 capture from the 2304x1728 input at approximately 30 fps.
+- With the same staged scenes in separate bounded runs, average chroma changed
+  from 10.1 to 13.3 on the front, 23.4 to 34.1 on the main and 24.5 to 27.1 on
+  the secondary. Near-clipped pixels changed from 9.20% to 0.03%, 0.12% to
+  0.01% and 2.15% to 0.13%, respectively. These are regression metrics, not
+  colour-chart calibration.
+- During a physical low-power flash step, main-camera gain moved from 16.0 to
+  4.70 and recovered to 16.0. The secondary moved from 66.4 ms at gain 2.51 to
+  34.1 ms at gain 1.0, then recovered to its starting exposure product.
+- A private front-camera threshold test converged to measured highlight 0.4998
+  for a 0.50 target. Restoring production tuning raised exposure smoothly,
+  confirming that the front path regulates too.
+- Legacy tuning retained gamma 2.2, contrast 1, saturation 1 and disabled the
+  new highlight constraint. Malformed pairings and invalid adjustment ranges
+  were rejected.
 - Repeated captures on all three sensors completed without EGL, CSI or camera
-  process errors in the isolated tests.
-- Clean aarch64 builds completed for both final package recipes.
+  process errors in both isolated and installed tests.
+- The full native libcamera test run had 48 passes, one expected failure, 30
+  hardware skips and no failures. Clean aarch64 builds completed for both
+  package recipes.
 
-The final r18/r8 packages still require a separately approved system install.
-The existing installed r5/r3 front-camera stack remains the rollback baseline.
+The retained r8/r18 package set remains the rollback baseline. The reference
+phone now runs kernel r8 with the validated r19 userspace packages.
 
 ## Installation boundary
 
-Do not unload camera modules on a running phone. The kernel package replaces
-modules under the current release path, so after an approved kernel upgrade do
-not open the camera or load modules before the approved reboot.
+Do not unload camera modules on a running phone. A kernel package replaces
+modules under the current release path, so after any approved kernel upgrade
+do not open the camera or load modules before the approved reboot. The r19
+change is userspace-only and did not require a kernel upgrade or reboot.
 
-Before installation:
+To reproduce the completed r18-to-r19 installation safely:
 
-1. retain exact copies or rebuilds of the installed r5 kernel and r3
-   libcamera packages;
+1. retain exact copies or verified rebuilds of the installed r18 `libcamera`
+   and `libcamera-ipa` packages;
 2. stage patched and rollback APKs in separate offline repositories;
-3. run `apk upgrade --simulate` and require exactly the expected packages;
+3. run `apk upgrade --simulate` and require exactly the two r18-to-r19
+   libcamera upgrades and no removal;
 4. record the exact-version rollback command; and
-5. obtain explicit approval for package installation and, separately, reboot.
+5. close camera applications and obtain explicit approval for package
+   installation. No reboot is needed for this userspace-only revision.
 
 Never use `apk upgrade --available` against a partial camera repository. It can
 remove unrelated installed packages.

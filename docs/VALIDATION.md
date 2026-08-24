@@ -5,12 +5,12 @@ credential, SSH key or device-unique serial is recorded.
 
 ## Environment
 
-Validated on 23 August 2026:
+Validated on 23-24 August 2026:
 
 - device: OnePlus 6T (`oneplus-fajita`), 8 GB / 128 GB;
 - distribution: postmarketOS edge;
-- kernel: `7.1.0-rc1-sdm845` (currently package r5);
-- libcamera: initially `99990.7.2-r2`, currently r3 (upstream 0.7.2);
+- kernel: `7.1.0-rc1-sdm845` (currently package r8);
+- libcamera: initially `99990.7.2-r2`, currently r19 (upstream 0.7.2);
 - Snapshot: `50.0-r1`;
 - NetworkManager: 1.56.1;
 - ModemManager: 1.25.95; and
@@ -75,16 +75,18 @@ the touchscreen with the screen on.
 ## Camera results
 
 The first signed camera revision, kernel r5 plus libcamera/IPA r3, was installed
-and booted earlier with approval. The phone currently runs that baseline. Its
-front IMX371 hardware-binned mode restored colour and substantially improved
-the original Quad Bayer image. The full-resolution proprietary remosaic path
-is still intentionally absent.
+and booted earlier with approval. Kernel r8 plus libcamera/IPA r18 was
+subsequently installed and booted with approval and is the current rollback
+baseline. Its front IMX371 hardware-binned mode restores colour, while the
+full-resolution proprietary remosaic path remains intentionally absent.
 
-Further work was tested without replacing that installed stack. Each candidate
-libcamera APK was extracted under the login user's camera-diagnostics
-directory; `LD_LIBRARY_PATH`, IPA module path and IPA tuning path selected it
-for a bounded `cam` process only. Kernel r8 was built but never installed.
-Private PPM/PNG captures and full logs are excluded by `.gitignore`.
+The r19 userspace work was first tested without replacing that installed
+stack. Its libcamera APKs were extracted under the login user's
+camera-diagnostics directory; `LD_LIBRARY_PATH`, IPA module path and IPA tuning
+path selected it for bounded `cam` processes only. After those tests, the same
+r19 `libcamera` and `libcamera-ipa` builds replaced r18 in an offline
+two-package transaction. Private PPM/PNG captures and full logs are excluded by
+`.gitignore`.
 
 ### Sensor and actuator findings
 
@@ -141,6 +143,40 @@ Kernel r8 keeps the 120/60 fps minima but changes the first two defaults to
 30 fps. The existing VBLANK implementation calculates and applies the longer
 frame length; no sensor register table is removed.
 
+### Colour and automatic exposure
+
+The r19 software ISP records separate linear red, green and blue histograms.
+AGC uses the current white-balance gains to constrain the configured channel
+quantile after white balance, where the earlier luminance-only statistic could
+miss coloured clipping. All three OnePlus tunings use quantile 0.98 and target
+0.95. Sensor-specific gamma, contrast and saturation defaults remain
+application-overridable.
+
+For the same staged scenes in separate 800x600 bounded runs:
+
+| Camera | Chroma before | Chroma r19 | Near-clip before | Near-clip r19 |
+| --- | ---: | ---: | ---: | ---: |
+| Front IMX371 | 10.1 | 13.3 | 9.20% | 0.03% |
+| Main IMX519 | 23.4 | 34.1 | 0.12% | 0.01% |
+| Secondary IMX376 | 24.5 | 27.1 | 2.15% | 0.13% |
+
+The values come from `tests/camera/ppm-metrics.py`; they are regression
+measurements, not colour-chart calibration. The main-camera physical light
+step reduced gain from 16.0 to 4.697 and returned to 16.0. The secondary
+reduced exposure from 66.4 ms at gain 2.51 to 34.1 ms at gain 1.0 and recovered
+to its initial exposure product. Both LED channels read back 0 afterward and
+both actuators read back DAC 0.
+
+The rear flash cannot illuminate the front scene, so its sensor path received
+a separate isolated threshold test. A target of 0.50 converged to measured
+highlight 0.4998 at 23.7 ms and gain 1.0. Restoring production tuning raised
+exposure smoothly to 27.7 ms and approximately gain 1.30.
+
+Legacy tuning without either new highlight key preserved gamma 2.2, contrast
+1, saturation 1 and disabled highlight protection. A missing key from the pair
+and an out-of-range adjustment default were both rejected. The native build
+completed 48 tests, one expected failure and 30 hardware skips with no failure.
+
 ### Controls and final builds
 
 Identity CCM tuning exposes saturation on all three sensors. Saturation 0
@@ -155,22 +191,30 @@ completed for:
 
 - kernel r8, SHA-256
   `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e`;
-- libcamera r18, SHA-256
-  `360e1c718650907065f8322d1d01a57b27591b7ca827b3a0e8821c7082d93a63`;
+- libcamera r19, SHA-256
+  `073eb1f4b6d26d5573847724b13d2fe9ce79d4b578fa0a4e7097b1a108c79c91`;
   and
-- libcamera IPA r18, SHA-256
-  `4f1748ff710b67b6ef7d8f4e32c1e5f33dc84fa9c1d508192e4a88dc12285083`.
+- libcamera IPA r19, SHA-256
+  `fb9b5040714462c06750a28916c3ced706cd254ac502974c446b48a1325b2a0b`.
 
-The final r18 runtime enumerated all three cameras, exposed autofocus controls
-on both rear modules and none on the fixed-focus front module, and completed a
-bounded 30-frame front capture through the filtered EGL path at approximately
-30 fps. It was extracted under the login user's home directory and was not
-installed into a system package path.
+The isolated r19 runtime enumerated all three cameras, exposed autofocus
+controls on both rear modules and none on the fixed-focus front module, and
+completed a bounded capture on every sensor through the filtered EGL path.
+
+The installation simulation listed exactly the r18-to-r19 `libcamera-ipa` and
+`libcamera` upgrades and no removal. The same offline command was then run
+without `--simulate`; it upgraded only those packages. The installed stack
+enumerated all three production tuning files. A front capture completed 180
+frames at approximately 29 fps with its r19 adjustment defaults, and the main
+and secondary physical light-step tests again reduced exposure under added
+light and recovered afterward. Two further sequential open/capture/close rounds
+passed on every camera. Both LED channels and both rear actuators read back 0,
+and no camera process remained after cleanup.
 
 The r8 IMX519 module has matching `7.1.0-rc1-sdm845` vermagic and a PKCS#7
-SHA-512 build-key signature. The final kernel package was checked to ensure the
-discarded actuator diagnostic experiment is absent. No final package was
-installed or copied into a system package path.
+SHA-512 build-key signature. The kernel package was checked to ensure the
+discarded actuator diagnostic experiment is absent. Kernel r8 and userspace r19
+are installed; the exact userspace r18 APKs remain staged for rollback.
 
 ## Remaining validation
 
@@ -179,8 +223,9 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The final r8/r18 system transaction and reboot remain pending fresh approval.
-After that, record application-level preview, still/video, flash expectations,
-screen-off/on, repeated-open, suspend/resume and rollback tests. Android-level
-HDR, denoise, calibrated CCM/lens shading and computational fusion remain
-unimplemented and are not represented as completed work.
+The r19 userspace transaction is complete and required no reboot. Patched and
+rollback APKs remain staged in separate user-owned offline repositories.
+Application-level preview, still/video, flash expectations, screen-off/on,
+suspend/resume and an actual exact-version rollback test remain to be recorded.
+Android-level HDR, denoise, calibrated CCM/lens shading and computational
+fusion remain unimplemented and are not represented as completed work.

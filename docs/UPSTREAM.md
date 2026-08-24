@@ -71,7 +71,12 @@ Split submissions by ownership and maturity:
 
 The sensor helpers, sensor-delay properties, configurable AGC target, focus
 statistic and autofocus can be reviewed as independent libcamera changes. The
-EGL two-pass/mipmap patch should not be proposed unchanged while libcamera's
+new per-channel statistics plus highlight constraint form one dependent series;
+the configurable `Adjust` defaults are independent. Before submission, add
+focused upstream unit coverage for histogram quantiles and tuning validation,
+and document the two-key backward-compatible AGC schema.
+
+The EGL two-pass/mipmap patch should not be proposed unchanged while libcamera's
 official multipass GPU-ISP redesign is active; its measured OnePlus result is
 useful input to that work, but it needs alignment with the upstream design.
 See the official [multipass RFC discussion](https://lists.libcamera.org/pipermail/libcamera-devel/2026-June/059567.html)
@@ -79,7 +84,11 @@ and [RGB/Bayer conversion patch](https://lists.libcamera.org/pipermail/libcamera
 
 Do not upstream identity matrices as calibrated sensor tuning. They exist only
 to expose the generic saturation control and are explicitly uncalibrated.
-Likewise, do not advertise `HdrMode`: sensor WDR registers are not a complete
+Likewise, the OnePlus gamma/contrast/saturation values are downstream defaults,
+not a substitute for chart-derived CCM and lens-shading calibration. No values
+decoded from Android/vendor tuning blobs belong in an upstream patch.
+
+Do not advertise `HdrMode`: sensor WDR registers are not a complete
 HDR pipeline without exposure fusion and tone mapping.
 
 Kernel changes should first be reviewed by the SDM845 mainline maintainers,
