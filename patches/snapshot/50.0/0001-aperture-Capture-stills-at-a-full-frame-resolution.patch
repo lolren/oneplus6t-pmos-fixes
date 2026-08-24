@@ -1,0 +1,156 @@
+From 5bcc6f29cb18de2dd1f77d21fb81e8af5329d106 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 10:31:48 +0100
+Subject: [PATCH 1/2] aperture: Capture stills at a full-frame resolution
+
+Keep the low-cost preview caps, but ask camerabin for the largest 4:3 still mode up to 2048x1536. This uses more of the binned sensor frame than the previous 1920x1080 capture and avoids throwing away vertical detail while bounding software-ISP cost.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ aperture/src/camera.rs     | 21 +++++++++++
+ aperture/src/utils.rs      | 77 ++++++++++++++++++++++++++++++++++++++
+ aperture/src/viewfinder.rs |  3 ++
+ 3 files changed, 101 insertions(+)
+
+diff --git a/aperture/src/camera.rs b/aperture/src/camera.rs
+index 6aa9e75..4e57165 100644
+--- a/aperture/src/camera.rs
++++ b/aperture/src/camera.rs
+@@ -159,4 +159,25 @@ impl Camera {
+ 
+         highest_res_caps
+     }
++
++    pub(crate) fn best_image_caps(&self) -> Option<gst::Caps> {
++        let caps = self.caps()?;
++        let size = utils::caps::best_still_mode(&caps)?;
++        let fixed = crate::SUPPORTED_ENCODINGS
++            .iter()
++            .map(|encoding| {
++                gst::Caps::builder(*encoding)
++                    .field("width", size.width)
++                    .field("height", size.height)
++                    .build()
++            })
++            .collect::<gst::Caps>();
++        let selected = caps.intersect_with_mode(&fixed, gst::CapsIntersectMode::First);
++        if selected.is_empty() {
++            None
++        } else {
++            log::debug!("Using image capture caps: {selected:#?}");
++            Some(selected)
++        }
++    }
+ }
+diff --git a/aperture/src/utils.rs b/aperture/src/utils.rs
+index 72ab13b..6f861ad 100644
+--- a/aperture/src/utils.rs
++++ b/aperture/src/utils.rs
+@@ -86,6 +86,53 @@ pub(crate) mod caps {
+             .or(best_size_fallback)
+     }
+ 
++    pub(crate) fn best_still_mode(caps: &gst::Caps) -> Option<Size> {
++        const MAX_WIDTH: i32 = 2048;
++        const MAX_HEIGHT: i32 = 1536;
++        const RATIO_WIDTH: i32 = 4;
++        const RATIO_HEIGHT: i32 = 3;
++
++        let mut best_4_3: Option<Size> = None;
++        let mut best_bounded: Option<Size> = None;
++        let mut fallback: Option<Size> = None;
++        for cap in caps.iter() {
++            let (Ok(width), Ok(height)) = (cap.get::<i32>("width"), cap.get::<i32>("height"))
++            else {
++                continue;
++            };
++            if width <= 0 || height <= 0 {
++                continue;
++            }
++
++            let candidate = Size { width, height };
++            if fallback
++                .as_ref()
++                .is_none_or(|current| width * height > current.width * current.height)
++            {
++                fallback = Some(Size { width, height });
++            }
++
++            if width > MAX_WIDTH || height > MAX_HEIGHT {
++                continue;
++            }
++            if best_bounded
++                .as_ref()
++                .is_none_or(|current| width * height > current.width * current.height)
++            {
++                best_bounded = Some(Size { width, height });
++            }
++            if width * RATIO_HEIGHT == height * RATIO_WIDTH
++                && best_4_3
++                    .as_ref()
++                    .is_none_or(|current| width * height > current.width * current.height)
++            {
++                best_4_3 = Some(candidate);
++            }
++        }
++
++        best_4_3.or(best_bounded).or(fallback)
++    }
++
+     fn best_resolution_for_fps(caps: &gst::Caps, framerate: gst::Fraction) -> gst::Caps {
+         let fixed_caps = crate::SUPPORTED_ENCODINGS
+             .iter()
+@@ -168,6 +215,36 @@ pub(crate) mod caps {
+         best_caps.merge(caps);
+         best_caps
+     }
++
++    #[test]
++    fn test_best_still_mode_prefers_bounded_4_3() {
++        gst::init().expect("Failed to initialize gst");
++
++        let caps = [
++            gst_video::VideoCapsBuilder::new()
++                .width(1920)
++                .height(1080)
++                .build(),
++            gst_video::VideoCapsBuilder::new()
++                .width(2048)
++                .height(1536)
++                .build(),
++            gst_video::VideoCapsBuilder::new()
++                .width(3840)
++                .height(2160)
++                .build(),
++        ]
++        .into_iter()
++        .collect();
++
++        assert_eq!(
++            best_still_mode(&caps),
++            Some(Size {
++                width: 2048,
++                height: 1536,
++            })
++        );
++    }
+ }
+ 
+ // Whether the system supports h264 video encoding.
+diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
+index 0cdc0f5..21868c3 100644
+--- a/aperture/src/viewfinder.rs
++++ b/aperture/src/viewfinder.rs
+@@ -1215,6 +1215,9 @@ impl Viewfinder {
+             let caps = camera.best_caps();
+             capsfilter.set_property("caps", &caps);
+         }
++        if let Some(caps) = camera.best_image_caps() {
++            imp.camerabin().set_property("image-capture-caps", &caps);
++        }
+ 
+         let is_front_camera = !matches!(camera.location(), crate::CameraLocation::Back);
+         imp.is_front_camera.set(is_front_camera);
+-- 
+2.49.0
+

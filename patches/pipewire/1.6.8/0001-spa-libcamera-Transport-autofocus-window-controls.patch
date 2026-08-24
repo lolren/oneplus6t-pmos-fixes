@@ -1,0 +1,233 @@
+From 2537ebc28ba6f05b710d018d107d03672001dee0 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 10:29:44 +0100
+Subject: [PATCH] spa: libcamera: Transport autofocus window controls
+
+Represent libcamera Rectangle arrays as SPA structs so clients can set AfWindows. Publish the configured sensor crop, effective stream crop and orientation on the camera node, allowing a UI tap to be mapped from displayed coordinates into the correct sensor region without device-specific geometry.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ spa/plugins/libcamera/libcamera-source.cpp | 135 +++++++++++++++++++--
+ 1 file changed, 127 insertions(+), 8 deletions(-)
+
+diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
+index fba3d8b..47470aa 100644
+--- a/spa/plugins/libcamera/libcamera-source.cpp
++++ b/spa/plugins/libcamera/libcamera-source.cpp
+@@ -6,10 +6,13 @@
+ 
+ #include <array>
+ #include <cstddef>
++#include <cstdint>
+ #include <limits>
+ #include <optional>
++#include <string>
+ #include <type_traits>
+ #include <utility>
++#include <vector>
+ 
+ #include <sys/mman.h>
+ 
+@@ -34,9 +37,11 @@
+ #include <spa/control/control.h>
+ #include <spa/pod/dynamic.h>
+ #include <spa/pod/filter.h>
++#include <spa/pod/iter.h>
+ 
+ #include <libcamera/camera.h>
+ #include <libcamera/control_ids.h>
++#include <libcamera/property_ids.h>
+ #include <libcamera/stream.h>
+ #include <libcamera/formats.h>
+ #include <libcamera/framebuffer.h>
+@@ -160,6 +165,9 @@ struct impl {
+ 
+ 	ControlList ctrls;
+ 	ControlList initial_controls;
++	std::string scaler_crop_maximum;
++	std::string scaler_crop;
++	std::string stream_orientation;
+ 	bool active = false;
+ 	bool acquired = false;
+ 
+@@ -715,6 +723,51 @@ int spa_libcamera_set_format(struct impl *impl, struct port *port,
+ 	if (res != 0)
+ 		goto error;
+ 
++	if (const auto crop =
++		    impl->camera->properties().get(properties::ScalerCropMaximum)) {
++		impl->scaler_crop_maximum =
++			std::to_string(crop->x) + "," +
++			std::to_string(crop->y) + "," +
++			std::to_string(crop->width) + "," +
++			std::to_string(crop->height);
++
++		/*
++		 * The software ISP centre-crops its input to the configured stream
++		 * aspect ratio. Publish that effective sensor region as well as the
++		 * full control coordinate domain so UI coordinates map to what users
++		 * actually see.
++		 */
++		Rectangle effective = *crop;
++		const Size &output = streamConfig.size;
++		if (output.width && output.height) {
++			if (static_cast<uint64_t>(effective.width) * output.height >
++			    static_cast<uint64_t>(effective.height) * output.width) {
++				unsigned int width = static_cast<unsigned int>(
++					static_cast<uint64_t>(effective.height) *
++					output.width / output.height);
++				effective.x += (effective.width - width) / 2;
++				effective.width = width;
++			} else {
++				unsigned int height = static_cast<unsigned int>(
++					static_cast<uint64_t>(effective.width) *
++					output.height / output.width);
++				effective.y += (effective.height - height) / 2;
++				effective.height = height;
++			}
++		}
++		impl->scaler_crop =
++			std::to_string(effective.x) + "," +
++			std::to_string(effective.y) + "," +
++			std::to_string(effective.width) + "," +
++			std::to_string(effective.height);
++		impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
++	} else {
++		impl->scaler_crop_maximum.clear();
++		impl->scaler_crop.clear();
++	}
++	impl->stream_orientation =
++		std::to_string(static_cast<unsigned int>(impl->config->orientation));
++
+ 	port->streamConfig = impl->config->at(0);
+ 
+ 	if ((res = allocBuffers(impl, port, port->streamConfig.bufferCount)) < 0)
+@@ -772,8 +825,35 @@ uint32_t prop_id_to_control(uint32_t prop_id)
+ [[nodiscard]]
+ ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
+ {
+-	if (cid.isArray())
+-		return {};
++	if (cid.isArray()) {
++		if (cid.type() != libcamera::ControlTypeRectangle ||
++		    !spa_pod_is_struct(value))
++			return {};
++
++		std::vector<int32_t> fields;
++		const struct spa_pod *item;
++		SPA_POD_STRUCT_FOREACH(value, item) {
++			int32_t field;
++			if (spa_pod_get_int(item, &field) < 0)
++				return {};
++			fields.push_back(field);
++		}
++
++		if (fields.empty() || fields.size() % 4)
++			return {};
++
++		std::vector<Rectangle> rectangles;
++		for (std::size_t i = 0; i < fields.size(); i += 4) {
++			if (fields[i + 2] < 0 || fields[i + 3] < 0)
++				return {};
++
++			rectangles.emplace_back(fields[i], fields[i + 1],
++						static_cast<unsigned int>(fields[i + 2]),
++						static_cast<unsigned int>(fields[i + 3]));
++		}
++
++		return ControlValue(Span<const Rectangle>(rectangles));
++	}
+ 
+ 	switch (cid.type()) {
+ 	case libcamera::ControlTypeBool: {
+@@ -829,8 +909,25 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
+ [[nodiscard]]
+ bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
+ {
+-	if (cv.isArray())
+-		return false;
++	if (cv.isArray()) {
++		if (cv.type() != libcamera::ControlTypeRectangle)
++			return false;
++
++		spa_pod_frame f;
++		spa_pod_builder_push_struct(&b, &f);
++		for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
++			if (rectangle.width > std::numeric_limits<int32_t>::max() ||
++			    rectangle.height > std::numeric_limits<int32_t>::max())
++				return false;
++
++			spa_pod_builder_int(&b, rectangle.x);
++			spa_pod_builder_int(&b, rectangle.y);
++			spa_pod_builder_int(&b, rectangle.width);
++			spa_pod_builder_int(&b, rectangle.height);
++		}
++		spa_pod_builder_pop(&b, &f);
++		return true;
++	}
+ 
+ 	switch (cv.type()) {
+ 	case libcamera::ControlTypeBool: {
+@@ -873,7 +970,7 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
+ spa_pod *control_details_to_pod(spa_pod_builder& b,
+ 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
+ {
+-	if (cid.isArray())
++	if (cid.isArray() && cid.type() != libcamera::ControlTypeRectangle)
+ 		return nullptr;
+ 
+ 	auto id = control_to_prop_id(cid.id());
+@@ -885,7 +982,11 @@ spa_pod *control_details_to_pod(spa_pod_builder& b,
+ 			SPA_PROP_INFO_description, SPA_POD_String(cid.name().c_str()),
+ 			0);
+ 
+-	if (cinfo.values().empty()) {
++	if (cid.isArray()) {
++		spa_pod_builder_prop(&b, SPA_PROP_INFO_type, 0);
++		if (!control_value_to_pod(b, cinfo.def()))
++			return nullptr;
++	} else if (cinfo.values().empty()) {
+ 		switch (cid.type()) {
+ 		case ControlTypeBool: {
+ 			auto min = cinfo.min().get<bool>();
+@@ -1604,17 +1705,35 @@ int impl_node_send_command(void *object, const struct spa_command *command)
+ 
+ void emit_node_info(struct impl *impl, bool full)
+ {
+-	static const struct spa_dict_item info_items[] = {
++	struct spa_dict_item info_items[] = {
+ 		{ SPA_KEY_DEVICE_API, "libcamera" },
+ 		{ SPA_KEY_MEDIA_CLASS, "Video/Source" },
+ 		{ SPA_KEY_MEDIA_ROLE, "Camera" },
+ 		{ SPA_KEY_NODE_DRIVER, "true" },
++		{ "api.libcamera.scaler-crop-maximum", nullptr },
++		{ "api.libcamera.scaler-crop", nullptr },
++		{ "api.libcamera.stream-orientation", nullptr },
+ 	};
++	uint32_t n_items = SPA_N_ELEMENTS(info_items) - 3;
++	if (!impl->scaler_crop_maximum.empty()) {
++		info_items[n_items].value = impl->scaler_crop_maximum.c_str();
++		n_items++;
++	}
++	if (!impl->scaler_crop.empty()) {
++		info_items[n_items].key = "api.libcamera.scaler-crop";
++		info_items[n_items].value = impl->scaler_crop.c_str();
++		n_items++;
++	}
++	if (!impl->stream_orientation.empty()) {
++		info_items[n_items].key = "api.libcamera.stream-orientation";
++		info_items[n_items].value = impl->stream_orientation.c_str();
++		n_items++;
++	}
+ 	uint64_t old = full ? impl->info.change_mask : 0;
+ 	if (full)
+ 		impl->info.change_mask = impl->info_all;
+ 	if (impl->info.change_mask) {
+-		struct spa_dict dict = SPA_DICT_INIT_ARRAY(info_items);
++		struct spa_dict dict = SPA_DICT_INIT(info_items, n_items);
+ 		impl->info.props = &dict;
+ 		spa_node_emit_info(&impl->hooks, &impl->info);
+ 		impl->info.change_mask = old;
+-- 
+2.49.0
+

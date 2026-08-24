@@ -8,12 +8,17 @@ validation.
 - `af-continuous.yaml` selects `AfModeContinuous` for a bounded capture.
 - `saturation-zero.yaml` requests monochrome output through saturation 0.
 - `saturation-double.yaml` requests saturation 2.
+- `sharpness-zero.yaml` disables the software-ISP unsharp mask.
+- `sharpness-double.yaml` requests its maximum supported strength. Compare
+  either only against an identically framed and illuminated capture.
 - `tone-balanced.yaml` requests the front/main tone candidate explicitly.
 - `tone-balanced-af-continuous.yaml` combines that request with continuous AF.
   These two fixtures override tuning controls and are diagnostics, not sensor
   calibration or the secondary camera's production defaults.
-- `ppm-metrics.py` reports luma, average channel spread, HSV-style saturation
-  and near-clipping percentages from private binary PPM captures.
+- `ppm-metrics.py` reports luma, average channel spread, HSV-style saturation,
+  near-clipping percentages and two luma-detail signals from private binary
+  PPM captures. Edge and Laplacian values are scene-dependent and are valid
+  only for like-for-like framing, lighting and resolution.
 - `run-light-step.sh` performs a bounded, low-power rear-camera flash step with
   unconditional LED-off and lens-park cleanup.
 - `analyze-light-step.py` summarizes exposure metadata from that test.
@@ -39,6 +44,30 @@ Run only one camera process at a time. After actuator diagnostics, close the
 camera and park the corresponding lens at 0 with
 `scripts/v4l2-focus-control.py`. Do not assume `/dev/v4l-subdev*` numbers are
 stable across boots or kernel revisions; resolve the media graph first.
+
+For an installed tap-to-focus stack, discover the current PipeWire serial by
+matching `api.libcamera.path` in `gst-device-monitor-1.0 Video/Source`. While a
+bounded stream to that serial is active in one terminal, submit a normalized
+focus point in another:
+
+```sh
+camera_serial=DISCOVERED_SERIAL
+
+timeout 20 gst-launch-1.0 -q \
+  pipewiresrc target-object="$camera_serial" \
+  ! 'video/x-raw,format=RGBA,width=640,height=480,colorimetry=sRGB' \
+  ! fakesink sync=false
+```
+
+```sh
+/usr/libexec/snapshot-focus-control focus "$camera_serial" 0.50 0.50 0.18
+/usr/libexec/snapshot-focus-control reset "$camera_serial"
+```
+
+The helper must return success for either rear node and an unsupported result
+for fixed-focus IMX371. Stop the stream before parking the dynamically matched
+actuator. The serial is ephemeral and must never be copied into a patch or
+script.
 
 Measure a final PPM without publishing it:
 

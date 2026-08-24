@@ -2743,8 +2743,848 @@ index 0000000000000000000000000000000000000000..95967c1dd15168276e660c4e4a688eb3
 +-- 
 +2.49.0
 +
+diff --git a/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..29fdf18b2321cc6084b9718e246aec7cea164e9c
+--- /dev/null
++++ b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
+@@ -0,0 +1,443 @@
++From e98921b7c544337cd79c7d0378b47bbb9707520a Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 09:37:28 +0100
++Subject: [PATCH 14/15] ipa: simple: Add autofocus metering windows
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ .../internal/software_isp/debayer_params.h    |  4 +
++ .../internal/software_isp/swstats_cpu.h       | 13 ++-
++ include/libcamera/ipa/soft.mojom              |  1 +
++ src/ipa/simple/algorithms/af.cpp              | 69 ++++++++++++++-
++ src/ipa/simple/algorithms/af.h                |  5 ++
++ src/ipa/simple/soft_simple.cpp                |  2 +
++ src/libcamera/pipeline/simple/simple.cpp      | 12 +++
++ src/libcamera/software_isp/debayer_cpu.cpp    |  5 ++
++ src/libcamera/software_isp/debayer_egl.cpp    |  5 ++
++ src/libcamera/software_isp/swstats_cpu.cpp    | 86 +++++++++++++++----
++ 10 files changed, 179 insertions(+), 23 deletions(-)
++
++diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
++index 6772b43..de9e804 100644
++--- a/include/libcamera/internal/software_isp/debayer_params.h
+++++ b/include/libcamera/internal/software_isp/debayer_params.h
++@@ -12,6 +12,8 @@
++ 
++ #include <stdint.h>
++ 
+++#include <libcamera/geometry.h>
+++
++ #include "libcamera/internal/matrix.h"
++ #include "libcamera/internal/vector.h"
++ 
++@@ -25,6 +27,8 @@ struct DebayerParams {
++ 	float gamma = 1.0;
++ 	float contrastExp = 1.0;
++ 	RGB<float> gains = RGB<float>({ 1.0, 1.0, 1.0 });
+++	/* Focus region in the software ISP input coordinate system. */
+++	Rectangle focusWindow;
++ };
++ 
++ } /* namespace libcamera */
++diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
++index 659611f..c7ea097 100644
++--- a/include/libcamera/internal/software_isp/swstats_cpu.h
+++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
++@@ -55,6 +55,7 @@ public:
++ 
++ 	int configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount = 1);
++ 	void setWindow(const Rectangle &window);
+++	void setFocusWindow(const Rectangle &window);
++ 	void startFrame(uint32_t frame);
++ 	void finishFrame(uint32_t frame, uint32_t bufferId);
++ 	void processFrame(uint32_t frame, uint32_t bufferId, MappedFrameBuffer &input);
++@@ -68,8 +69,9 @@ public:
++ 		    y >= (window_.y + window_.height))
++ 			return;
++ 
++-		bool measureFocus = y >= window_.y + window_.height / 4 &&
++-				    y < window_.y + window_.height * 3 / 4;
+++		unsigned int focusY = y - window_.y;
+++		bool measureFocus = focusY >= static_cast<unsigned int>(focusWindow_.y) &&
+++				    focusY < focusWindow_.y + focusWindow_.height;
++ 		(this->*stats0_)(src, stats_[statsBufferIndex],
++ 				 focusStates_[statsBufferIndex], measureFocus);
++ 	}
++@@ -83,8 +85,9 @@ public:
++ 		    y >= (window_.y + window_.height))
++ 			return;
++ 
++-		bool measureFocus = y >= window_.y + window_.height / 4 &&
++-				    y < window_.y + window_.height * 3 / 4;
+++		unsigned int focusY = y - window_.y;
+++		bool measureFocus = focusY >= static_cast<unsigned int>(focusWindow_.y) &&
+++				    focusY < focusWindow_.y + focusWindow_.height;
++ 		(this->*stats2_)(src, stats_[statsBufferIndex],
++ 				 focusStates_[statsBufferIndex], measureFocus);
++ 	}
++@@ -139,6 +142,8 @@ private:
++ 	unsigned int ySkipMask_;
++ 
++ 	Rectangle window_;
+++	/* Focus window relative to window_.topLeft(). */
+++	Rectangle focusWindow_;
++ 
++ 	Size patternSize_;
++ 
++diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
++index 304b5fe..cc2e68a 100644
++--- a/include/libcamera/ipa/soft.mojom
+++++ b/include/libcamera/ipa/soft.mojom
++@@ -9,6 +9,7 @@ module ipa.soft;
++ import "include/libcamera/ipa/core.mojom";
++ 
++ struct IPAConfigInfo {
+++	libcamera.IPACameraSensorInfo sensorInfo;
++ 	libcamera.ControlInfoMap sensorControls;
++ 	libcamera.ControlInfoMap lensControls;
++ };
++diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
++index cdbab4c..67adb71 100644
++--- a/src/ipa/simple/algorithms/af.cpp
+++++ b/src/ipa/simple/algorithms/af.cpp
++@@ -59,6 +59,11 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
++ 			    defaultMode_);
++ 	context.ctrlMap[&controls::AfTrigger] =
++ 		ControlInfo(controls::AfTriggerValues);
+++	context.ctrlMap[&controls::AfMetering] =
+++		ControlInfo(controls::AfMeteringValues);
+++	context.ctrlMap[&controls::AfWindows] =
+++		ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535),
+++			    Span<const Rectangle, 1>{ { Rectangle{} } });
++ 
++ 	return 0;
++ }
++@@ -85,6 +90,8 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
++ 	}
++ 
++ 	mode_ = defaultMode_;
+++	metering_ = controls::AfMeteringAuto;
+++	focusWindow_ = {};
++ 	state_ = controls::AfStateIdle;
++ 	phase_ = ScanPhase::Idle;
++ 	currentPosition_ = minPosition_;
++@@ -115,6 +122,8 @@ void Af::queueRequest(IPAContext &context,
++ 		      [[maybe_unused]] IPAFrameContext &frameContext,
++ 		      const ControlList &requestControls)
++ {
+++	bool restartContinuous = false;
+++
++ 	const auto &mode = requestControls.get(controls::AfMode);
++ 	if (mode && *mode != mode_) {
++ 		if (*mode != controls::AfModeAuto &&
++@@ -125,11 +134,48 @@ void Af::queueRequest(IPAContext &context,
++ 			mode_ = *mode;
++ 			phase_ = ScanPhase::Idle;
++ 			state_ = controls::AfStateIdle;
++-			if (mode_ == controls::AfModeContinuous)
++-				startScan(context);
+++			restartContinuous = mode_ == controls::AfModeContinuous;
+++		}
+++	}
+++
+++	const auto &metering = requestControls.get(controls::AfMetering);
+++	if (metering && *metering != metering_) {
+++		if (*metering != controls::AfMeteringAuto &&
+++		    *metering != controls::AfMeteringWindows) {
+++			LOG(IPASoftAf, Warning)
+++				<< "Ignoring unsupported autofocus metering mode "
+++				<< *metering;
+++		} else {
+++			metering_ = *metering;
+++			phase_ = ScanPhase::Idle;
+++			state_ = controls::AfStateIdle;
+++			restartContinuous = mode_ == controls::AfModeContinuous;
+++		}
+++	}
+++
+++	const auto &windows = requestControls.get(controls::AfWindows);
+++	if (windows) {
+++		Rectangle selected;
+++		for (const Rectangle &window : *windows) {
+++			selected = window.boundedTo(context.sensorInfo.analogCrop);
+++			if (!selected.isNull())
+++				break;
+++		}
+++
+++		if (selected != focusWindow_) {
+++			focusWindow_ = selected;
+++			if (metering_ == controls::AfMeteringWindows) {
+++				phase_ = ScanPhase::Idle;
+++				state_ = controls::AfStateIdle;
+++				restartContinuous =
+++					mode_ == controls::AfModeContinuous;
+++			}
++ 		}
++ 	}
++ 
+++	if (restartContinuous)
+++		startScan(context);
+++
++ 	const auto &trigger = requestControls.get(controls::AfTrigger);
++ 	if (!trigger || mode_ != controls::AfModeAuto)
++ 		return;
++@@ -143,6 +189,21 @@ void Af::queueRequest(IPAContext &context,
++ 	}
++ }
++ 
+++void Af::prepare(IPAContext &context,
+++		 [[maybe_unused]] const uint32_t frame,
+++		 [[maybe_unused]] IPAFrameContext &frameContext,
+++		 DebayerParams *params)
+++{
+++	params->focusWindow = {};
+++	if (metering_ != controls::AfMeteringWindows || focusWindow_.isNull())
+++		return;
+++
+++	const Rectangle output{ context.sensorInfo.outputSize };
+++	Rectangle mapped = focusWindow_.transformedBetween(
+++		context.sensorInfo.analogCrop, output);
+++	params->focusWindow = mapped.boundedTo(output);
+++}
+++
++ void Af::buildCoarsePositions()
++ {
++ 	positions_.clear();
++@@ -373,6 +434,10 @@ void Af::process(IPAContext &context,
++ 	}
++ 
++ 	metadata.set(controls::AfMode, mode_);
+++	metadata.set(controls::AfMetering, metering_);
+++	if (!focusWindow_.isNull())
+++		metadata.set(controls::AfWindows,
+++			     Span<const Rectangle>(&focusWindow_, 1));
++ 	metadata.set(controls::AfState, state_);
++ }
++ 
++diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
++index cc30dfb..de3a3c8 100644
++--- a/src/ipa/simple/algorithms/af.h
+++++ b/src/ipa/simple/algorithms/af.h
++@@ -27,6 +27,9 @@ public:
++ 	void queueRequest(IPAContext &context, const uint32_t frame,
++ 			  IPAFrameContext &frameContext,
++ 			  const ControlList &controls) override;
+++	void prepare(IPAContext &context, const uint32_t frame,
+++		     IPAFrameContext &frameContext,
+++		     DebayerParams *params) override;
++ 	void process(IPAContext &context, const uint32_t frame,
++ 		     IPAFrameContext &frameContext, const SwIspStats *stats,
++ 		     ControlList &metadata) override;
++@@ -65,7 +68,9 @@ private:
++ 	int32_t minPosition_ = 0;
++ 	int32_t maxPosition_ = 0;
++ 	int32_t mode_ = 0;
+++	int32_t metering_ = 0;
++ 	int32_t state_ = 0;
+++	Rectangle focusWindow_;
++ 	int32_t currentPosition_ = 0;
++ 	int32_t bestPosition_ = 0;
++ 	ScanPhase phase_ = ScanPhase::Idle;
++diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
++index 6027553..1aedc56 100644
++--- a/src/ipa/simple/soft_simple.cpp
+++++ b/src/ipa/simple/soft_simple.cpp
++@@ -165,6 +165,7 @@ int IPASoftSimple::init(const IPASettings &settings,
++ 		params_->gamma = 1.0 / algorithms::kDefaultGamma;
++ 		params_->contrastExp = 1.0;
++ 		params_->gains = { { 1.0, 1.0, 1.0 } };
+++		params_->focusWindow = {};
++ 		/* combinedMatrix is reset for each frame. */
++ 	}
++ 
++@@ -203,6 +204,7 @@ int IPASoftSimple::init(const IPASettings &settings,
++ 
++ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
++ {
+++	context_.sensorInfo = configInfo.sensorInfo;
++ 	sensorInfoMap_ = configInfo.sensorControls;
++ 	lensInfoMap_ = configInfo.lensControls;
++ 
++diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
++index 7bd87b9..f06f587 100644
++--- a/src/libcamera/pipeline/simple/simple.cpp
+++++ b/src/libcamera/pipeline/simple/simple.cpp
++@@ -30,6 +30,7 @@
++ #include <libcamera/control_ids.h>
++ #include <libcamera/geometry.h>
++ #include <libcamera/pixel_format.h>
+++#include <libcamera/property_ids.h>
++ #include <libcamera/stream.h>
++ 
++ #include "libcamera/internal/camera.h"
++@@ -1590,6 +1591,16 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
++ 			<< ", got " << captureFormat.planes[0].bpl;
++ 	}
++ 
+++	IPACameraSensorInfo sensorInfo;
+++	ret = data->sensor_->sensorInfo(&sensorInfo);
+++	if (ret) {
+++		LOG(SimplePipeline, Error)
+++			<< "Camera sensor information not available after configuration";
+++		return ret;
+++	}
+++	data->properties_.set(properties::ScalerCropMaximum,
+++			      sensorInfo.analogCrop);
+++
++ 	/* Configure the converter if needed. */
++ 	std::vector<std::reference_wrapper<const StreamConfiguration>> outputCfgs;
++ 	data->useConversion_ = config->needConversion();
++@@ -1621,6 +1632,7 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
++ 		return data->converter_->configure(inputCfg, outputCfgs);
++ 	} else {
++ 		ipa::soft::IPAConfigInfo configInfo;
+++		configInfo.sensorInfo = sensorInfo;
++ 		configInfo.sensorControls = data->sensor_->controls();
++ 		CameraLens *lens = data->sensor_->focusLens();
++ 		if (lens)
++diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
++index 49382b4..aa210e1 100644
++--- a/src/libcamera/software_isp/debayer_cpu.cpp
+++++ b/src/libcamera/software_isp/debayer_cpu.cpp
++@@ -1069,6 +1069,11 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
++ {
++ 	bench_.startFrame();
++ 
+++	Rectangle focusWindow = params.focusWindow.boundedTo(window_);
+++	if (!focusWindow.isNull())
+++		focusWindow.translateBy(-window_.topLeft());
+++	stats_->setFocusWindow(focusWindow);
+++
++ 	std::vector<DmaSyncer> dmaSyncers;
++ 
++ 	dmaSyncBegin(dmaSyncers, input, output);
++diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
++index ba7e750..dbe224e 100644
++--- a/src/libcamera/software_isp/debayer_egl.cpp
+++++ b/src/libcamera/software_isp/debayer_egl.cpp
++@@ -716,6 +716,11 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
++ {
++ 	bench_.startFrame();
++ 
+++	Rectangle focusWindow = params.focusWindow.boundedTo(displayWindow_);
+++	if (!focusWindow.isNull())
+++		focusWindow.translateBy(-displayWindow_.topLeft());
+++	stats_->setFocusWindow(focusWindow);
+++
++ 	/* Copy metadata from the input buffer */
++ 	FrameMetadata &metadata = output->_d()->metadata();
++ 	metadata.status = input->metadata().status;
++diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
++index fa245ea..8278d61 100644
++--- a/src/libcamera/software_isp/swstats_cpu.cpp
+++++ b/src/libcamera/software_isp/swstats_cpu.cpp
++@@ -203,20 +203,20 @@ void SwStatsCpu::finishFocusLine(SwIspStats &stats, FocusState &focusState,
++ 	focusState.validLines = std::min(focusState.validLines + 1, 3U);
++ }
++ 
++-#define SWSTATS_START_LINE_STATS(pixel_t) \
++-	pixel_t r, g, g2, b;              \
++-	uint64_t yVal;                    \
++-                                          \
++-	uint64_t sumR = 0;                \
++-	uint64_t sumG = 0;                \
++-	uint64_t sumB = 0;                \
++-	uint64_t focusLuminance = 0;      \
++-	uint32_t focusLuminanceSamples = 0; \
++-	unsigned int focusLineSamples = 0; \
++-	unsigned int sampleIndex = 0;     \
++-	const unsigned int focusStart = window_.width / 16; \
++-	const unsigned int focusEnd = window_.width * 3 / 16; \
++-	std::vector<uint16_t> &focusLine = \
+++#define SWSTATS_START_LINE_STATS(pixel_t)                                            \
+++	pixel_t r, g, g2, b;                                                         \
+++	uint64_t yVal;                                                               \
+++                                                                                     \
+++	uint64_t sumR = 0;                                                           \
+++	uint64_t sumG = 0;                                                           \
+++	uint64_t sumB = 0;                                                           \
+++	uint64_t focusLuminance = 0;                                                 \
+++	uint32_t focusLuminanceSamples = 0;                                          \
+++	unsigned int focusLineSamples = 0;                                           \
+++	unsigned int sampleIndex = 0;                                                \
+++	const unsigned int focusStart = focusWindow_.x / 4;                          \
+++	const unsigned int focusEnd = (focusWindow_.x + focusWindow_.width + 3) / 4; \
+++	std::vector<uint16_t> &focusLine =                                           \
++ 		focusState.lines[focusState.lineIndex];
++ 
++ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
++@@ -660,7 +660,59 @@ void SwStatsCpu::setWindow(const Rectangle &window)
++ 	window_.width &= ~(patternSize_.width - 1);
++ 	window_.height &= ~(patternSize_.height - 1);
++ 
++-	unsigned int focusLineSize = window_.width / 8 + 1;
+++	/* An empty focus window means the central half of the statistics area. */
+++	setFocusWindow({});
+++}
+++
+++/**
+++ * \brief Specify the area used to calculate focus statistics
+++ * \param[in] window Focus window relative to the statistics window
+++ *
+++ * An empty or invalid window selects the central half of the statistics area.
+++ * The colour and luminance statistics continue to cover the full statistics
+++ * window, so changing focus metering does not disturb auto exposure or white
+++ * balance.
+++ */
+++void SwStatsCpu::setFocusWindow(const Rectangle &window)
+++{
+++	Rectangle bounds(window_.size());
+++	Rectangle focus = window.boundedTo(bounds);
+++
+++	if (focus.isNull()) {
+++		focus = Rectangle(window_.width / 4, window_.height / 4,
+++				  window_.width / 2, window_.height / 2);
+++	}
+++
+++	/* Keep sample coordinates aligned to the Bayer/statistics grid. */
+++	focus.x &= ~3;
+++	focus.y &= ~(patternSize_.height - 1);
+++	focus.width = std::min(focus.width, bounds.width - focus.x);
+++	focus.height = std::min(focus.height, bounds.height - focus.y);
+++	focus.width &= ~3;
+++	focus.height &= ~(patternSize_.height - 1);
+++
+++	/* A Sobel measurement needs at least three samples in both axes. */
+++	if (focus.width < 12 || focus.height < 3 * patternSize_.height) {
+++		focus = Rectangle(window_.width / 4, window_.height / 4,
+++				  window_.width / 2, window_.height / 2);
+++		focus.x &= ~3;
+++		focus.y &= ~(patternSize_.height - 1);
+++		focus.width &= ~3;
+++		focus.height &= ~(patternSize_.height - 1);
+++	}
+++
+++	unsigned int focusLineSize = (focus.width + 3) / 4 + 1;
+++	bool storageReady = std::all_of(focusStates_.begin(), focusStates_.end(),
+++					[focusLineSize](const FocusState &state) {
+++						return std::all_of(state.lines.begin(), state.lines.end(),
+++								   [focusLineSize](const std::vector<uint16_t> &line) {
+++									   return line.size() == focusLineSize;
+++								   });
+++					});
+++	if (focus == focusWindow_ && storageReady)
+++		return;
+++
+++	focusWindow_ = focus;
++ 	for (FocusState &state : focusStates_) {
++ 		for (std::vector<uint16_t> &line : state.lines)
++ 			line.resize(focusLineSize);
++@@ -686,8 +738,8 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
++ 		/* linePointers[0] is not used by any stats0_ functions */
++ 		linePointers[1] = src;
++ 		linePointers[2] = src + stride_;
++-		bool measureFocus = y >= window_.height / 4 &&
++-				    y < window_.height * 3 / 4;
+++		bool measureFocus = y >= static_cast<unsigned int>(focusWindow_.y) &&
+++				    y < focusWindow_.y + focusWindow_.height;
++ 		(this->*stats0_)(linePointers, stats_[0], focusStates_[0],
++ 				 measureFocus);
++ 		src += stride_ * 2;
++-- 
++2.49.0
++
+diff --git a/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..032a61dd30c62df6ab1547021939649156b5b3b0
+--- /dev/null
++++ b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
+@@ -0,0 +1,385 @@
++From f3e96dcf804d35e31579d8d0b65ff3f1f9d2c883 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 10:28:58 +0100
++Subject: [PATCH 15/15] ipa: simple: Add software ISP sharpness control
++
++Expose the standard Sharpness control from the simple IPA and make its default tunable per sensor. Apply a restrained five-tap unsharp mask in both EGL and CPU software ISP backends so scaled captures retain local detail without forcing extra contrast into the tone curve.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ .../internal/software_isp/debayer_params.h    |  1 +
++ src/ipa/simple/algorithms/adjust.cpp          | 33 +++++++++++---
++ src/ipa/simple/algorithms/adjust.h            |  1 +
++ src/ipa/simple/ipa_context.h                  |  2 +
++ src/ipa/simple/soft_simple.cpp                |  1 +
++ src/libcamera/shaders/rgb_scale.frag          |  8 ++++
++ src/libcamera/software_isp/debayer_cpu.cpp    | 44 +++++++++++++++++++
++ src/libcamera/software_isp/debayer_cpu.h      |  2 +
++ src/libcamera/software_isp/debayer_egl.cpp    | 21 ++++++---
++ src/libcamera/software_isp/debayer_egl.h      |  5 ++-
++ 10 files changed, 106 insertions(+), 12 deletions(-)
++
++diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
++index de9e804..057f950 100644
++--- a/include/libcamera/internal/software_isp/debayer_params.h
+++++ b/include/libcamera/internal/software_isp/debayer_params.h
++@@ -26,6 +26,7 @@ struct DebayerParams {
++ 	RGB<float> blackLevel = RGB<float>({ 0.0, 0.0, 0.0 });
++ 	float gamma = 1.0;
++ 	float contrastExp = 1.0;
+++	float sharpness = 0.0;
++ 	RGB<float> gains = RGB<float>({ 1.0, 1.0, 1.0 });
++ 	/* Focus region in the software ISP input coordinate system. */
++ 	Rectangle focusWindow;
++diff --git a/src/ipa/simple/algorithms/adjust.cpp b/src/ipa/simple/algorithms/adjust.cpp
++index 800fbfe..4c53207 100644
++--- a/src/ipa/simple/algorithms/adjust.cpp
+++++ b/src/ipa/simple/algorithms/adjust.cpp
++@@ -23,12 +23,14 @@ namespace ipa::soft::algorithms {
++ 
++ constexpr float kDefaultContrast = 1.0f;
++ constexpr float kDefaultSaturation = 1.0f;
+++constexpr float kDefaultSharpness = 1.0f;
++ 
++ LOG_DEFINE_CATEGORY(IPASoftAdjust)
++ 
++ Adjust::Adjust()
++ 	: defaultGamma_(kDefaultGamma), defaultContrast_(kDefaultContrast),
++-	  defaultSaturation_(kDefaultSaturation)
+++	  defaultSaturation_(kDefaultSaturation),
+++	  defaultSharpness_(kDefaultSharpness)
++ {
++ }
++ 
++@@ -39,14 +41,18 @@ int Adjust::init(IPAContext &context, const ValueNode &tuningData)
++ 		tuningData["contrast"].get<float>(kDefaultContrast);
++ 	defaultSaturation_ =
++ 		tuningData["saturation"].get<float>(kDefaultSaturation);
+++	defaultSharpness_ =
+++		tuningData["sharpness"].get<float>(kDefaultSharpness);
++ 
++ 	if (defaultGamma_ < 0.1f || defaultGamma_ > 10.0f ||
++ 	    defaultContrast_ < 0.0f || defaultContrast_ > 2.0f ||
++-	    defaultSaturation_ < 0.0f || defaultSaturation_ > 2.0f) {
+++	    defaultSaturation_ < 0.0f || defaultSaturation_ > 2.0f ||
+++	    defaultSharpness_ < 0.0f || defaultSharpness_ > 2.0f) {
++ 		LOG(IPASoftAdjust, Error)
++ 			<< "Invalid adjustment defaults: gamma " << defaultGamma_
++ 			<< ", contrast " << defaultContrast_
++-			<< ", saturation " << defaultSaturation_;
+++			<< ", saturation " << defaultSaturation_
+++			<< ", sharpness " << defaultSharpness_;
++ 		return -EINVAL;
++ 	}
++ 
++@@ -57,11 +63,14 @@ int Adjust::init(IPAContext &context, const ValueNode &tuningData)
++ 	if (context.ccmEnabled)
++ 		context.ctrlMap[&controls::Saturation] =
++ 			ControlInfo(0.0f, 2.0f, defaultSaturation_);
+++	context.ctrlMap[&controls::Sharpness] =
+++		ControlInfo(0.0f, 2.0f, defaultSharpness_);
++ 
++ 	LOG(IPASoftAdjust, Debug)
++ 		<< "Adjustment defaults: gamma " << defaultGamma_
++ 		<< ", contrast " << defaultContrast_
++-		<< ", saturation " << defaultSaturation_;
+++		<< ", saturation " << defaultSaturation_
+++		<< ", sharpness " << defaultSharpness_;
++ 
++ 	return 0;
++ }
++@@ -72,8 +81,9 @@ int Adjust::configure(IPAContext &context,
++ 	context.activeState.knobs.gamma = defaultGamma_;
++ 	context.activeState.knobs.contrast = defaultContrast_;
++ 	context.activeState.knobs.saturation = context.ccmEnabled
++-		? std::optional<float>(defaultSaturation_)
++-		: std::optional<float>();
+++						       ? std::optional<float>(defaultSaturation_)
+++						       : std::optional<float>();
+++	context.activeState.knobs.sharpness = defaultSharpness_;
++ 
++ 	return 0;
++ }
++@@ -100,6 +110,13 @@ void Adjust::queueRequest(typename Module::Context &context,
++ 		context.activeState.knobs.saturation = saturation;
++ 		LOG(IPASoftAdjust, Debug) << "Setting saturation to " << saturation.value();
++ 	}
+++
+++	const auto &sharpness = controls.get(controls::Sharpness);
+++	if (sharpness.has_value()) {
+++		context.activeState.knobs.sharpness = sharpness.value();
+++		LOG(IPASoftAdjust, Debug)
+++			<< "Setting sharpness to " << sharpness.value();
+++	}
++ }
++ 
++ void Adjust::applySaturation(Matrix<float, 3, 3> &matrix, float saturation)
++@@ -141,6 +158,8 @@ void Adjust::prepare(IPAContext &context,
++ 	params->gamma = 1.0 / context.activeState.knobs.gamma;
++ 	const float contrast = context.activeState.knobs.contrast.value_or(kDefaultContrast);
++ 	params->contrastExp = tan(std::clamp(contrast * M_PI_4, 0.0, M_PI_2 - 0.00001));
+++	params->sharpness = context.activeState.knobs.sharpness;
+++	frameContext.sharpness = context.activeState.knobs.sharpness;
++ }
++ 
++ void Adjust::process([[maybe_unused]] IPAContext &context,
++@@ -157,6 +176,8 @@ void Adjust::process([[maybe_unused]] IPAContext &context,
++ 
++ 	const auto &saturation = frameContext.saturation;
++ 	metadata.set(controls::Saturation, saturation.value_or(kDefaultSaturation));
+++
+++	metadata.set(controls::Sharpness, frameContext.sharpness);
++ }
++ 
++ REGISTER_IPA_ALGORITHM(Adjust, "Adjust")
++diff --git a/src/ipa/simple/algorithms/adjust.h b/src/ipa/simple/algorithms/adjust.h
++index aa807ae..4577d33 100644
++--- a/src/ipa/simple/algorithms/adjust.h
+++++ b/src/ipa/simple/algorithms/adjust.h
++@@ -47,6 +47,7 @@ private:
++ 	float defaultGamma_;
++ 	float defaultContrast_;
++ 	float defaultSaturation_;
+++	float defaultSharpness_;
++ };
++ 
++ } /* namespace ipa::soft::algorithms */
++diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
++index 045421d..f1a9966 100644
++--- a/src/ipa/simple/ipa_context.h
+++++ b/src/ipa/simple/ipa_context.h
++@@ -64,6 +64,7 @@ struct IPAActiveState {
++ 		/* 0..2 range, 1.0 = normal */
++ 		std::optional<float> contrast;
++ 		std::optional<float> saturation;
+++		float sharpness;
++ 	} knobs;
++ };
++ 
++@@ -80,6 +81,7 @@ struct IPAFrameContext : public FrameContext {
++ 	float gamma;
++ 	std::optional<float> contrast;
++ 	std::optional<float> saturation;
+++	float sharpness;
++ };
++ 
++ struct IPAContext {
++diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
++index 1aedc56..73386b2 100644
++--- a/src/ipa/simple/soft_simple.cpp
+++++ b/src/ipa/simple/soft_simple.cpp
++@@ -164,6 +164,7 @@ int IPASoftSimple::init(const IPASettings &settings,
++ 		params_->blackLevel = { { 0.0, 0.0, 0.0 } };
++ 		params_->gamma = 1.0 / algorithms::kDefaultGamma;
++ 		params_->contrastExp = 1.0;
+++		params_->sharpness = 0.0;
++ 		params_->gains = { { 1.0, 1.0, 1.0 } };
++ 		params_->focusWindow = {};
++ 		/* combinedMatrix is reset for each frame. */
++diff --git a/src/libcamera/shaders/rgb_scale.frag b/src/libcamera/shaders/rgb_scale.frag
++index 758c275..0b401da 100644
++--- a/src/libcamera/shaders/rgb_scale.frag
+++++ b/src/libcamera/shaders/rgb_scale.frag
++@@ -9,10 +9,18 @@ precision highp float;
++ 
++ varying vec2 textureOut;
++ uniform sampler2D tex_rgb;
+++uniform vec2 texel_step;
+++uniform float sharpness;
++ 
++ void main(void)
++ {
++ 	vec4 rgba = texture2D(tex_rgb, textureOut);
+++	vec3 blur = (rgba.rgb * 4.0 +
+++		texture2D(tex_rgb, textureOut + vec2(texel_step.x, 0.0)).rgb +
+++		texture2D(tex_rgb, textureOut - vec2(texel_step.x, 0.0)).rgb +
+++		texture2D(tex_rgb, textureOut + vec2(0.0, texel_step.y)).rgb +
+++		texture2D(tex_rgb, textureOut - vec2(0.0, texel_step.y)).rgb) / 8.0;
+++	rgba.rgb = clamp(rgba.rgb + sharpness * (rgba.rgb - blur), 0.0, 1.0);
++ 
++ #if defined(SWAP_BLUE)
++ 	gl_FragColor = rgba.bgra;
++diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
++index aa210e1..3e8d088 100644
++--- a/src/libcamera/software_isp/debayer_cpu.cpp
+++++ b/src/libcamera/software_isp/debayer_cpu.cpp
++@@ -687,6 +687,8 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
++ 		return -EINVAL;
++ 
++ 	ccmEnabled_ = ccmEnabled;
+++	outputSize_ = outputCfg.size;
+++	outputPixelFormat_ = outputCfg.pixelFormat;
++ 
++ 	/*
++ 	 * Lookup tables must be initialized because the initial value is used for
++@@ -1065,6 +1067,46 @@ void DebayerCpu::updateLookupTables(const DebayerParams &params)
++ 	params_ = params;
++ }
++ 
+++void DebayerCpu::applySharpness(Span<uint8_t> output, float sharpness)
+++{
+++	if (sharpness <= 0.0f || outputSize_.width < 3 || outputSize_.height < 3)
+++		return;
+++
+++	const unsigned int bytesPerPixel = outputConfig_.bpp / 8;
+++	const unsigned int stride = outputConfig_.stride;
+++	std::array<std::vector<uint8_t>, 3> lines;
+++	for (unsigned int i = 0; i < lines.size(); ++i) {
+++		lines[i].resize(stride);
+++		memcpy(lines[i].data(), output.data() + i * stride, stride);
+++	}
+++
+++	for (unsigned int y = 1; y + 1 < outputSize_.height; ++y) {
+++		uint8_t *destination = output.data() + y * stride;
+++		for (unsigned int x = 1; x + 1 < outputSize_.width; ++x) {
+++			for (unsigned int channel = 0; channel < 3; ++channel) {
+++				const unsigned int offset = x * bytesPerPixel + channel;
+++				const int center = lines[1][offset];
+++				const int blur =
+++					(4 * center +
+++					 lines[0][offset] + lines[2][offset] +
+++					 lines[1][offset - bytesPerPixel] +
+++					 lines[1][offset + bytesPerPixel] + 4) /
+++					8;
+++				destination[offset] = std::clamp(
+++					static_cast<int>(std::lround(
+++						center + sharpness * (center - blur))),
+++					0, 255);
+++			}
+++		}
+++
+++		lines[0].swap(lines[1]);
+++		lines[1].swap(lines[2]);
+++		if (y + 2 < outputSize_.height)
+++			memcpy(lines[2].data(), output.data() + (y + 2) * stride,
+++			       stride);
+++	}
+++}
+++
++ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
++ {
++ 	bench_.startFrame();
++@@ -1112,6 +1154,8 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
++ 		});
++ 	}
++ 
+++	applySharpness(out.planes()[0], params.sharpness);
+++
++ 	metadata.planes()[0].bytesused = out.planes()[0].size();
++ 
++ 	dmaSyncers.clear();
++diff --git a/src/libcamera/software_isp/debayer_cpu.h b/src/libcamera/software_isp/debayer_cpu.h
++index 5281c65..b8e01e5 100644
++--- a/src/libcamera/software_isp/debayer_cpu.h
+++++ b/src/libcamera/software_isp/debayer_cpu.h
++@@ -17,6 +17,7 @@
++ 
++ #include <libcamera/base/mutex.h>
++ #include <libcamera/base/object.h>
+++#include <libcamera/base/span.h>
++ 
++ #include <libcamera/camera_manager.h>
++ 
++@@ -128,6 +129,7 @@ private:
++ 				bool ccmEnabled);
++ 	void updateGammaTable(const DebayerParams &params);
++ 	void updateLookupTables(const DebayerParams &params);
+++	void applySharpness(Span<uint8_t> output, float sharpness);
++ 
++ 	static constexpr unsigned int kRGBLookupSize = 256;
++ 	static constexpr unsigned int kGammaLookupSize = 1024;
++diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
++index dbe224e..6daddb4 100644
++--- a/src/libcamera/software_isp/debayer_egl.cpp
+++++ b/src/libcamera/software_isp/debayer_egl.cpp
++@@ -311,6 +311,8 @@ int DebayerEGL::initScaleShaders(PixelFormat outputFormat)
++ 	scaleAttributeVertex_ = glGetAttribLocation(scaleProgramId_, "vertexIn");
++ 	scaleAttributeTexture_ = glGetAttribLocation(scaleProgramId_, "textureIn");
++ 	scaleTextureUniformRgb_ = glGetUniformLocation(scaleProgramId_, "tex_rgb");
+++	scaleTextureUniformStep_ = glGetUniformLocation(scaleProgramId_, "texel_step");
+++	scaleSharpnessUniform_ = glGetUniformLocation(scaleProgramId_, "sharpness");
++ 
++ 	return 0;
++ }
++@@ -547,7 +549,8 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
++ 	return;
++ }
++ 
++-void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
+++void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn,
+++					      const DebayerParams &params)
++ {
++ 	static const GLfloat vcoordinates[4][2] = {
++ 		{ -1.0f, -1.0f },
++@@ -558,10 +561,10 @@ void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
++ 	const GLfloat left = static_cast<GLfloat>(displayWindow_.x) / width_;
++ 	const GLfloat top = static_cast<GLfloat>(displayWindow_.y) / height_;
++ 	const GLfloat right = static_cast<GLfloat>(displayWindow_.x +
++-						    displayWindow_.width) /
+++						   displayWindow_.width) /
++ 			      width_;
++ 	const GLfloat bottom = static_cast<GLfloat>(displayWindow_.y +
++-						     displayWindow_.height) /
+++						    displayWindow_.height) /
++ 			       height_;
++ 	scaleTextureCoordinates_[0][0] = left;
++ 	scaleTextureCoordinates_[0][1] = top;
++@@ -581,6 +584,14 @@ void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
++ 
++ 	egl_.activateBindTexture(eglImageIn);
++ 	glUniform1i(scaleTextureUniformRgb_, eglImageIn.texture_unit_uniform_id_);
+++	const GLfloat texelStep[] = {
+++		static_cast<GLfloat>(displayWindow_.width) /
+++			(outputSize_.width * width_),
+++		static_cast<GLfloat>(displayWindow_.height) /
+++			(outputSize_.height * height_),
+++	};
+++	glUniform2fv(scaleTextureUniformStep_, 1, texelStep);
+++	glUniform1f(scaleSharpnessUniform_, params.sharpness);
++ }
++ 
++ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
++@@ -696,7 +707,7 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
++ 
++ 	egl_.useProgram(scaleProgramId_);
++ 	egl_.attachTextureToFBO(*eglImageOut);
++-	setScaleShaderVariableValues(*intermediateImage_);
+++	setScaleShaderVariableValues(*intermediateImage_, params);
++ 	glViewport(0, 0, outputSize_.width, outputSize_.height);
++ 	glClear(GL_COLOR_BUFFER_BIT);
++ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
++@@ -786,7 +797,7 @@ int DebayerEGL::start()
++ 		return -EINVAL;
++ 
++ 	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
++-						 width_ * 4, GL_TEXTURE2, 2);
+++							width_ * 4, GL_TEXTURE2, 2);
++ 	egl_.createOutputTexture2D(*intermediateImage_);
++ 	egl_.activateBindTexture(*intermediateImage_);
++ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
++index d608ce1..2d632a7 100644
++--- a/src/libcamera/software_isp/debayer_egl.h
+++++ b/src/libcamera/software_isp/debayer_egl.h
++@@ -68,7 +68,8 @@ private:
++ 	int initScaleShaders(PixelFormat outputFormat);
++ 	int getShaderVariableLocations();
++ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
++-	void setScaleShaderVariableValues(eGLImage &eGLImageIn);
+++	void setScaleShaderVariableValues(eGLImage &eGLImageIn,
+++					  const DebayerParams &params);
++ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
++ 
++ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
++@@ -102,6 +103,8 @@ private:
++ 	GLint scaleAttributeVertex_;
++ 	GLint scaleAttributeTexture_;
++ 	GLint scaleTextureUniformRgb_;
+++	GLint scaleTextureUniformStep_;
+++	GLint scaleSharpnessUniform_;
++ 	GLfloat scaleTextureCoordinates_[4][2];
++ 
++ 	/* Per-frame AWB gains */
++-- 
++2.49.0
++
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c426dbf5040 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..b61cc1a78af78f1993e0c1aa4880262434ab8639 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -2752,11 +3592,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c42
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=19
++pkgrel=20
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,17 @@ _tuning_files="
+@@ -59,6 +59,19 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -2771,10 +3611,12 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c42
 +	0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 +	0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 +	0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
++	0014-ipa-simple-Add-autofocus-metering-windows.patch
++	0015-ipa-simple-Add-software-ISP-sharpness-control.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +186,24 @@ sha512sums="
+@@ -175,13 +188,26 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -2789,6 +3631,8 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c42
 +025f38abacbb7a7982b58c4453055c75a55516cc4a5759e788d65056081389e20dcc04cfd3358a10f1721eb5b6ac2d530b04c645d75a0076fe6d0facc8c1f512  0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 +97c8d024e1a28d886902475ecedbd08e4336c7c018db4105632f4583e7f1d46cdd6f3663e7f03718e385021ff9f8bb3582344fbd2ca02286ce62337edbb0da7a  0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 +4aae3b8da08c1b2cebb71b47a51abf1434393fe1007ad473f0dfdc36637e1ff17fb5620ac1af03ac96d4c0ea5f967a0d5710239583e4910361fe0f297468a413  0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
++4d4e761233a8230358cd66cd4fc5ae8b6ac4492f7543dee3fc1a60c87f122ee165fa2c3b040c8ea05b182f17c76bee75765a6edb65add1efa009a58bbb16ab8f  0014-ipa-simple-Add-autofocus-metering-windows.patch
++2dd891668804b38f5a7404eca08e37a2b72eed38f38bb504f97ecfc6eaf39e785a77a9e9864ccad6824d98d874a3d0ac7fdd74b830fc29fc206d25c0dab1fbbe  0015-ipa-simple-Add-software-ISP-sharpness-control.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -2796,17 +3640,17 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4d983d7956003d8d8a889491ce1b9c42
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+9f6dfed8a7a7596457bf95cc62e1857dbafcdd54006e303736d62e35bcbb79e1812f247750f4c723bd829d664e08f448cf4e3f63d712df066537707e84a277b9  imx371.yaml
-+6094df60eb3788e72bef3ae924062d1c3a6e6badbf597d1086f7dadcc3b9e54c79617866aeabdd1c1b2388a10fa967dfb8fdea10b407b4a3ff63d3918f070790  imx376.yaml
-+e07fbf183565d63fc3e48f5d51437d205f3832c491bfd55e6202884abd699c7f2b68841bcde2765b30159af1d0b1eaee3f688ef2980f4ecd4c24c64ac7d0f786  imx519.yaml
++dd02900b32cf922d1edd433c1611ba088ae9428e434130e76ceb25fdb85d6063c168d9eddf2d3013633374189d74ce1ef72922646b821046f252cea0109b1899  imx371.yaml
++0bb67209fa4f42d3fd4366122facf7a21c3149f001e8089ea37eb3ec9f6230d21e65b76e44f445b7ffcad4ba45a930093884d73a9fb63f77efd48959b3e6f569  imx376.yaml
++33f9b2025a40d7a0aea20fee77e7c44ef0429a793b5fdc5d934a241f0950ff6155c321e900fbfb1cab388acbd541ba286d1632b6938aa338509178ae5cd57c28  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..388e49b1b642b499a1561d018e1b176eb682e939 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..f9776605f986a64b6cc8fb4381b4d3042afdd38f 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
-@@ -6,6 +6,18 @@ algorithms:
+@@ -6,6 +6,19 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -2820,16 +3664,17 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..388e49b1b642b499a1561d018e1b176e
 +      gamma: 2.0
 +      contrast: 1.1
 +      saturation: 1.25
++      sharpness: 1.0
    - Agc:
 +      target: 2.0
 +      highlightQuantile: 0.98
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..578497225d67a2e1b593d9b66d1eb243527362f1 100644
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..3dfe4882d0de42b1c6ebb3d8164ad304186e3ab4 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,32 @@ algorithms:
+@@ -7,36 +7,33 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -2886,16 +3731,17 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..578497225d67a2e1b593d9b66d1eb243
 +      gamma: 2.1
 +      contrast: 1.05
 +      saturation: 1.15
++      sharpness: 1.0
    - Agc:
 +      target: 2.0
 +      highlightQuantile: 0.98
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..139b0089727c929445bb2f52fc1ce407fa9661c5 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..c106c9aeffde308ef4a895700069b252d845a956 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,33 @@ algorithms:
+@@ -6,6 +6,34 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -2924,8 +3770,1974 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..139b0089727c929445bb2f52fc1ce407
 +      gamma: 2.2
 +      contrast: 1.05
 +      saturation: 1.25
++      sharpness: 1.0
    - Agc:
 +      target: 2.0
 +      highlightQuantile: 0.98
 +      highlightTarget: 0.95
  ...
+diff --git a/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..36a0ca8d956959c03dd78b44df488e4615ac89f6
+--- /dev/null
++++ b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
+@@ -0,0 +1,233 @@
++From 2537ebc28ba6f05b710d018d107d03672001dee0 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 10:29:44 +0100
++Subject: [PATCH] spa: libcamera: Transport autofocus window controls
++
++Represent libcamera Rectangle arrays as SPA structs so clients can set AfWindows. Publish the configured sensor crop, effective stream crop and orientation on the camera node, allowing a UI tap to be mapped from displayed coordinates into the correct sensor region without device-specific geometry.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ spa/plugins/libcamera/libcamera-source.cpp | 135 +++++++++++++++++++--
++ 1 file changed, 127 insertions(+), 8 deletions(-)
++
++diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
++index fba3d8b..47470aa 100644
++--- a/spa/plugins/libcamera/libcamera-source.cpp
+++++ b/spa/plugins/libcamera/libcamera-source.cpp
++@@ -6,10 +6,13 @@
++ 
++ #include <array>
++ #include <cstddef>
+++#include <cstdint>
++ #include <limits>
++ #include <optional>
+++#include <string>
++ #include <type_traits>
++ #include <utility>
+++#include <vector>
++ 
++ #include <sys/mman.h>
++ 
++@@ -34,9 +37,11 @@
++ #include <spa/control/control.h>
++ #include <spa/pod/dynamic.h>
++ #include <spa/pod/filter.h>
+++#include <spa/pod/iter.h>
++ 
++ #include <libcamera/camera.h>
++ #include <libcamera/control_ids.h>
+++#include <libcamera/property_ids.h>
++ #include <libcamera/stream.h>
++ #include <libcamera/formats.h>
++ #include <libcamera/framebuffer.h>
++@@ -160,6 +165,9 @@ struct impl {
++ 
++ 	ControlList ctrls;
++ 	ControlList initial_controls;
+++	std::string scaler_crop_maximum;
+++	std::string scaler_crop;
+++	std::string stream_orientation;
++ 	bool active = false;
++ 	bool acquired = false;
++ 
++@@ -715,6 +723,51 @@ int spa_libcamera_set_format(struct impl *impl, struct port *port,
++ 	if (res != 0)
++ 		goto error;
++ 
+++	if (const auto crop =
+++		    impl->camera->properties().get(properties::ScalerCropMaximum)) {
+++		impl->scaler_crop_maximum =
+++			std::to_string(crop->x) + "," +
+++			std::to_string(crop->y) + "," +
+++			std::to_string(crop->width) + "," +
+++			std::to_string(crop->height);
+++
+++		/*
+++		 * The software ISP centre-crops its input to the configured stream
+++		 * aspect ratio. Publish that effective sensor region as well as the
+++		 * full control coordinate domain so UI coordinates map to what users
+++		 * actually see.
+++		 */
+++		Rectangle effective = *crop;
+++		const Size &output = streamConfig.size;
+++		if (output.width && output.height) {
+++			if (static_cast<uint64_t>(effective.width) * output.height >
+++			    static_cast<uint64_t>(effective.height) * output.width) {
+++				unsigned int width = static_cast<unsigned int>(
+++					static_cast<uint64_t>(effective.height) *
+++					output.width / output.height);
+++				effective.x += (effective.width - width) / 2;
+++				effective.width = width;
+++			} else {
+++				unsigned int height = static_cast<unsigned int>(
+++					static_cast<uint64_t>(effective.width) *
+++					output.height / output.width);
+++				effective.y += (effective.height - height) / 2;
+++				effective.height = height;
+++			}
+++		}
+++		impl->scaler_crop =
+++			std::to_string(effective.x) + "," +
+++			std::to_string(effective.y) + "," +
+++			std::to_string(effective.width) + "," +
+++			std::to_string(effective.height);
+++		impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
+++	} else {
+++		impl->scaler_crop_maximum.clear();
+++		impl->scaler_crop.clear();
+++	}
+++	impl->stream_orientation =
+++		std::to_string(static_cast<unsigned int>(impl->config->orientation));
+++
++ 	port->streamConfig = impl->config->at(0);
++ 
++ 	if ((res = allocBuffers(impl, port, port->streamConfig.bufferCount)) < 0)
++@@ -772,8 +825,35 @@ uint32_t prop_id_to_control(uint32_t prop_id)
++ [[nodiscard]]
++ ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
++ {
++-	if (cid.isArray())
++-		return {};
+++	if (cid.isArray()) {
+++		if (cid.type() != libcamera::ControlTypeRectangle ||
+++		    !spa_pod_is_struct(value))
+++			return {};
+++
+++		std::vector<int32_t> fields;
+++		const struct spa_pod *item;
+++		SPA_POD_STRUCT_FOREACH(value, item) {
+++			int32_t field;
+++			if (spa_pod_get_int(item, &field) < 0)
+++				return {};
+++			fields.push_back(field);
+++		}
+++
+++		if (fields.empty() || fields.size() % 4)
+++			return {};
+++
+++		std::vector<Rectangle> rectangles;
+++		for (std::size_t i = 0; i < fields.size(); i += 4) {
+++			if (fields[i + 2] < 0 || fields[i + 3] < 0)
+++				return {};
+++
+++			rectangles.emplace_back(fields[i], fields[i + 1],
+++						static_cast<unsigned int>(fields[i + 2]),
+++						static_cast<unsigned int>(fields[i + 3]));
+++		}
+++
+++		return ControlValue(Span<const Rectangle>(rectangles));
+++	}
++ 
++ 	switch (cid.type()) {
++ 	case libcamera::ControlTypeBool: {
++@@ -829,8 +909,25 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
++ [[nodiscard]]
++ bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
++ {
++-	if (cv.isArray())
++-		return false;
+++	if (cv.isArray()) {
+++		if (cv.type() != libcamera::ControlTypeRectangle)
+++			return false;
+++
+++		spa_pod_frame f;
+++		spa_pod_builder_push_struct(&b, &f);
+++		for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
+++			if (rectangle.width > std::numeric_limits<int32_t>::max() ||
+++			    rectangle.height > std::numeric_limits<int32_t>::max())
+++				return false;
+++
+++			spa_pod_builder_int(&b, rectangle.x);
+++			spa_pod_builder_int(&b, rectangle.y);
+++			spa_pod_builder_int(&b, rectangle.width);
+++			spa_pod_builder_int(&b, rectangle.height);
+++		}
+++		spa_pod_builder_pop(&b, &f);
+++		return true;
+++	}
++ 
++ 	switch (cv.type()) {
++ 	case libcamera::ControlTypeBool: {
++@@ -873,7 +970,7 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
++ spa_pod *control_details_to_pod(spa_pod_builder& b,
++ 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
++ {
++-	if (cid.isArray())
+++	if (cid.isArray() && cid.type() != libcamera::ControlTypeRectangle)
++ 		return nullptr;
++ 
++ 	auto id = control_to_prop_id(cid.id());
++@@ -885,7 +982,11 @@ spa_pod *control_details_to_pod(spa_pod_builder& b,
++ 			SPA_PROP_INFO_description, SPA_POD_String(cid.name().c_str()),
++ 			0);
++ 
++-	if (cinfo.values().empty()) {
+++	if (cid.isArray()) {
+++		spa_pod_builder_prop(&b, SPA_PROP_INFO_type, 0);
+++		if (!control_value_to_pod(b, cinfo.def()))
+++			return nullptr;
+++	} else if (cinfo.values().empty()) {
++ 		switch (cid.type()) {
++ 		case ControlTypeBool: {
++ 			auto min = cinfo.min().get<bool>();
++@@ -1604,17 +1705,35 @@ int impl_node_send_command(void *object, const struct spa_command *command)
++ 
++ void emit_node_info(struct impl *impl, bool full)
++ {
++-	static const struct spa_dict_item info_items[] = {
+++	struct spa_dict_item info_items[] = {
++ 		{ SPA_KEY_DEVICE_API, "libcamera" },
++ 		{ SPA_KEY_MEDIA_CLASS, "Video/Source" },
++ 		{ SPA_KEY_MEDIA_ROLE, "Camera" },
++ 		{ SPA_KEY_NODE_DRIVER, "true" },
+++		{ "api.libcamera.scaler-crop-maximum", nullptr },
+++		{ "api.libcamera.scaler-crop", nullptr },
+++		{ "api.libcamera.stream-orientation", nullptr },
++ 	};
+++	uint32_t n_items = SPA_N_ELEMENTS(info_items) - 3;
+++	if (!impl->scaler_crop_maximum.empty()) {
+++		info_items[n_items].value = impl->scaler_crop_maximum.c_str();
+++		n_items++;
+++	}
+++	if (!impl->scaler_crop.empty()) {
+++		info_items[n_items].key = "api.libcamera.scaler-crop";
+++		info_items[n_items].value = impl->scaler_crop.c_str();
+++		n_items++;
+++	}
+++	if (!impl->stream_orientation.empty()) {
+++		info_items[n_items].key = "api.libcamera.stream-orientation";
+++		info_items[n_items].value = impl->stream_orientation.c_str();
+++		n_items++;
+++	}
++ 	uint64_t old = full ? impl->info.change_mask : 0;
++ 	if (full)
++ 		impl->info.change_mask = impl->info_all;
++ 	if (impl->info.change_mask) {
++-		struct spa_dict dict = SPA_DICT_INIT_ARRAY(info_items);
+++		struct spa_dict dict = SPA_DICT_INIT(info_items, n_items);
++ 		impl->info.props = &dict;
++ 		spa_node_emit_info(&impl->hooks, &impl->info);
++ 		impl->info.change_mask = old;
++-- 
++2.49.0
++
+diff --git a/temp/pipewire/APKBUILD b/temp/pipewire/APKBUILD
+new file mode 100644
+index 0000000000000000000000000000000000000000..f2f96b9cbf7663ff1aee39d27bf09ff3d5347a4e
+--- /dev/null
++++ b/temp/pipewire/APKBUILD
+@@ -0,0 +1,339 @@
++# Contributor: Rasmus Thomsen <oss@cogitri.dev>
++maintainer="team/alpine-desktop <bribbers@disroot.org>"
++pkgname=pipewire
++pkgver=1.6.8
++pkgrel=6
++pkgdesc="Multimedia processing graphs"
++url="https://pipewire.org/"
++arch="all"
++license="MIT"
++pkggroups="pipewire"
++makedepends="
++	alsa-lib-dev
++	avahi-dev
++	bash
++	bluez-dev
++	dbus-dev
++	doxygen
++	eudev-dev
++	fdk-aac-dev
++	fftw-dev
++	glib-dev
++	graphviz
++	gst-plugins-base-dev
++	gstreamer-dev
++	jack-dev
++	libcamera-dev
++	libcanberra-dev
++	libebur128-dev
++	libfreeaptx-dev
++	liblc3-dev
++	libmysofa-dev
++	libusb-dev
++	libx11-dev
++	lilv-dev
++	meson
++	modemmanager-dev
++	ncurses-dev
++	onnxruntime-dev
++	pulseaudio-dev
++	py3-docutils
++	readline-dev
++	roc-toolkit-dev
++	sbc-dev
++	vulkan-loader-dev
++	webrtc-audio-processing-2-dev
++	xmltoman
++	"
++# move regular -dev after -jackdev, to steal files
++subpackages="
++	$pkgname-dbg
++	$pkgname-doc
++	$pkgname-alsa
++	$pkgname-pulse
++	$pkgname-pulse-openrc:pulse_openrc
++	$pkgname-pulse-systemd:pulse_systemd
++	$pkgname-jack
++	$pkgname-jack-dev:jackdev
++	$pkgname-dev
++	gst-plugin-pipewire:gst_plugin
++	$pkgname-zeroconf
++	$pkgname-spa-bluez
++	$pkgname-spa-libcamera
++	$pkgname-spa-vulkan
++	$pkgname-tools
++	$pkgname-spa-tools:spa_tools
++	$pkgname-lang
++	$pkgname-echo-cancel:echo_cancel
++	$pkgname-openrc
++	$pkgname-systemd
++	$pkgname-udev
++	$pkgname-x11
++	$pkgname-filter-graph:filter_graph
++	$pkgname-filter-graph-builtin:filter_graph_plugin
++	$pkgname-filter-graph-ebur128:filter_graph_plugin
++	$pkgname-filter-graph-ladspa:filter_graph_plugin
++	$pkgname-filter-graph-lv2:filter_graph_plugin
++	$pkgname-filter-graph-sofa:filter_graph_plugin
++	$pkgname-snapcast
++	$pkgname-webrtc
++	$pkgname-rtp
++	"
++install="$pkgname.post-upgrade $pkgname.post-install"
++source="https://gitlab.freedesktop.org/PipeWire/pipewire/-/archive/$pkgver/pipewire-$pkgver.tar.gz
++	pipewire.desktop
++	pipewire-launcher.sh
++	pipewire.initd
++	pipewire-pulse.initd
++
++	systemd-units-wo-libsystemd.patch
++	0001-spa-libcamera-Transport-autofocus-window-controls.patch
++	"
++
++case "$CARCH" in
++	s390x)
++		# libldac not available for big endian
++		;;
++	*)
++		makedepends="$makedepends libldac-dev"
++		;;
++esac
++
++case "$CARCH" in
++	x86|s390x)
++		# onnxruntime not available for x86, s390x
++		;;
++	*)
++		makedepends="$makedepends onnxruntime-dev"
++		subpackages="
++			$subpackages
++			$pkgname-filter-graph-onnx:filter_graph_plugin
++			"
++		;;
++esac
++
++# put libs last to steal residual files taken by some prior extras
++subpackages="$subpackages $pkgname-libs"
++
++build() {
++	CFLAGS="$CFLAGS -O2" \
++	CXXFLAGS="$CXXFLAGS -O2" \
++	CPPFLAGS="$CPPFLAGS -O2" \
++	abuild-meson \
++		-Db_lto=true \
++		-Dlibjack-path=/usr/lib \
++		-Dlibv4l2-path=/usr/lib \
++		-Ddocs=disabled \
++		-Dman=enabled \
++		-Dgstreamer=enabled \
++		-Dexamples=enabled \
++		-Dffmpeg=disabled \
++		-Djack-devel=true \
++		-Dlibsystemd=disabled \
++		-Dsystemd-user-service=enabled \
++		-Dsystemd-user-unit-dir=/usr/lib/systemd/user \
++		-Dvulkan=enabled \
++		-Dsdl2=disabled \
++		-Dlv2=enabled \
++		-Dlibcamera=enabled \
++		-Droc=enabled \
++		-Dbluez5-codec-lc3=enabled \
++		-Dbluez5-backend-native-mm=enabled \
++		-Dsession-managers=[] \
++		. output
++	meson compile -C output
++}
++
++check() {
++	meson test --print-errorlogs -C output
++}
++
++package() {
++	DESTDIR="$pkgdir" meson install --no-rebuild -C output
++
++	install -Dm644 "$srcdir"/pipewire.desktop -t "$pkgdir"/etc/xdg/autostart/
++	install -Dm755 "$srcdir"/pipewire-launcher.sh "$pkgdir"/usr/libexec/pipewire-launcher
++
++	install -Dm755 "$srcdir"/pipewire.initd "$pkgdir"/etc/user/init.d/pipewire
++	install -Dm755 "$srcdir"/pipewire-pulse.initd "$pkgdir"/etc/user/init.d/pipewire-pulse
++}
++
++alsa() {
++	pkgdesc="ALSA support for pipewire"
++	replaces="$pkgname"  # for backward compatibility
++
++	amove usr/lib/alsa-lib
++	amove usr/share/alsa/alsa.conf.d
++
++	install -d "$subpkgdir"/etc/alsa/conf.d
++	for i in "$subpkgdir"/usr/share/alsa/alsa.conf.d/*.conf; do
++		ln -s -- "${i#"$subpkgdir"}" "$subpkgdir"/etc/alsa/conf.d/
++	done
++}
++
++pulse() {
++	pkgdesc="Pulseaudio support for pipewire"
++	depends="
++		pipewire-session-manager
++		pulseaudio-utils
++		"
++	provides="pulseaudio=$pkgver-r$pkgrel pulseaudio-bluez=$pkgver-r$pkgrel"
++	provider_priority=1
++
++	amove usr/bin/pipewire-pulse
++	amove usr/lib/pipewire-*/libpipewire-module-protocol-pulse.so
++	amove usr/lib/pipewire-*/libpipewire-module-pulse-tunnel.so
++	amove usr/lib/pipewire-*/libpipewire-module-filter-chain.so
++	amove usr/share/pipewire/pipewire-pulse.conf
++	amove usr/share/pipewire/pipewire-pulse.conf.avail
++}
++
++pulse_openrc() {
++	install_if="$pkgname-pulse openrc"
++	amove etc/user/init.d/pipewire-pulse
++}
++
++pulse_systemd() {
++	install_if="pipewire-pulse=$pkgver-r$pkgrel systemd"
++	depends=""
++	pkgdesc="Pulseaudio support for pipewire (systemd files)"
++
++	# Note: we can't just call default_systemd because that would take all unit
++	# files
++	amove usr/lib/systemd/user/pipewire-pulse.service
++}
++
++jack() {
++	pkgdesc="JACK support for pipewire"
++	license="GPL-2.0-only"
++	depends="pipewire-session-manager"
++	provides="jack=$pkgver-r$pkgrel"
++	replaces="jack"
++
++	amove usr/lib/libjack*.so.*
++	amove usr/bin/pw-jack
++	amove usr/lib/spa-*/jack/libspa-jack.so
++	amove usr/share/pipewire/jack.conf
++	amove usr/lib/pipewire-*/libpipewire-module-*jack*
++}
++
++gst_plugin() {
++	pkgdesc="Multimedia graph framework - PipeWire plugin"
++	depends="pipewire-session-manager gst-plugins-base"
++	install_if="$pkgname=$pkgver-r$pkgrel gstreamer"
++
++	amove usr/lib/gstreamer-1.0
++}
++
++echo_cancel() {
++	pkgdesc="WebRTC-based echo canceller module for PipeWire"
++	depends="$pkgname=$pkgver-r$pkgrel pipewire-webrtc"
++
++	amove usr/lib/pipewire-*/libpipewire-module-echo-cancel.so
++}
++
++zeroconf() {
++	pkgdesc="$pkgdesc - Zeroconf support"
++	depends=""
++	provides="pulseaudio-zeroconf=$pkgver-r$pkgrel"
++	provider_priority=1
++
++	amove usr/lib/pipewire-*/libpipewire-module-zeroconf-discover.so
++	amove usr/lib/pipewire-*/libpipewire-module-raop-*.so
++}
++
++bluez() {
++	pkgdesc="PipeWire BlueZ5 SPA plugin (Bluetooth)"
++	depends=""
++	replaces="$pkgname"  # for backward compatibility
++
++	amove usr/lib/spa-*/bluez5
++}
++
++vulkan() {
++	pkgdesc="PipeWire Vulkan SPA plugin"
++	depends=""
++
++	amove usr/lib/spa-*/vulkan
++}
++
++libcamera() {
++	pkgdesc="PipeWire libcamera SPA plugin"
++	depends=""
++
++	amove usr/lib/spa-*/libcamera
++}
++
++tools() {
++	pkgdesc="PipeWire tools"
++	depends="$pkgname=$pkgver-r$pkgrel"
++	replaces="$pkgname"  # for backward compatibility
++
++	amove usr/bin/pw-*
++}
++
++spa_tools() {
++	pkgdesc="PipeWire SPA tools"
++	depends=""
++	replaces="$pkgname"  # for backward compatibility
++
++	amove usr/bin/spa-*
++}
++
++jackdev() {
++	pkgdesc="JACK development files (from pipewire)"
++	license="MIT AND GPL-2.0-only AND LGPL-2.1-or-later"
++	provides="jack-dev=$pkgver-r$pkgrel"
++
++	amove usr/lib/libjack*.so
++	amove usr/include/jack
++	amove usr/lib/pkgconfig/jack.pc
++}
++
++libs() {
++	default_libs
++	license="MIT AND LGPL-2.1-or-later"
++
++	# the libraries must be paired with the client config and the plugins,
++	# see:
++	# https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/3296
++	# https://bugs.archlinux.org/task/78813
++	amove \
++		usr/share/pipewire/client*.conf* \
++		usr/lib/pipewire-*/ \
++		usr/lib/spa-*/
++}
++
++x11() {
++	amove usr/lib/pipewire-*/libpipewire-module-x11-bell.so
++}
++
++filter_graph() {
++	amove usr/lib/spa-*/filter-graph/libspa-filter-graph.so
++}
++
++filter_graph_plugin() {
++	amove usr/lib/spa-*/filter-graph/libspa-filter-graph-plugin-${subpkgname#pipewire-filter-graph-}.so
++}
++
++snapcast() {
++	amove usr/lib/pipewire-*/libpipewire-module-snapcast*
++}
++
++webrtc() {
++	amove usr/lib/spa-*/aec/libspa-aec-webrtc.so
++}
++
++rtp() {
++	amove usr/lib/pipewire-*/libpipewire-module-rtp-*.so
++}
++
++sha512sums="
++afa52e58eebe92ad2137afd9663076c8ecf62a5b1ec70aceeb368d58e6ff9eed1fd8fcf8e92f1b73951f7fbd6461a823c9d911b0d064cb523b8871c0dcc79187  pipewire-1.6.8.tar.gz
++b70b05151bcf4b7f13d68b2731d789b9c062fadfcb91f4ed6bdb0d495390b0010f57034fb115a053e1459c7d9ea27523ca1c0c69639aeeb96c17ebac8dfc5b57  pipewire.desktop
++1ab91358462f079f215f09728f3efb22e6e5a83d035740933f9536a907ef842642f9b2394233b7848dfe72c323df2a9e5c76640f3a574fc86391f68b04b91a7f  pipewire-launcher.sh
++ece0bb72b0f82943db8d188adad323b9b202f6d3e745f0fe93906415b365f12ff4df0d7a4d274d09755abf1269a1f546908e148a4bf7d8d2740b48a0e5e3526d  pipewire.initd
++dd7e74534275386ccf23c5c3dc3184948bd2115ed1944ea1e52695ceeef9d764949839d8875d0e4187aa2edef01cec662a56c75b01ec06a0bc45098f4825f9cb  pipewire-pulse.initd
++181f07b6da72b486a1e9754854320e7c9ab839409b23c397bfd50d2b706625d247b9ed94913862f790712e7bba49bf34601f7f109c82a852225a00b9f00a1c98  systemd-units-wo-libsystemd.patch
++ed47a86e89d8d9f0c3212f491187d0eff5510dbd0ad1b522de5cff0de3fb576c06993dec56bc31e72f02048c3b2a38f6f1e65f2fbb3c454fd736fcdee0b0b654  0001-spa-libcamera-Transport-autofocus-window-controls.patch
++"
+diff --git a/temp/pipewire/pipewire-launcher.sh b/temp/pipewire/pipewire-launcher.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..95d66a702aae8e7d8bb8e37d99dc4cf9b9623cfc
+--- /dev/null
++++ b/temp/pipewire/pipewire-launcher.sh
+@@ -0,0 +1,31 @@
++#!/bin/sh
++
++cat >&2 <<EOF
++*
++* This script will be removed in the future to replace it with OpenRC user-services.
++*
++EOF
++
++# Exit if the service is already running through user services
++rc-service --user pipewire status 1>/dev/null 2>&1 && exit 0
++
++# We need to kill any existing pipewire instance to restore sound
++pkill -u "${USER}" -fx /usr/bin/pipewire-pulse 1>/dev/null 2>&1
++pkill -u "${USER}" -fx /usr/bin/pipewire-media-session 1>/dev/null 2>&1
++pkill -u "${USER}" -fx /usr/bin/wireplumber 1>/dev/null 2>&1
++pkill -u "${USER}" -fx /usr/bin/pipewire 1>/dev/null 2>&1
++
++exec /usr/bin/pipewire &
++
++# wait for pipewire to start before attempting to start related daemons
++while [ "$(pgrep -f /usr/bin/pipewire)" = "" ]; do
++	sleep 1
++done
++
++if [ -x /usr/bin/wireplumber ]; then
++	exec /usr/bin/wireplumber &
++elif [ -x /usr/bin/pipewire-media-session ]; then
++	exec /usr/bin/pipewire-media-session &
++fi
++
++[ -f "/usr/share/pipewire/pipewire-pulse.conf" ] && exec /usr/bin/pipewire-pulse &
+diff --git a/temp/pipewire/pipewire-pulse.initd b/temp/pipewire/pipewire-pulse.initd
+new file mode 100644
+index 0000000000000000000000000000000000000000..162e6074de56cd123728acd921962e42887a46ba
+--- /dev/null
++++ b/temp/pipewire/pipewire-pulse.initd
+@@ -0,0 +1,16 @@
++#!/sbin/openrc-run
++
++description="PulseAudio compatibility layer for PipeWire"
++
++command="/usr/bin/pipewire-pulse"
++
++supervisor=supervise-daemon
++error_logger="logger -t '${RC_SVCNAME}' -p daemon.error"
++
++export PIPEWIRE_PULSE_NOTIFICATION_FD=3
++notify=fd:3
++
++depend() {
++	need pipewire
++	want wireplumber
++}
+diff --git a/temp/pipewire/pipewire.desktop b/temp/pipewire/pipewire.desktop
+new file mode 100644
+index 0000000000000000000000000000000000000000..d80505003409a797418a782c0f9f50c829c44251
+--- /dev/null
++++ b/temp/pipewire/pipewire.desktop
+@@ -0,0 +1,10 @@
++[Desktop Entry]
++Version=1.0
++Name=Pipewire
++Comment=Start Pipewire
++Exec=/usr/libexec/pipewire-launcher
++Terminal=false
++Type=Application
++X-KDE-autostart-phase=1
++X-GNOME-HiddenUnderSystemd=true
++X-systemd-skip=true
+diff --git a/temp/pipewire/pipewire.initd b/temp/pipewire/pipewire.initd
+new file mode 100644
+index 0000000000000000000000000000000000000000..1c458078fbcc004bd6c3a6accfede0d7a580f3b4
+--- /dev/null
++++ b/temp/pipewire/pipewire.initd
+@@ -0,0 +1,17 @@
++#!/sbin/openrc-run
++
++description="Multimedia processing graphs"
++
++command="/usr/bin/pipewire"
++
++supervisor=supervise-daemon
++error_logger="logger -t '${RC_SVCNAME}' -p daemon.error"
++
++export PIPEWIRE_NOTIFICATION_FD=3
++notify=fd:3
++
++depend() {
++	need dbus
++	want wireplumber
++	before pipewire-pulse
++}
+diff --git a/temp/pipewire/pipewire.post-install b/temp/pipewire/pipewire.post-install
+new file mode 100644
+index 0000000000000000000000000000000000000000..4dacf08451a0e5c87ba5951f83a78f2621786312
+--- /dev/null
++++ b/temp/pipewire/pipewire.post-install
+@@ -0,0 +1,11 @@
++#!/bin/sh
++
++addgroup -S pipewire 2>/dev/null
++
++cat >&2 <<EOF
++*
++* The /usr/libexec/pipewire-launcher script will be removed in the future to replace it with OpenRC user-services.
++*
++EOF
++
++exit 0
+diff --git a/temp/pipewire/pipewire.post-upgrade b/temp/pipewire/pipewire.post-upgrade
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ddfd3bcd80965c769f6559ced10cd8699d0c558
+--- /dev/null
++++ b/temp/pipewire/pipewire.post-upgrade
+@@ -0,0 +1,31 @@
++#!/bin/sh
++
++ver_old="$2"
++
++if [ "$(apk version -t "$ver_old" '0.3.33-r3')" = '<' ]; then
++	cat >&2 <<-EOF
++	*
++	* Pipewire bluez5 (Bluetooth) and FFmpeg SPA plugins, ALSA support, pw-* and
++	* spa-* tools have been moved to subpackages. If you use them, install
++	* pipewire-spa-bluez, pipewire-spa-ffmpeg, pipewire-alsa, pipewire-tools and/or
++	* pipewire-spa-tools respectively.
++	*
++	EOF
++fi
++
++if [ "$(apk version -t "$ver_old" '1.6.8-r2')" = '<' ]; then
++	cat >&2 <<-EOF
++	*
++	* Pipewire Snapcast, WebRTC and RTP support have been moved to subpackages.
++	* If you use them, install pipewire-snapcast, pipewire-webrtc and/or pipewire-rtp
++	* respectively.
++	*
++	EOF
++fi
++
++cat >&2 <<EOF
++*
++* The /usr/libexec/pipewire-launcher script will be removed in the future to replace it with OpenRC user-services.
++*
++EOF
++
+diff --git a/temp/pipewire/systemd-units-wo-libsystemd.patch b/temp/pipewire/systemd-units-wo-libsystemd.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..f12ebc035e5a7c1f95dd7262d9201cc68e3cbe8f
+--- /dev/null
++++ b/temp/pipewire/systemd-units-wo-libsystemd.patch
+@@ -0,0 +1,78 @@
++Patch-Source: <https://gitlab.freedesktop.org/pipewire/pipewire/-/merge_requests/2717>
++---
++From d98e46636ef615801bcb25dee3ec1aa4a8e7344d Mon Sep 17 00:00:00 2001
++From: Achill Gilgenast <achill@achill.org>
++Date: Tue, 3 Feb 2026 22:49:16 +0100
++Subject: [PATCH] systemd: Allow installation of systemd services without
++ libsystemd
++
++Allows installation of systemd services without libsystemd installed.
++Useful for Alpine Linux where systemd services are allowed to be subpackaged
++(e.g. for postmarketOS) but hasn't systemd in it's repos.
++
++It has no change in existing behavior, but installs services if the unit
++directories are explicitly set.
++
++Signed-off-by: Achill Gilgenast <achill@achill.org>
++---
++ src/daemon/systemd/system/meson.build | 13 +++++++++----
++ src/daemon/systemd/user/meson.build   | 13 +++++++++----
++ 2 files changed, 18 insertions(+), 8 deletions(-)
++
++diff --git a/src/daemon/systemd/system/meson.build b/src/daemon/systemd/system/meson.build
++index 02efc7a41042..329e165318c4 100644
++--- a/src/daemon/systemd/system/meson.build
+++++ b/src/daemon/systemd/system/meson.build
++@@ -1,13 +1,18 @@
++-systemd = dependency('systemd', required : get_option('systemd-system-service'))
++-if not systemd.found()
++-  subdir_done()
+++systemd_system_services_dir = ''
+++
+++systemd = dependency('systemd', required : false)
+++if systemd.found()
+++  systemd_system_services_dir = systemd.get_variable('systemdsystemunitdir', pkgconfig_define : [ 'rootprefix', prefix])
++ endif
++ 
++-systemd_system_services_dir = systemd.get_variable('systemdsystemunitdir', pkgconfig_define : [ 'rootprefix', prefix])
++ if get_option('systemd-system-unit-dir') != ''
++   systemd_system_services_dir = get_option('systemd-system-unit-dir')
++ endif
++ 
+++if systemd_system_services_dir == ''
+++  subdir_done()
+++endif
+++
++ install_data(sources : ['pipewire.socket', 'pipewire-manager.socket', 'pipewire-pulse.socket' ],
++              install_dir : systemd_system_services_dir)
++ 
++diff --git a/src/daemon/systemd/user/meson.build b/src/daemon/systemd/user/meson.build
++index 1b65d5f7aacf..fcf8c39129da 100644
++--- a/src/daemon/systemd/user/meson.build
+++++ b/src/daemon/systemd/user/meson.build
++@@ -1,13 +1,18 @@
++-systemd = dependency('systemd', required : get_option('systemd-user-service'))
++-if not systemd.found()
++-  subdir_done()
+++systemd_user_services_dir = ''
+++
+++systemd = dependency('systemd', required : false)
+++if systemd.found()
+++  systemd_user_services_dir = systemd.get_variable('systemduserunitdir', pkgconfig_define : [ 'prefix', prefix])
++ endif
++ 
++-systemd_user_services_dir = systemd.get_variable('systemduserunitdir', pkgconfig_define : [ 'prefix', prefix])
++ if get_option('systemd-user-unit-dir') != ''
++   systemd_user_services_dir = get_option('systemd-user-unit-dir')
++ endif
++ 
+++if systemd_user_services_dir == ''
+++  subdir_done()
+++endif
+++
++ install_data(
++   sources : ['pipewire.socket', 'pipewire-pulse.socket'],
++   install_dir : systemd_user_services_dir)
++-- 
++2.53.0
++
+diff --git a/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..618aa32c12dd0fca852cf07321b8c79ca20c56b4
+--- /dev/null
++++ b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
+@@ -0,0 +1,156 @@
++From 5bcc6f29cb18de2dd1f77d21fb81e8af5329d106 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 10:31:48 +0100
++Subject: [PATCH 1/2] aperture: Capture stills at a full-frame resolution
++
++Keep the low-cost preview caps, but ask camerabin for the largest 4:3 still mode up to 2048x1536. This uses more of the binned sensor frame than the previous 1920x1080 capture and avoids throwing away vertical detail while bounding software-ISP cost.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ aperture/src/camera.rs     | 21 +++++++++++
++ aperture/src/utils.rs      | 77 ++++++++++++++++++++++++++++++++++++++
++ aperture/src/viewfinder.rs |  3 ++
++ 3 files changed, 101 insertions(+)
++
++diff --git a/aperture/src/camera.rs b/aperture/src/camera.rs
++index 6aa9e75..4e57165 100644
++--- a/aperture/src/camera.rs
+++++ b/aperture/src/camera.rs
++@@ -159,4 +159,25 @@ impl Camera {
++ 
++         highest_res_caps
++     }
+++
+++    pub(crate) fn best_image_caps(&self) -> Option<gst::Caps> {
+++        let caps = self.caps()?;
+++        let size = utils::caps::best_still_mode(&caps)?;
+++        let fixed = crate::SUPPORTED_ENCODINGS
+++            .iter()
+++            .map(|encoding| {
+++                gst::Caps::builder(*encoding)
+++                    .field("width", size.width)
+++                    .field("height", size.height)
+++                    .build()
+++            })
+++            .collect::<gst::Caps>();
+++        let selected = caps.intersect_with_mode(&fixed, gst::CapsIntersectMode::First);
+++        if selected.is_empty() {
+++            None
+++        } else {
+++            log::debug!("Using image capture caps: {selected:#?}");
+++            Some(selected)
+++        }
+++    }
++ }
++diff --git a/aperture/src/utils.rs b/aperture/src/utils.rs
++index 72ab13b..6f861ad 100644
++--- a/aperture/src/utils.rs
+++++ b/aperture/src/utils.rs
++@@ -86,6 +86,53 @@ pub(crate) mod caps {
++             .or(best_size_fallback)
++     }
++ 
+++    pub(crate) fn best_still_mode(caps: &gst::Caps) -> Option<Size> {
+++        const MAX_WIDTH: i32 = 2048;
+++        const MAX_HEIGHT: i32 = 1536;
+++        const RATIO_WIDTH: i32 = 4;
+++        const RATIO_HEIGHT: i32 = 3;
+++
+++        let mut best_4_3: Option<Size> = None;
+++        let mut best_bounded: Option<Size> = None;
+++        let mut fallback: Option<Size> = None;
+++        for cap in caps.iter() {
+++            let (Ok(width), Ok(height)) = (cap.get::<i32>("width"), cap.get::<i32>("height"))
+++            else {
+++                continue;
+++            };
+++            if width <= 0 || height <= 0 {
+++                continue;
+++            }
+++
+++            let candidate = Size { width, height };
+++            if fallback
+++                .as_ref()
+++                .is_none_or(|current| width * height > current.width * current.height)
+++            {
+++                fallback = Some(Size { width, height });
+++            }
+++
+++            if width > MAX_WIDTH || height > MAX_HEIGHT {
+++                continue;
+++            }
+++            if best_bounded
+++                .as_ref()
+++                .is_none_or(|current| width * height > current.width * current.height)
+++            {
+++                best_bounded = Some(Size { width, height });
+++            }
+++            if width * RATIO_HEIGHT == height * RATIO_WIDTH
+++                && best_4_3
+++                    .as_ref()
+++                    .is_none_or(|current| width * height > current.width * current.height)
+++            {
+++                best_4_3 = Some(candidate);
+++            }
+++        }
+++
+++        best_4_3.or(best_bounded).or(fallback)
+++    }
+++
++     fn best_resolution_for_fps(caps: &gst::Caps, framerate: gst::Fraction) -> gst::Caps {
++         let fixed_caps = crate::SUPPORTED_ENCODINGS
++             .iter()
++@@ -168,6 +215,36 @@ pub(crate) mod caps {
++         best_caps.merge(caps);
++         best_caps
++     }
+++
+++    #[test]
+++    fn test_best_still_mode_prefers_bounded_4_3() {
+++        gst::init().expect("Failed to initialize gst");
+++
+++        let caps = [
+++            gst_video::VideoCapsBuilder::new()
+++                .width(1920)
+++                .height(1080)
+++                .build(),
+++            gst_video::VideoCapsBuilder::new()
+++                .width(2048)
+++                .height(1536)
+++                .build(),
+++            gst_video::VideoCapsBuilder::new()
+++                .width(3840)
+++                .height(2160)
+++                .build(),
+++        ]
+++        .into_iter()
+++        .collect();
+++
+++        assert_eq!(
+++            best_still_mode(&caps),
+++            Some(Size {
+++                width: 2048,
+++                height: 1536,
+++            })
+++        );
+++    }
++ }
++ 
++ // Whether the system supports h264 video encoding.
++diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
++index 0cdc0f5..21868c3 100644
++--- a/aperture/src/viewfinder.rs
+++++ b/aperture/src/viewfinder.rs
++@@ -1215,6 +1215,9 @@ impl Viewfinder {
++             let caps = camera.best_caps();
++             capsfilter.set_property("caps", &caps);
++         }
+++        if let Some(caps) = camera.best_image_caps() {
+++            imp.camerabin().set_property("image-capture-caps", &caps);
+++        }
++ 
++         let is_front_camera = !matches!(camera.location(), crate::CameraLocation::Back);
++         imp.is_front_camera.set(is_front_camera);
++-- 
++2.49.0
++
+diff --git a/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4aa45f5749bfcb269cbf74110c9953e6e6011e3
+--- /dev/null
++++ b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
+@@ -0,0 +1,857 @@
++From 7540562c71b51d7915abf8f10703494b13e48b51 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Mon, 24 Aug 2026 10:32:00 +0100
++Subject: [PATCH] snapshot: Add sensor-region tap to focus
++
++Add a viewfinder tap gesture and a small PipeWire helper that discovers libcamera autofocus controls dynamically. Map taps through letterboxing, stream orientation and the effective configured sensor crop, submit Auto mode, window metering, an AfWindows region and AfTriggerStart atomically, show transient feedback only after acceptance, then restore continuous autofocus.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ aperture/src/viewfinder.rs | 234 ++++++++++++++++++-
++ meson.build                |   5 +-
++ src/focus-control.c        | 467 +++++++++++++++++++++++++++++++++++++
++ src/meson.build            |   8 +
++ 4 files changed, 711 insertions(+), 3 deletions(-)
++ create mode 100644 src/focus-control.c
++
++diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
++index 21868c3..d130250 100644
++--- a/aperture/src/viewfinder.rs
+++++ b/aperture/src/viewfinder.rs
++@@ -1,7 +1,9 @@
++ // SPDX-License-Identifier: GPL-3.0-or-later
+++use std::ffi::OsStr;
++ use std::path::Path;
++ use std::path::PathBuf;
++ use std::sync::LazyLock;
+++use std::time::Duration;
++ 
++ use gst::prelude::*;
++ use gtk::prelude::*;
++@@ -18,6 +20,10 @@ use crate::code_detector::QrCodeDetector;
++ /// quality and file size. Candidate for a preference.
++ const DEFAULT_BITRATE: u32 = 2048;
++ const PROVIDER_TIMEOUT: u64 = 2;
+++const FOCUS_HELPER: &str = match option_env!("SNAPSHOT_FOCUS_HELPER") {
+++    Some(path) => path,
+++    None => "snapshot-focus-control",
+++};
++ 
++ #[derive(Debug)]
++ enum StateChangeState {
++@@ -69,9 +75,15 @@ mod imp {
++         pub is_front_camera: Cell<bool>,
++ 
++         pub timeout_handler: RefCell<Option<glib::SourceId>>,
+++        pub focus_indicator_handler: RefCell<Option<glib::SourceId>>,
+++        pub focus_reset_handler: RefCell<Option<glib::SourceId>>,
+++        pub focus_point: Cell<Option<(f64, f64)>>,
+++        pub focus_generation: Cell<u64>,
++ 
++         pub picture: gtk::Picture,
++         pub offload: gtk::GraphicsOffload,
+++        pub overlay: gtk::Overlay,
+++        pub focus_overlay: gtk::DrawingArea,
++     }
++ 
++     impl Viewfinder {
++@@ -85,6 +97,19 @@ mod imp {
++             }
++         }
++ 
+++        pub(super) fn clear_focus_state(&self) {
+++            self.focus_generation
+++                .set(self.focus_generation.get().wrapping_add(1));
+++            if let Some(handler) = self.focus_indicator_handler.take() {
+++                handler.remove();
+++            }
+++            if let Some(handler) = self.focus_reset_handler.take() {
+++                handler.remove();
+++            }
+++            self.focus_point.set(None);
+++            self.focus_overlay.set_visible(false);
+++        }
+++
++         fn is_recording(&self) -> bool {
++             self.is_recording_video.borrow().is_some()
++         }
++@@ -138,6 +163,7 @@ mod imp {
++             if camera == self.camera.replace(camera.clone()) {
++                 return;
++             }
+++            self.clear_focus_state();
++ 
++             // We reset to READY if we landed on the ERROR state on the previous
++             // camera.
++@@ -333,12 +359,37 @@ mod imp {
++                 .set_accessible_role(gtk::AccessibleRole::Presentation);
++             self.picture.set_hexpand(true);
++             self.picture.set_vexpand(true);
+++            self.picture.set_content_fit(gtk::ContentFit::Contain);
++             self.picture.set_paintable(Some(&paintable));
++ 
++             self.offload.set_child(Some(&self.picture));
++-            self.offload.set_parent(&*obj);
++             self.offload.set_black_background(true);
++ 
+++            self.focus_overlay.set_can_target(false);
+++            self.focus_overlay.set_hexpand(true);
+++            self.focus_overlay.set_vexpand(true);
+++            self.focus_overlay.set_visible(false);
+++            self.focus_overlay.set_draw_func(glib::clone!(
+++                #[weak]
+++                obj,
+++                move |_, context, width, height| {
+++                    obj.draw_focus_indicator(context, width, height);
+++                }
+++            ));
+++
+++            self.overlay.set_child(Some(&self.offload));
+++            self.overlay.add_overlay(&self.focus_overlay);
+++            self.overlay.set_parent(&*obj);
+++
+++            let focus_gesture = gtk::GestureClick::new();
+++            focus_gesture.set_button(gdk::BUTTON_PRIMARY);
+++            focus_gesture.connect_released(glib::clone!(
+++                #[weak]
+++                obj,
+++                move |_, _, x, y| obj.focus_at(x, y)
+++            ));
+++            obj.add_controller(focus_gesture);
+++
++             self.tee.set(tee).unwrap();
++ 
++             let devices = crate::DeviceProvider::instance();
++@@ -395,6 +446,7 @@ mod imp {
++         }
++ 
++         fn dispose(&self) {
+++            self.clear_focus_state();
++             if self.is_recording_video.borrow().is_some()
++                 && let Err(err) = self.obj().stop_recording()
++             {
++@@ -404,7 +456,7 @@ mod imp {
++                 log::error!("Could not stop camerabin: {err}");
++             }
++ 
++-            self.offload.unparent();
+++            self.overlay.unparent();
++         }
++ 
++         fn signals() -> &'static [glib::subclass::Signal] {
++@@ -571,6 +623,184 @@ impl Viewfinder {
++         }
++     }
++ 
+++    fn focus_at(&self, widget_x: f64, widget_y: f64) {
+++        if !matches!(self.state(), ViewfinderState::Ready) {
+++            return;
+++        }
+++
+++        let Some(camera) = self.camera() else {
+++            return;
+++        };
+++        if !matches!(camera.location(), crate::CameraLocation::Back) {
+++            return;
+++        }
+++        let Some(serial) = camera.target_object() else {
+++            log::debug!("Tap-to-focus unavailable: camera has no PipeWire serial");
+++            return;
+++        };
+++        let Some((focus_x, focus_y)) = self.focus_coordinates(widget_x, widget_y) else {
+++            return;
+++        };
+++
+++        let imp = self.imp();
+++        imp.clear_focus_state();
+++        let generation = imp.focus_generation.get();
+++
+++        let serial_arg = serial.to_string();
+++        let x_arg = format!("{focus_x:.8}");
+++        let y_arg = format!("{focus_y:.8}");
+++        let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
+++        let process = match launcher.spawn(&[
+++            OsStr::new(FOCUS_HELPER),
+++            OsStr::new("focus"),
+++            OsStr::new(&serial_arg),
+++            OsStr::new(&x_arg),
+++            OsStr::new(&y_arg),
+++            OsStr::new("0.18"),
+++        ]) {
+++            Ok(process) => process,
+++            Err(err) => {
+++                log::warn!("Could not start tap-to-focus helper: {err}");
+++                return;
+++            }
+++        };
+++
+++        let widget_width = self.width().max(1) as f64;
+++        let widget_height = self.height().max(1) as f64;
+++        let indicator_point = (widget_x / widget_width, widget_y / widget_height);
+++        glib::spawn_future_local(glib::clone!(
+++            #[weak(rename_to = viewfinder)]
+++            self,
+++            async move {
+++                match process.wait_check_future().await {
+++                    Ok(()) => viewfinder.show_focus_indicator(generation, serial, indicator_point),
+++                    Err(err) => log::debug!("Tap-to-focus was not applied: {err}"),
+++                }
+++            }
+++        ));
+++    }
+++
+++    fn focus_coordinates(&self, widget_x: f64, widget_y: f64) -> Option<(f64, f64)> {
+++        let paintable = self.imp().picture.paintable()?;
+++        let frame_width = paintable.intrinsic_width() as f64;
+++        let frame_height = paintable.intrinsic_height() as f64;
+++        let widget_width = self.width() as f64;
+++        let widget_height = self.height() as f64;
+++        if frame_width <= 0.0 || frame_height <= 0.0 || widget_width <= 0.0 || widget_height <= 0.0
+++        {
+++            return None;
+++        }
+++
+++        let scale = (widget_width / frame_width).min(widget_height / frame_height);
+++        let display_width = frame_width * scale;
+++        let display_height = frame_height * scale;
+++        let offset_x = (widget_width - display_width) / 2.0;
+++        let offset_y = (widget_height - display_height) / 2.0;
+++        if widget_x < offset_x
+++            || widget_x > offset_x + display_width
+++            || widget_y < offset_y
+++            || widget_y > offset_y + display_height
+++        {
+++            return None;
+++        }
+++
+++        Some((
+++            ((widget_x - offset_x) / display_width).clamp(0.0, 1.0),
+++            ((widget_y - offset_y) / display_height).clamp(0.0, 1.0),
+++        ))
+++    }
+++
+++    fn show_focus_indicator(&self, generation: u64, serial: u64, point: (f64, f64)) {
+++        let imp = self.imp();
+++        if imp.focus_generation.get() != generation
+++            || self.camera().and_then(|camera| camera.target_object()) != Some(serial)
+++        {
+++            return;
+++        }
+++
+++        imp.focus_point.set(Some(point));
+++        imp.focus_overlay.set_visible(true);
+++        imp.focus_overlay.queue_draw();
+++        let indicator_handler = glib::timeout_add_local_once(
+++            Duration::from_millis(1600),
+++            glib::clone!(
+++                #[weak(rename_to = viewfinder)]
+++                self,
+++                move || {
+++                    let imp = viewfinder.imp();
+++                    imp.focus_indicator_handler.take();
+++                    if imp.focus_generation.get() == generation {
+++                        imp.focus_point.set(None);
+++                        imp.focus_overlay.set_visible(false);
+++                    }
+++                }
+++            ),
+++        );
+++        imp.focus_indicator_handler.replace(Some(indicator_handler));
+++
+++        let reset_handler = glib::timeout_add_seconds_local_once(
+++            8,
+++            glib::clone!(
+++                #[weak(rename_to = viewfinder)]
+++                self,
+++                move || {
+++                    viewfinder.imp().focus_reset_handler.take();
+++                    if viewfinder
+++                        .camera()
+++                        .and_then(|camera| camera.target_object())
+++                        == Some(serial)
+++                    {
+++                        viewfinder.reset_focus(serial);
+++                    }
+++                }
+++            ),
+++        );
+++        imp.focus_reset_handler.replace(Some(reset_handler));
+++    }
+++
+++    fn reset_focus(&self, serial: u64) {
+++        let serial_arg = serial.to_string();
+++        let launcher = gio::SubprocessLauncher::new(gio::SubprocessFlags::NONE);
+++        let process = match launcher.spawn(&[
+++            OsStr::new(FOCUS_HELPER),
+++            OsStr::new("reset"),
+++            OsStr::new(&serial_arg),
+++        ]) {
+++            Ok(process) => process,
+++            Err(err) => {
+++                log::debug!("Could not restore continuous autofocus: {err}");
+++                return;
+++            }
+++        };
+++
+++        glib::spawn_future_local(async move {
+++            if let Err(err) = process.wait_check_future().await {
+++                log::debug!("Could not restore continuous autofocus: {err}");
+++            }
+++        });
+++    }
+++
+++    fn draw_focus_indicator(&self, context: &gtk::cairo::Context, width: i32, height: i32) {
+++        let Some((x, y)) = self.imp().focus_point.get() else {
+++            return;
+++        };
+++        let center_x = x * width as f64;
+++        let center_y = y * height as f64;
+++        let radius = (width.min(height) as f64 * 0.055).clamp(18.0, 34.0);
+++        let corner = radius * 0.45;
+++
+++        context.set_source_rgba(1.0, 0.84, 0.16, 0.96);
+++        context.set_line_width(2.5);
+++        for (horizontal, vertical) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+++            let corner_x = center_x + horizontal * radius;
+++            let corner_y = center_y + vertical * radius;
+++            context.move_to(corner_x - horizontal * corner, corner_y);
+++            context.line_to(corner_x, corner_y);
+++            context.line_to(corner_x, corner_y - vertical * corner);
+++        }
+++        let _ = context.stroke();
+++    }
+++
++     /// Takes a picture.
++     ///
++     /// The recording will be saved to `location`. This method throws an error
++diff --git a/meson.build b/meson.build
++index f4cf80e..02d88eb 100644
++--- a/meson.build
+++++ b/meson.build
++@@ -1,6 +1,6 @@
++ project(
++   'snapshot',
++-  'rust',
+++  'rust', 'c',
++   version: '50.0',
++   meson_version: '>= 1.7',
++   license: 'GPL-3.0-or-later',
++@@ -18,6 +18,7 @@ dependency('glycin-2', version: '>= 2')
++ dependency('glycin-gtk4-2', version: '>= 2')
++ dependency('gstreamer-1.0', version: '>= 1.20')
++ dependency('gstreamer-video-1.0', version: '>= 1.20')
+++pipewire_dep = dependency('libpipewire-0.3', version: '>= 0.3')
++ # Needed for camerabin
++ dependency('gstreamer-plugins-bad-1.0', version: '>= 1.20')
++ # Required by glycin crate
++@@ -37,6 +38,7 @@ version = meson.project_version()
++ 
++ prefix = get_option('prefix')
++ bindir = prefix / get_option('bindir')
+++libexecdir = prefix / get_option('libexecdir')
++ localedir = prefix / get_option('localedir')
++ 
++ datadir = prefix / get_option('datadir')
++@@ -83,6 +85,7 @@ cargo_target = meson.project_build_root() / 'cargo-target'
++ cargo_env = environment()
++ cargo_env.set('CARGO_HOME', cargo_home)
++ cargo_env.set('CARGO_TARGET_DIR', cargo_target)
+++cargo_env.set('SNAPSHOT_FOCUS_HELPER', libexecdir / 'snapshot-focus-control')
++ 
++ meson.add_devenv(cargo_env)
++ 
++diff --git a/src/focus-control.c b/src/focus-control.c
++new file mode 100644
++index 0000000..683310e
++--- /dev/null
+++++ b/src/focus-control.c
++@@ -0,0 +1,467 @@
+++/* SPDX-License-Identifier: GPL-3.0-or-later */
+++/* Submit a normalized tap-to-focus region to a libcamera PipeWire node. */
+++
+++#include <errno.h>
+++#include <math.h>
+++#include <stdbool.h>
+++#include <stdint.h>
+++#include <stdio.h>
+++#include <stdlib.h>
+++#include <string.h>
+++#include <time.h>
+++
+++#include <pipewire/pipewire.h>
+++
+++#include <spa/param/param.h>
+++#include <spa/param/props.h>
+++#include <spa/pod/builder.h>
+++#include <spa/pod/parser.h>
+++#include <spa/utils/string.h>
+++
+++#define CROP_KEY "api.libcamera.scaler-crop"
+++#define CROP_MAXIMUM_KEY "api.libcamera.scaler-crop-maximum"
+++#define ORIENTATION_KEY "api.libcamera.stream-orientation"
+++
+++enum operation {
+++	OPERATION_FOCUS,
+++	OPERATION_RESET,
+++};
+++
+++enum stage {
+++	STAGE_DISCOVER,
+++	STAGE_ENUM_CONTROLS,
+++	STAGE_APPLY_CONTROLS,
+++};
+++
+++struct app {
+++	struct pw_main_loop *loop;
+++	struct pw_context *context;
+++	struct pw_core *core;
+++	struct pw_registry *registry;
+++	struct pw_node *node;
+++	struct spa_source *timer;
+++	struct spa_hook core_listener;
+++	struct spa_hook registry_listener;
+++	struct spa_hook node_listener;
+++
+++	enum operation operation;
+++	enum stage stage;
+++	uint64_t target_serial;
+++	double focus_x;
+++	double focus_y;
+++	double focus_size;
+++
+++	uint32_t af_mode_id;
+++	uint32_t af_trigger_id;
+++	uint32_t af_metering_id;
+++	uint32_t af_windows_id;
+++	int crop_x;
+++	int crop_y;
+++	unsigned int crop_width;
+++	unsigned int crop_height;
+++	unsigned int orientation;
+++	int sync_seq;
+++	int result;
+++	bool controls_requested;
+++	bool crop_available;
+++};
+++
+++static void finish(struct app *app, int result, const char *message)
+++{
+++	if (message)
+++		fprintf(stderr, "snapshot-focus-control: %s\n", message);
+++	app->result = result;
+++	pw_main_loop_quit(app->loop);
+++}
+++
+++static bool parse_uint64(const char *text, uint64_t *value)
+++{
+++	char *end = NULL;
+++	errno = 0;
+++	unsigned long long parsed = strtoull(text, &end, 10);
+++	if (errno || end == text || *end != '\0')
+++		return false;
+++	*value = parsed;
+++	return true;
+++}
+++
+++static bool parse_double(const char *text, double *value)
+++{
+++	char *end = NULL;
+++	errno = 0;
+++	double parsed = strtod(text, &end);
+++	if (errno || end == text || *end != '\0' || !isfinite(parsed))
+++		return false;
+++	*value = parsed;
+++	return true;
+++}
+++
+++static bool parse_crop(struct app *app, const char *text)
+++{
+++	char extra;
+++	return sscanf(text, "%d,%d,%u,%u%c", &app->crop_x, &app->crop_y,
+++		      &app->crop_width, &app->crop_height, &extra) == 4 &&
+++	       app->crop_width > 0 && app->crop_height > 0;
+++}
+++
+++static void orient_point(unsigned int orientation, double *x, double *y)
+++{
+++	double input_x = *x;
+++	double input_y = *y;
+++
+++	/*
+++	 * libcamera Orientation values follow EXIF orientation tag values and
+++	 * describe the transform from the naturally oriented sensor image to the
+++	 * displayed buffer. Apply the inverse transform to map a display tap back
+++	 * into sensor coordinates.
+++	 */
+++	switch (orientation) {
+++	case 2: /* Rotate0Mirror */
+++		*x = 1.0 - input_x;
+++		*y = input_y;
+++		break;
+++	case 3: /* Rotate180 */
+++		*x = 1.0 - input_x;
+++		*y = 1.0 - input_y;
+++		break;
+++	case 4: /* Rotate180Mirror */
+++		*x = input_x;
+++		*y = 1.0 - input_y;
+++		break;
+++	case 5: /* Rotate90Mirror */
+++		*x = input_y;
+++		*y = input_x;
+++		break;
+++	case 6: /* Rotate270 */
+++		*x = 1.0 - input_y;
+++		*y = input_x;
+++		break;
+++	case 7: /* Rotate270Mirror */
+++		*x = 1.0 - input_y;
+++		*y = 1.0 - input_x;
+++		break;
+++	case 8: /* Rotate90 */
+++		*x = input_y;
+++		*y = 1.0 - input_x;
+++		break;
+++	case 1: /* Rotate0 */
+++	default:
+++		*x = input_x;
+++		*y = input_y;
+++		break;
+++	}
+++}
+++
+++static void add_int_property(struct spa_pod_builder *builder, uint32_t id,
+++			     int32_t value)
+++{
+++	spa_pod_builder_prop(builder, id, 0);
+++	spa_pod_builder_int(builder, value);
+++}
+++
+++static int apply_controls(struct app *app)
+++{
+++	uint8_t buffer[512];
+++	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+++	struct spa_pod_frame object_frame;
+++
+++	spa_pod_builder_push_object(&builder, &object_frame,
+++				    SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+++
+++	if (app->operation == OPERATION_RESET) {
+++		/* AfModeContinuous and AfMeteringAuto. */
+++		add_int_property(&builder, app->af_mode_id, 2);
+++		add_int_property(&builder, app->af_metering_id, 0);
+++	} else {
+++		double x = app->focus_x;
+++		double y = app->focus_y;
+++		orient_point(app->orientation, &x, &y);
+++
+++		unsigned int width =
+++			(unsigned int)llround(app->crop_width * app->focus_size);
+++		unsigned int height =
+++			(unsigned int)llround(app->crop_height * app->focus_size);
+++		width = SPA_CLAMP(width, 32u, app->crop_width);
+++		height = SPA_CLAMP(height, 32u, app->crop_height);
+++
+++		int center_x = app->crop_x +
+++			(int)llround(x * (double)(app->crop_width - 1));
+++		int center_y = app->crop_y +
+++			(int)llround(y * (double)(app->crop_height - 1));
+++		int left = center_x - (int)width / 2;
+++		int top = center_y - (int)height / 2;
+++		left = SPA_CLAMP(left, app->crop_x,
+++				 app->crop_x + (int)app->crop_width - (int)width);
+++		top = SPA_CLAMP(top, app->crop_y,
+++				app->crop_y + (int)app->crop_height - (int)height);
+++
+++		/*
+++		 * AfModeAuto, AfMeteringWindows, one AfWindows rectangle and
+++		 * AfTriggerStart. The trigger must be submitted in the same request:
+++		 * changing to Auto mode alone deliberately leaves autofocus idle.
+++		 */
+++		add_int_property(&builder, app->af_mode_id, 1);
+++		add_int_property(&builder, app->af_metering_id, 1);
+++		spa_pod_builder_prop(&builder, app->af_windows_id, 0);
+++		struct spa_pod_frame window_frame;
+++		spa_pod_builder_push_struct(&builder, &window_frame);
+++		spa_pod_builder_int(&builder, left);
+++		spa_pod_builder_int(&builder, top);
+++		spa_pod_builder_int(&builder, width);
+++		spa_pod_builder_int(&builder, height);
+++		spa_pod_builder_pop(&builder, &window_frame);
+++		add_int_property(&builder, app->af_trigger_id, 0);
+++	}
+++
+++	const struct spa_pod *props =
+++		spa_pod_builder_pop(&builder, &object_frame);
+++	return pw_node_set_param(app->node, SPA_PARAM_Props, 0, props);
+++}
+++
+++static void node_param(void *data, int seq, uint32_t id, uint32_t index,
+++		       uint32_t next, const struct spa_pod *param)
+++{
+++	struct app *app = data;
+++	uint32_t control_id;
+++	const char *description = NULL;
+++	(void)seq;
+++	(void)index;
+++	(void)next;
+++
+++	if (id != SPA_PARAM_PropInfo || !param)
+++		return;
+++
+++	if (spa_pod_parse_object(param, SPA_TYPE_OBJECT_PropInfo, NULL,
+++				 SPA_PROP_INFO_id, SPA_POD_Id(&control_id),
+++				 SPA_PROP_INFO_description,
+++				 SPA_POD_OPT_String(&description)) < 0 ||
+++	    !description)
+++		return;
+++
+++	if (spa_streq(description, "AfMode"))
+++		app->af_mode_id = control_id;
+++	else if (spa_streq(description, "AfTrigger"))
+++		app->af_trigger_id = control_id;
+++	else if (spa_streq(description, "AfMetering"))
+++		app->af_metering_id = control_id;
+++	else if (spa_streq(description, "AfWindows"))
+++		app->af_windows_id = control_id;
+++}
+++
+++static void request_controls(struct app *app)
+++{
+++	if (app->controls_requested || !app->node)
+++		return;
+++	if (app->operation == OPERATION_FOCUS && !app->crop_available)
+++		return;
+++
+++	app->controls_requested = true;
+++	app->stage = STAGE_ENUM_CONTROLS;
+++	int res = pw_node_enum_params(app->node, 0, SPA_PARAM_PropInfo,
+++				      0, UINT32_MAX, NULL);
+++	if (res < 0) {
+++		finish(app, 4, "failed to enumerate camera controls");
+++		return;
+++	}
+++	app->sync_seq = pw_core_sync(app->core, PW_ID_CORE, app->sync_seq);
+++}
+++
+++static void node_info(void *data, const struct pw_node_info *info)
+++{
+++	struct app *app = data;
+++	if (info->props) {
+++		const char *crop = spa_dict_lookup(info->props, CROP_KEY);
+++		if (!crop)
+++			crop = spa_dict_lookup(info->props, CROP_MAXIMUM_KEY);
+++		if (crop)
+++			app->crop_available = parse_crop(app, crop);
+++
+++		const char *orientation = spa_dict_lookup(info->props, ORIENTATION_KEY);
+++		if (orientation) {
+++			uint64_t parsed;
+++			if (parse_uint64(orientation, &parsed) && parsed >= 1 && parsed <= 8)
+++				app->orientation = (unsigned int)parsed;
+++		}
+++	}
+++
+++	request_controls(app);
+++}
+++
+++static const struct pw_node_events node_events = {
+++	PW_VERSION_NODE_EVENTS,
+++	.info = node_info,
+++	.param = node_param,
+++};
+++
+++static void registry_global(void *data, uint32_t id, uint32_t permissions,
+++			    const char *type, uint32_t version,
+++			    const struct spa_dict *props)
+++{
+++	struct app *app = data;
+++	(void)permissions;
+++	if (app->node || !spa_streq(type, PW_TYPE_INTERFACE_Node) || !props)
+++		return;
+++
+++	const char *serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
+++	uint64_t parsed_serial;
+++	if (!serial || !parse_uint64(serial, &parsed_serial) ||
+++	    parsed_serial != app->target_serial)
+++		return;
+++
+++	app->node = pw_registry_bind(app->registry, id, PW_TYPE_INTERFACE_Node,
+++				     SPA_MIN(version, (uint32_t)PW_VERSION_NODE), 0);
+++	if (!app->node) {
+++		finish(app, 4, "failed to bind camera node");
+++		return;
+++	}
+++
+++	pw_node_add_listener(app->node, &app->node_listener, &node_events, app);
+++}
+++
+++static const struct pw_registry_events registry_events = {
+++	PW_VERSION_REGISTRY_EVENTS,
+++	.global = registry_global,
+++};
+++
+++static void core_done(void *data, uint32_t id, int seq)
+++{
+++	struct app *app = data;
+++	if (id != PW_ID_CORE || seq != app->sync_seq)
+++		return;
+++
+++	if (app->stage == STAGE_DISCOVER) {
+++		if (!app->node)
+++			finish(app, 3, "camera node is not available");
+++		return;
+++	}
+++
+++	if (app->stage == STAGE_ENUM_CONTROLS) {
+++		if (app->af_mode_id == 0 || app->af_metering_id == 0 ||
+++		    (app->operation == OPERATION_FOCUS &&
+++		     (app->af_trigger_id == 0 || app->af_windows_id == 0))) {
+++			finish(app, 3, "camera does not support tap-to-focus");
+++			return;
+++		}
+++
+++		if (apply_controls(app) < 0) {
+++			finish(app, 4, "camera rejected focus controls");
+++			return;
+++		}
+++		app->stage = STAGE_APPLY_CONTROLS;
+++		app->sync_seq = pw_core_sync(app->core, PW_ID_CORE, app->sync_seq);
+++		return;
+++	}
+++
+++	finish(app, 0, NULL);
+++}
+++
+++static void core_error(void *data, uint32_t id, int seq, int res,
+++		       const char *message)
+++{
+++	struct app *app = data;
+++	(void)id;
+++	(void)seq;
+++	if (res < 0)
+++		finish(app, 4, message);
+++}
+++
+++static const struct pw_core_events core_events = {
+++	PW_VERSION_CORE_EVENTS,
+++	.done = core_done,
+++	.error = core_error,
+++};
+++
+++static void timeout(void *data, uint64_t expirations)
+++{
+++	struct app *app = data;
+++	(void)expirations;
+++	finish(app, 4, "timed out waiting for PipeWire");
+++}
+++
+++static void usage(const char *program)
+++{
+++	fprintf(stderr,
+++		"usage: %s focus SERIAL X Y SIZE\n"
+++		"       %s reset SERIAL\n",
+++		program, program);
+++}
+++
+++int main(int argc, char **argv)
+++{
+++	struct app app = {
+++		.orientation = 1,
+++		.result = 4,
+++	};
+++
+++	if (argc >= 2 && spa_streq(argv[1], "focus")) {
+++		if (argc != 6 || !parse_uint64(argv[2], &app.target_serial) ||
+++		    !parse_double(argv[3], &app.focus_x) ||
+++		    !parse_double(argv[4], &app.focus_y) ||
+++		    !parse_double(argv[5], &app.focus_size) ||
+++		    app.focus_x < 0.0 || app.focus_x > 1.0 ||
+++		    app.focus_y < 0.0 || app.focus_y > 1.0 ||
+++		    app.focus_size < 0.05 || app.focus_size > 0.5) {
+++			usage(argv[0]);
+++			return 2;
+++		}
+++		app.operation = OPERATION_FOCUS;
+++	} else if (argc == 3 && spa_streq(argv[1], "reset") &&
+++		   parse_uint64(argv[2], &app.target_serial)) {
+++		app.operation = OPERATION_RESET;
+++	} else {
+++		usage(argv[0]);
+++		return 2;
+++	}
+++
+++	pw_init(&argc, &argv);
+++	app.loop = pw_main_loop_new(NULL);
+++	if (!app.loop)
+++		goto cleanup;
+++
+++	app.context = pw_context_new(pw_main_loop_get_loop(app.loop), NULL, 0);
+++	if (!app.context)
+++		goto cleanup;
+++
+++	app.core = pw_context_connect(app.context, NULL, 0);
+++	if (!app.core) {
+++		fprintf(stderr, "snapshot-focus-control: cannot connect to PipeWire: %s\n",
+++			strerror(errno));
+++		goto cleanup;
+++	}
+++
+++	pw_core_add_listener(app.core, &app.core_listener, &core_events, &app);
+++	app.registry = pw_core_get_registry(app.core, PW_VERSION_REGISTRY, 0);
+++	if (!app.registry)
+++		goto cleanup;
+++	pw_registry_add_listener(app.registry, &app.registry_listener,
+++				 &registry_events, &app);
+++
+++	app.timer = pw_loop_add_timer(pw_main_loop_get_loop(app.loop), timeout, &app);
+++	if (!app.timer)
+++		goto cleanup;
+++	struct timespec timeout_value = { .tv_sec = 3 };
+++	struct timespec interval = { 0 };
+++	pw_loop_update_timer(pw_main_loop_get_loop(app.loop), app.timer,
+++			     &timeout_value, &interval, false);
+++
+++	app.stage = STAGE_DISCOVER;
+++	app.sync_seq = pw_core_sync(app.core, PW_ID_CORE, 0);
+++	pw_main_loop_run(app.loop);
+++
+++cleanup:
+++	if (app.timer)
+++		pw_loop_destroy_source(pw_main_loop_get_loop(app.loop), app.timer);
+++	if (app.node)
+++		pw_proxy_destroy((struct pw_proxy *)app.node);
+++	if (app.registry)
+++		pw_proxy_destroy((struct pw_proxy *)app.registry);
+++	if (app.core)
+++		pw_core_disconnect(app.core);
+++	if (app.context)
+++		pw_context_destroy(app.context);
+++	if (app.loop)
+++		pw_main_loop_destroy(app.loop);
+++	pw_deinit();
+++
+++	return app.result;
+++}
++diff --git a/src/meson.build b/src/meson.build
++index 35b98a1..479a62d 100644
++--- a/src/meson.build
+++++ b/src/meson.build
++@@ -16,6 +16,14 @@ config = configure_file(
++   output: 'config.rs',
++   configuration: global_conf
++ )
+++
+++executable(
+++  'snapshot-focus-control',
+++  'focus-control.c',
+++  dependencies: pipewire_dep,
+++  install: true,
+++  install_dir: libexecdir,
+++)
++ # Copy the config.rs output to the source directory.
++ run_command(
++   'cp',
++-- 
++2.49.0
++
+diff --git a/temp/snapshot/APKBUILD b/temp/snapshot/APKBUILD
+new file mode 100644
+index 0000000000000000000000000000000000000000..c82146245c20868425c1b7ebfaf12b2409cf11d3
+--- /dev/null
++++ b/temp/snapshot/APKBUILD
+@@ -0,0 +1,71 @@
++# Contributor: Thomas Aldrian <aldrian.thom@proton.me>
++maintainer="team/gnome <achill@achill.org>"
++pkgname=snapshot
++pkgver=50.0
++pkgrel=2
++pkgdesc="Take pictures and videos"
++url="https://gitlab.gnome.org/GNOME/snapshot"
++arch="all"
++license="GPL-3.0-or-later"
++makedepends="
++	cargo
++	cargo-auditable
++	desktop-file-utils
++	glib-dev
++	gst-plugins-bad-dev
++	gst-plugins-base-dev
++	gstreamer-dev
++	gtk4.0-dev
++	lcms2-dev
++	libadwaita-dev
++	libglycin-gtk4-dev
++	libseccomp-dev
++	meson
++	pipewire-dev
++	"
++depends="
++	glycin-image-rs
++	gst-plugin-pipewire
++	gst-plugins-bad
++	gst-plugins-good
++	gst-plugins-rs-gtk4
++	gst-plugins-ugly
++	pipewire
++	pipewire-spa-libcamera
++	"
++subpackages="$pkgname-lang"
++source="https://download.gnome.org/sources/snapshot/${pkgver%%.*}/snapshot-$pkgver.tar.xz
++	cargo-auditable.patch
++	0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
++	0002-snapshot-Add-sensor-region-tap-to-focus.patch
++	"
++options="net" # cargo fetch for rustix update
++
++prepare() {
++	default_prepare
++
++	mv -v .cargo/config.toml .cargo/config.toml.temp
++	cargo vendor --locked
++	mv -v .cargo/config.toml.temp .cargo/config.toml
++}
++
++build() {
++	abuild-meson \
++		. output
++	meson compile -C output
++}
++
++check() {
++	cargo test
++}
++
++package() {
++	DESTDIR="$pkgdir" meson install --no-rebuild -C output
++}
++
++sha512sums="
++e7f4013e91ec8de1aec64df188da654374e02b1a2588d5f9e3edbc31eb347e58648c3c5d595fe6a5c194e496b8ffb164485d7a9b035d5686ad8f1c05f9988b32  snapshot-50.0.tar.xz
++236fdfe1f2c91ce4d24e9823c1d9d9448171f10065d4608ce0a0c9a003d48666dff98f458980aa1567ecb090c75be754de25fd845ad330d4d8fea2b20aed1d7a  cargo-auditable.patch
++d2446fc5e0b93fdcaa6a47465dfa8e7c44d45f123b3f5c96684df052938c8ec926f1e635f7ad6440b95c1ca65bdecd383ffbb6dbf0cf2f9376bb84287ffab698  0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
++9a9b6e85d18143a851a8cf876e486460bdf6dd9ca31a205592cfa06d363c69922a2e1d845436402f4a77768c9226eeb9a3f6451e35a310361a3a3432addb4172  0002-snapshot-Add-sensor-region-tap-to-focus.patch
++"
+diff --git a/temp/snapshot/cargo-auditable.patch b/temp/snapshot/cargo-auditable.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..740f5479e6bff86ec75ef8b6c3eb8e6e67e20501
+--- /dev/null
++++ b/temp/snapshot/cargo-auditable.patch
+@@ -0,0 +1,37 @@
++From c6a6f06f3863bab89467ecb900dcd7591516da49 Mon Sep 17 00:00:00 2001
++From: Robert Mader <robert.mader@collabora.com>
++Date: Thu, 12 Mar 2026 10:55:33 +0100
++Subject: [PATCH] cargo-auditable
++
++---
++ meson.build     | 1 +
++ src/meson.build | 1 +
++ 2 files changed, 2 insertions(+)
++
++diff --git a/meson.build b/meson.build
++index f4cf80e..9f8b4ba 100644
++--- a/meson.build
+++++ b/meson.build
++@@ -32,6 +32,7 @@ glib_compile_schemas = find_program('glib-compile-schemas', required: true)
++ desktop_file_validate = find_program('desktop-file-validate', required: false)
++ appstreamcli = find_program('appstreamcli', required: false)
++ cargo = find_program('cargo', required: true)
+++cargo_auditable = find_program('cargo-auditable', required: true)
++ 
++ version = meson.project_version()
++ 
++diff --git a/src/meson.build b/src/meson.build
++index 35b98a1..c7fc059 100644
++--- a/src/meson.build
+++++ b/src/meson.build
++@@ -44,6 +44,7 @@ cargo_build = custom_target(
++   env: cargo_env,
++   command: [
++     cargo,
+++    'auditable',
++     'build',
++     cargo_build_options,
++     '&&',
++-- 
++2.53.0
++

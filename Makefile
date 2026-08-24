@@ -21,6 +21,7 @@ test:
 	sh -n $(SCRIPTS) tests/test-apn-selection.sh tests/test-messages-check.sh packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
+	python3 tests/test-ppm-metrics.py
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
 
 install:

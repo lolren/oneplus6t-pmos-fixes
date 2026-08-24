@@ -16,6 +16,7 @@ algorithms:
       gamma: 2.0
       contrast: 1.1
       saturation: 1.25
+      sharpness: 1.0
   - Agc:
       target: 2.0
       highlightQuantile: 0.98

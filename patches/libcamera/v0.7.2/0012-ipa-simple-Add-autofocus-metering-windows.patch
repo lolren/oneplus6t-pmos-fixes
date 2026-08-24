@@ -1,0 +1,442 @@
+From e98921b7c544337cd79c7d0378b47bbb9707520a Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 09:37:28 +0100
+Subject: [PATCH 12/13] ipa: simple: Add autofocus metering windows
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ .../internal/software_isp/debayer_params.h    |  4 +
+ .../internal/software_isp/swstats_cpu.h       | 13 ++-
+ include/libcamera/ipa/soft.mojom              |  1 +
+ src/ipa/simple/algorithms/af.cpp              | 69 ++++++++++++++-
+ src/ipa/simple/algorithms/af.h                |  5 ++
+ src/ipa/simple/soft_simple.cpp                |  2 +
+ src/libcamera/pipeline/simple/simple.cpp      | 12 +++
+ src/libcamera/software_isp/debayer_cpu.cpp    |  5 ++
+ src/libcamera/software_isp/debayer_egl.cpp    |  5 ++
+ src/libcamera/software_isp/swstats_cpu.cpp    | 86 +++++++++++++++----
+ 10 files changed, 179 insertions(+), 23 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
+index 6772b43..de9e804 100644
+--- a/include/libcamera/internal/software_isp/debayer_params.h
++++ b/include/libcamera/internal/software_isp/debayer_params.h
+@@ -12,6 +12,8 @@
+ 
+ #include <stdint.h>
+ 
++#include <libcamera/geometry.h>
++
+ #include "libcamera/internal/matrix.h"
+ #include "libcamera/internal/vector.h"
+ 
+@@ -25,6 +27,8 @@ struct DebayerParams {
+ 	float gamma = 1.0;
+ 	float contrastExp = 1.0;
+ 	RGB<float> gains = RGB<float>({ 1.0, 1.0, 1.0 });
++	/* Focus region in the software ISP input coordinate system. */
++	Rectangle focusWindow;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 659611f..c7ea097 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -55,6 +55,7 @@ public:
+ 
+ 	int configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount = 1);
+ 	void setWindow(const Rectangle &window);
++	void setFocusWindow(const Rectangle &window);
+ 	void startFrame(uint32_t frame);
+ 	void finishFrame(uint32_t frame, uint32_t bufferId);
+ 	void processFrame(uint32_t frame, uint32_t bufferId, MappedFrameBuffer &input);
+@@ -68,8 +69,9 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		bool measureFocus = y >= window_.y + window_.height / 4 &&
+-				    y < window_.y + window_.height * 3 / 4;
++		unsigned int focusY = y - window_.y;
++		bool measureFocus = focusY >= static_cast<unsigned int>(focusWindow_.y) &&
++				    focusY < focusWindow_.y + focusWindow_.height;
+ 		(this->*stats0_)(src, stats_[statsBufferIndex],
+ 				 focusStates_[statsBufferIndex], measureFocus);
+ 	}
+@@ -83,8 +85,9 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		bool measureFocus = y >= window_.y + window_.height / 4 &&
+-				    y < window_.y + window_.height * 3 / 4;
++		unsigned int focusY = y - window_.y;
++		bool measureFocus = focusY >= static_cast<unsigned int>(focusWindow_.y) &&
++				    focusY < focusWindow_.y + focusWindow_.height;
+ 		(this->*stats2_)(src, stats_[statsBufferIndex],
+ 				 focusStates_[statsBufferIndex], measureFocus);
+ 	}
+@@ -139,6 +142,8 @@ private:
+ 	unsigned int ySkipMask_;
+ 
+ 	Rectangle window_;
++	/* Focus window relative to window_.topLeft(). */
++	Rectangle focusWindow_;
+ 
+ 	Size patternSize_;
+ 
+diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
+index 304b5fe..cc2e68a 100644
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -9,6 +9,7 @@ module ipa.soft;
+ import "include/libcamera/ipa/core.mojom";
+ 
+ struct IPAConfigInfo {
++	libcamera.IPACameraSensorInfo sensorInfo;
+ 	libcamera.ControlInfoMap sensorControls;
+ 	libcamera.ControlInfoMap lensControls;
+ };
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index cdbab4c..67adb71 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -59,6 +59,11 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 			    defaultMode_);
+ 	context.ctrlMap[&controls::AfTrigger] =
+ 		ControlInfo(controls::AfTriggerValues);
++	context.ctrlMap[&controls::AfMetering] =
++		ControlInfo(controls::AfMeteringValues);
++	context.ctrlMap[&controls::AfWindows] =
++		ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535),
++			    Span<const Rectangle, 1>{ { Rectangle{} } });
+ 
+ 	return 0;
+ }
+@@ -85,6 +90,8 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
+ 	}
+ 
+ 	mode_ = defaultMode_;
++	metering_ = controls::AfMeteringAuto;
++	focusWindow_ = {};
+ 	state_ = controls::AfStateIdle;
+ 	phase_ = ScanPhase::Idle;
+ 	currentPosition_ = minPosition_;
+@@ -115,6 +122,8 @@ void Af::queueRequest(IPAContext &context,
+ 		      [[maybe_unused]] IPAFrameContext &frameContext,
+ 		      const ControlList &requestControls)
+ {
++	bool restartContinuous = false;
++
+ 	const auto &mode = requestControls.get(controls::AfMode);
+ 	if (mode && *mode != mode_) {
+ 		if (*mode != controls::AfModeAuto &&
+@@ -125,11 +134,48 @@ void Af::queueRequest(IPAContext &context,
+ 			mode_ = *mode;
+ 			phase_ = ScanPhase::Idle;
+ 			state_ = controls::AfStateIdle;
+-			if (mode_ == controls::AfModeContinuous)
+-				startScan(context);
++			restartContinuous = mode_ == controls::AfModeContinuous;
++		}
++	}
++
++	const auto &metering = requestControls.get(controls::AfMetering);
++	if (metering && *metering != metering_) {
++		if (*metering != controls::AfMeteringAuto &&
++		    *metering != controls::AfMeteringWindows) {
++			LOG(IPASoftAf, Warning)
++				<< "Ignoring unsupported autofocus metering mode "
++				<< *metering;
++		} else {
++			metering_ = *metering;
++			phase_ = ScanPhase::Idle;
++			state_ = controls::AfStateIdle;
++			restartContinuous = mode_ == controls::AfModeContinuous;
++		}
++	}
++
++	const auto &windows = requestControls.get(controls::AfWindows);
++	if (windows) {
++		Rectangle selected;
++		for (const Rectangle &window : *windows) {
++			selected = window.boundedTo(context.sensorInfo.analogCrop);
++			if (!selected.isNull())
++				break;
++		}
++
++		if (selected != focusWindow_) {
++			focusWindow_ = selected;
++			if (metering_ == controls::AfMeteringWindows) {
++				phase_ = ScanPhase::Idle;
++				state_ = controls::AfStateIdle;
++				restartContinuous =
++					mode_ == controls::AfModeContinuous;
++			}
+ 		}
+ 	}
+ 
++	if (restartContinuous)
++		startScan(context);
++
+ 	const auto &trigger = requestControls.get(controls::AfTrigger);
+ 	if (!trigger || mode_ != controls::AfModeAuto)
+ 		return;
+@@ -143,6 +189,21 @@ void Af::queueRequest(IPAContext &context,
+ 	}
+ }
+ 
++void Af::prepare(IPAContext &context,
++		 [[maybe_unused]] const uint32_t frame,
++		 [[maybe_unused]] IPAFrameContext &frameContext,
++		 DebayerParams *params)
++{
++	params->focusWindow = {};
++	if (metering_ != controls::AfMeteringWindows || focusWindow_.isNull())
++		return;
++
++	const Rectangle output{ context.sensorInfo.outputSize };
++	Rectangle mapped = focusWindow_.transformedBetween(
++		context.sensorInfo.analogCrop, output);
++	params->focusWindow = mapped.boundedTo(output);
++}
++
+ void Af::buildCoarsePositions()
+ {
+ 	positions_.clear();
+@@ -373,6 +434,10 @@ void Af::process(IPAContext &context,
+ 	}
+ 
+ 	metadata.set(controls::AfMode, mode_);
++	metadata.set(controls::AfMetering, metering_);
++	if (!focusWindow_.isNull())
++		metadata.set(controls::AfWindows,
++			     Span<const Rectangle>(&focusWindow_, 1));
+ 	metadata.set(controls::AfState, state_);
+ }
+ 
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index cc30dfb..de3a3c8 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -27,6 +27,9 @@ public:
+ 	void queueRequest(IPAContext &context, const uint32_t frame,
+ 			  IPAFrameContext &frameContext,
+ 			  const ControlList &controls) override;
++	void prepare(IPAContext &context, const uint32_t frame,
++		     IPAFrameContext &frameContext,
++		     DebayerParams *params) override;
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext, const SwIspStats *stats,
+ 		     ControlList &metadata) override;
+@@ -65,7 +68,9 @@ private:
+ 	int32_t minPosition_ = 0;
+ 	int32_t maxPosition_ = 0;
+ 	int32_t mode_ = 0;
++	int32_t metering_ = 0;
+ 	int32_t state_ = 0;
++	Rectangle focusWindow_;
+ 	int32_t currentPosition_ = 0;
+ 	int32_t bestPosition_ = 0;
+ 	ScanPhase phase_ = ScanPhase::Idle;
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 6027553..1aedc56 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -165,6 +165,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 		params_->gamma = 1.0 / algorithms::kDefaultGamma;
+ 		params_->contrastExp = 1.0;
+ 		params_->gains = { { 1.0, 1.0, 1.0 } };
++		params_->focusWindow = {};
+ 		/* combinedMatrix is reset for each frame. */
+ 	}
+ 
+@@ -203,6 +204,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 
+ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ {
++	context_.sensorInfo = configInfo.sensorInfo;
+ 	sensorInfoMap_ = configInfo.sensorControls;
+ 	lensInfoMap_ = configInfo.lensControls;
+ 
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 7bd87b9..f06f587 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -30,6 +30,7 @@
+ #include <libcamera/control_ids.h>
+ #include <libcamera/geometry.h>
+ #include <libcamera/pixel_format.h>
++#include <libcamera/property_ids.h>
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/camera.h"
+@@ -1590,6 +1591,16 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 			<< ", got " << captureFormat.planes[0].bpl;
+ 	}
+ 
++	IPACameraSensorInfo sensorInfo;
++	ret = data->sensor_->sensorInfo(&sensorInfo);
++	if (ret) {
++		LOG(SimplePipeline, Error)
++			<< "Camera sensor information not available after configuration";
++		return ret;
++	}
++	data->properties_.set(properties::ScalerCropMaximum,
++			      sensorInfo.analogCrop);
++
+ 	/* Configure the converter if needed. */
+ 	std::vector<std::reference_wrapper<const StreamConfiguration>> outputCfgs;
+ 	data->useConversion_ = config->needConversion();
+@@ -1621,6 +1632,7 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 		return data->converter_->configure(inputCfg, outputCfgs);
+ 	} else {
+ 		ipa::soft::IPAConfigInfo configInfo;
++		configInfo.sensorInfo = sensorInfo;
+ 		configInfo.sensorControls = data->sensor_->controls();
+ 		CameraLens *lens = data->sensor_->focusLens();
+ 		if (lens)
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 49382b4..aa210e1 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -1069,6 +1069,11 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ {
+ 	bench_.startFrame();
+ 
++	Rectangle focusWindow = params.focusWindow.boundedTo(window_);
++	if (!focusWindow.isNull())
++		focusWindow.translateBy(-window_.topLeft());
++	stats_->setFocusWindow(focusWindow);
++
+ 	std::vector<DmaSyncer> dmaSyncers;
+ 
+ 	dmaSyncBegin(dmaSyncers, input, output);
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index ba7e750..dbe224e 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -716,6 +716,11 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ {
+ 	bench_.startFrame();
+ 
++	Rectangle focusWindow = params.focusWindow.boundedTo(displayWindow_);
++	if (!focusWindow.isNull())
++		focusWindow.translateBy(-displayWindow_.topLeft());
++	stats_->setFocusWindow(focusWindow);
++
+ 	/* Copy metadata from the input buffer */
+ 	FrameMetadata &metadata = output->_d()->metadata();
+ 	metadata.status = input->metadata().status;
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index fa245ea..8278d61 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -203,20 +203,20 @@ void SwStatsCpu::finishFocusLine(SwIspStats &stats, FocusState &focusState,
+ 	focusState.validLines = std::min(focusState.validLines + 1, 3U);
+ }
+ 
+-#define SWSTATS_START_LINE_STATS(pixel_t) \
+-	pixel_t r, g, g2, b;              \
+-	uint64_t yVal;                    \
+-                                          \
+-	uint64_t sumR = 0;                \
+-	uint64_t sumG = 0;                \
+-	uint64_t sumB = 0;                \
+-	uint64_t focusLuminance = 0;      \
+-	uint32_t focusLuminanceSamples = 0; \
+-	unsigned int focusLineSamples = 0; \
+-	unsigned int sampleIndex = 0;     \
+-	const unsigned int focusStart = window_.width / 16; \
+-	const unsigned int focusEnd = window_.width * 3 / 16; \
+-	std::vector<uint16_t> &focusLine = \
++#define SWSTATS_START_LINE_STATS(pixel_t)                                            \
++	pixel_t r, g, g2, b;                                                         \
++	uint64_t yVal;                                                               \
++                                                                                     \
++	uint64_t sumR = 0;                                                           \
++	uint64_t sumG = 0;                                                           \
++	uint64_t sumB = 0;                                                           \
++	uint64_t focusLuminance = 0;                                                 \
++	uint32_t focusLuminanceSamples = 0;                                          \
++	unsigned int focusLineSamples = 0;                                           \
++	unsigned int sampleIndex = 0;                                                \
++	const unsigned int focusStart = focusWindow_.x / 4;                          \
++	const unsigned int focusEnd = (focusWindow_.x + focusWindow_.width + 3) / 4; \
++	std::vector<uint16_t> &focusLine =                                           \
+ 		focusState.lines[focusState.lineIndex];
+ 
+ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
+@@ -660,7 +660,59 @@ void SwStatsCpu::setWindow(const Rectangle &window)
+ 	window_.width &= ~(patternSize_.width - 1);
+ 	window_.height &= ~(patternSize_.height - 1);
+ 
+-	unsigned int focusLineSize = window_.width / 8 + 1;
++	/* An empty focus window means the central half of the statistics area. */
++	setFocusWindow({});
++}
++
++/**
++ * \brief Specify the area used to calculate focus statistics
++ * \param[in] window Focus window relative to the statistics window
++ *
++ * An empty or invalid window selects the central half of the statistics area.
++ * The colour and luminance statistics continue to cover the full statistics
++ * window, so changing focus metering does not disturb auto exposure or white
++ * balance.
++ */
++void SwStatsCpu::setFocusWindow(const Rectangle &window)
++{
++	Rectangle bounds(window_.size());
++	Rectangle focus = window.boundedTo(bounds);
++
++	if (focus.isNull()) {
++		focus = Rectangle(window_.width / 4, window_.height / 4,
++				  window_.width / 2, window_.height / 2);
++	}
++
++	/* Keep sample coordinates aligned to the Bayer/statistics grid. */
++	focus.x &= ~3;
++	focus.y &= ~(patternSize_.height - 1);
++	focus.width = std::min(focus.width, bounds.width - focus.x);
++	focus.height = std::min(focus.height, bounds.height - focus.y);
++	focus.width &= ~3;
++	focus.height &= ~(patternSize_.height - 1);
++
++	/* A Sobel measurement needs at least three samples in both axes. */
++	if (focus.width < 12 || focus.height < 3 * patternSize_.height) {
++		focus = Rectangle(window_.width / 4, window_.height / 4,
++				  window_.width / 2, window_.height / 2);
++		focus.x &= ~3;
++		focus.y &= ~(patternSize_.height - 1);
++		focus.width &= ~3;
++		focus.height &= ~(patternSize_.height - 1);
++	}
++
++	unsigned int focusLineSize = (focus.width + 3) / 4 + 1;
++	bool storageReady = std::all_of(focusStates_.begin(), focusStates_.end(),
++					[focusLineSize](const FocusState &state) {
++						return std::all_of(state.lines.begin(), state.lines.end(),
++								   [focusLineSize](const std::vector<uint16_t> &line) {
++									   return line.size() == focusLineSize;
++								   });
++					});
++	if (focus == focusWindow_ && storageReady)
++		return;
++
++	focusWindow_ = focus;
+ 	for (FocusState &state : focusStates_) {
+ 		for (std::vector<uint16_t> &line : state.lines)
+ 			line.resize(focusLineSize);
+@@ -686,8 +738,8 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+ 		/* linePointers[0] is not used by any stats0_ functions */
+ 		linePointers[1] = src;
+ 		linePointers[2] = src + stride_;
+-		bool measureFocus = y >= window_.height / 4 &&
+-				    y < window_.height * 3 / 4;
++		bool measureFocus = y >= static_cast<unsigned int>(focusWindow_.y) &&
++				    y < focusWindow_.y + focusWindow_.height;
+ 		(this->*stats0_)(linePointers, stats_[0], focusStates_[0],
+ 				 measureFocus);
+ 		src += stride_ * 2;
+-- 
+2.49.0

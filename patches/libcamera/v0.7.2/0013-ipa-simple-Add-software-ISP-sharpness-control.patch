@@ -1,0 +1,384 @@
+From f3e96dcf804d35e31579d8d0b65ff3f1f9d2c883 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 10:28:58 +0100
+Subject: [PATCH 13/13] ipa: simple: Add software ISP sharpness control
+
+Expose the standard Sharpness control from the simple IPA and make its default tunable per sensor. Apply a restrained five-tap unsharp mask in both EGL and CPU software ISP backends so scaled captures retain local detail without forcing extra contrast into the tone curve.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ .../internal/software_isp/debayer_params.h    |  1 +
+ src/ipa/simple/algorithms/adjust.cpp          | 33 +++++++++++---
+ src/ipa/simple/algorithms/adjust.h            |  1 +
+ src/ipa/simple/ipa_context.h                  |  2 +
+ src/ipa/simple/soft_simple.cpp                |  1 +
+ src/libcamera/shaders/rgb_scale.frag          |  8 ++++
+ src/libcamera/software_isp/debayer_cpu.cpp    | 44 +++++++++++++++++++
+ src/libcamera/software_isp/debayer_cpu.h      |  2 +
+ src/libcamera/software_isp/debayer_egl.cpp    | 21 ++++++---
+ src/libcamera/software_isp/debayer_egl.h      |  5 ++-
+ 10 files changed, 106 insertions(+), 12 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
+index de9e804..057f950 100644
+--- a/include/libcamera/internal/software_isp/debayer_params.h
++++ b/include/libcamera/internal/software_isp/debayer_params.h
+@@ -26,6 +26,7 @@ struct DebayerParams {
+ 	RGB<float> blackLevel = RGB<float>({ 0.0, 0.0, 0.0 });
+ 	float gamma = 1.0;
+ 	float contrastExp = 1.0;
++	float sharpness = 0.0;
+ 	RGB<float> gains = RGB<float>({ 1.0, 1.0, 1.0 });
+ 	/* Focus region in the software ISP input coordinate system. */
+ 	Rectangle focusWindow;
+diff --git a/src/ipa/simple/algorithms/adjust.cpp b/src/ipa/simple/algorithms/adjust.cpp
+index 800fbfe..4c53207 100644
+--- a/src/ipa/simple/algorithms/adjust.cpp
++++ b/src/ipa/simple/algorithms/adjust.cpp
+@@ -23,12 +23,14 @@ namespace ipa::soft::algorithms {
+ 
+ constexpr float kDefaultContrast = 1.0f;
+ constexpr float kDefaultSaturation = 1.0f;
++constexpr float kDefaultSharpness = 1.0f;
+ 
+ LOG_DEFINE_CATEGORY(IPASoftAdjust)
+ 
+ Adjust::Adjust()
+ 	: defaultGamma_(kDefaultGamma), defaultContrast_(kDefaultContrast),
+-	  defaultSaturation_(kDefaultSaturation)
++	  defaultSaturation_(kDefaultSaturation),
++	  defaultSharpness_(kDefaultSharpness)
+ {
+ }
+ 
+@@ -39,14 +41,18 @@ int Adjust::init(IPAContext &context, const ValueNode &tuningData)
+ 		tuningData["contrast"].get<float>(kDefaultContrast);
+ 	defaultSaturation_ =
+ 		tuningData["saturation"].get<float>(kDefaultSaturation);
++	defaultSharpness_ =
++		tuningData["sharpness"].get<float>(kDefaultSharpness);
+ 
+ 	if (defaultGamma_ < 0.1f || defaultGamma_ > 10.0f ||
+ 	    defaultContrast_ < 0.0f || defaultContrast_ > 2.0f ||
+-	    defaultSaturation_ < 0.0f || defaultSaturation_ > 2.0f) {
++	    defaultSaturation_ < 0.0f || defaultSaturation_ > 2.0f ||
++	    defaultSharpness_ < 0.0f || defaultSharpness_ > 2.0f) {
+ 		LOG(IPASoftAdjust, Error)
+ 			<< "Invalid adjustment defaults: gamma " << defaultGamma_
+ 			<< ", contrast " << defaultContrast_
+-			<< ", saturation " << defaultSaturation_;
++			<< ", saturation " << defaultSaturation_
++			<< ", sharpness " << defaultSharpness_;
+ 		return -EINVAL;
+ 	}
+ 
+@@ -57,11 +63,14 @@ int Adjust::init(IPAContext &context, const ValueNode &tuningData)
+ 	if (context.ccmEnabled)
+ 		context.ctrlMap[&controls::Saturation] =
+ 			ControlInfo(0.0f, 2.0f, defaultSaturation_);
++	context.ctrlMap[&controls::Sharpness] =
++		ControlInfo(0.0f, 2.0f, defaultSharpness_);
+ 
+ 	LOG(IPASoftAdjust, Debug)
+ 		<< "Adjustment defaults: gamma " << defaultGamma_
+ 		<< ", contrast " << defaultContrast_
+-		<< ", saturation " << defaultSaturation_;
++		<< ", saturation " << defaultSaturation_
++		<< ", sharpness " << defaultSharpness_;
+ 
+ 	return 0;
+ }
+@@ -72,8 +81,9 @@ int Adjust::configure(IPAContext &context,
+ 	context.activeState.knobs.gamma = defaultGamma_;
+ 	context.activeState.knobs.contrast = defaultContrast_;
+ 	context.activeState.knobs.saturation = context.ccmEnabled
+-		? std::optional<float>(defaultSaturation_)
+-		: std::optional<float>();
++						       ? std::optional<float>(defaultSaturation_)
++						       : std::optional<float>();
++	context.activeState.knobs.sharpness = defaultSharpness_;
+ 
+ 	return 0;
+ }
+@@ -100,6 +110,13 @@ void Adjust::queueRequest(typename Module::Context &context,
+ 		context.activeState.knobs.saturation = saturation;
+ 		LOG(IPASoftAdjust, Debug) << "Setting saturation to " << saturation.value();
+ 	}
++
++	const auto &sharpness = controls.get(controls::Sharpness);
++	if (sharpness.has_value()) {
++		context.activeState.knobs.sharpness = sharpness.value();
++		LOG(IPASoftAdjust, Debug)
++			<< "Setting sharpness to " << sharpness.value();
++	}
+ }
+ 
+ void Adjust::applySaturation(Matrix<float, 3, 3> &matrix, float saturation)
+@@ -141,6 +158,8 @@ void Adjust::prepare(IPAContext &context,
+ 	params->gamma = 1.0 / context.activeState.knobs.gamma;
+ 	const float contrast = context.activeState.knobs.contrast.value_or(kDefaultContrast);
+ 	params->contrastExp = tan(std::clamp(contrast * M_PI_4, 0.0, M_PI_2 - 0.00001));
++	params->sharpness = context.activeState.knobs.sharpness;
++	frameContext.sharpness = context.activeState.knobs.sharpness;
+ }
+ 
+ void Adjust::process([[maybe_unused]] IPAContext &context,
+@@ -157,6 +176,8 @@ void Adjust::process([[maybe_unused]] IPAContext &context,
+ 
+ 	const auto &saturation = frameContext.saturation;
+ 	metadata.set(controls::Saturation, saturation.value_or(kDefaultSaturation));
++
++	metadata.set(controls::Sharpness, frameContext.sharpness);
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Adjust, "Adjust")
+diff --git a/src/ipa/simple/algorithms/adjust.h b/src/ipa/simple/algorithms/adjust.h
+index aa807ae..4577d33 100644
+--- a/src/ipa/simple/algorithms/adjust.h
++++ b/src/ipa/simple/algorithms/adjust.h
+@@ -47,6 +47,7 @@ private:
+ 	float defaultGamma_;
+ 	float defaultContrast_;
+ 	float defaultSaturation_;
++	float defaultSharpness_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 045421d..f1a9966 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -64,6 +64,7 @@ struct IPAActiveState {
+ 		/* 0..2 range, 1.0 = normal */
+ 		std::optional<float> contrast;
+ 		std::optional<float> saturation;
++		float sharpness;
+ 	} knobs;
+ };
+ 
+@@ -80,6 +81,7 @@ struct IPAFrameContext : public FrameContext {
+ 	float gamma;
+ 	std::optional<float> contrast;
+ 	std::optional<float> saturation;
++	float sharpness;
+ };
+ 
+ struct IPAContext {
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 1aedc56..73386b2 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -164,6 +164,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 		params_->blackLevel = { { 0.0, 0.0, 0.0 } };
+ 		params_->gamma = 1.0 / algorithms::kDefaultGamma;
+ 		params_->contrastExp = 1.0;
++		params_->sharpness = 0.0;
+ 		params_->gains = { { 1.0, 1.0, 1.0 } };
+ 		params_->focusWindow = {};
+ 		/* combinedMatrix is reset for each frame. */
+diff --git a/src/libcamera/shaders/rgb_scale.frag b/src/libcamera/shaders/rgb_scale.frag
+index 758c275..0b401da 100644
+--- a/src/libcamera/shaders/rgb_scale.frag
++++ b/src/libcamera/shaders/rgb_scale.frag
+@@ -9,10 +9,18 @@ precision highp float;
+ 
+ varying vec2 textureOut;
+ uniform sampler2D tex_rgb;
++uniform vec2 texel_step;
++uniform float sharpness;
+ 
+ void main(void)
+ {
+ 	vec4 rgba = texture2D(tex_rgb, textureOut);
++	vec3 blur = (rgba.rgb * 4.0 +
++		texture2D(tex_rgb, textureOut + vec2(texel_step.x, 0.0)).rgb +
++		texture2D(tex_rgb, textureOut - vec2(texel_step.x, 0.0)).rgb +
++		texture2D(tex_rgb, textureOut + vec2(0.0, texel_step.y)).rgb +
++		texture2D(tex_rgb, textureOut - vec2(0.0, texel_step.y)).rgb) / 8.0;
++	rgba.rgb = clamp(rgba.rgb + sharpness * (rgba.rgb - blur), 0.0, 1.0);
+ 
+ #if defined(SWAP_BLUE)
+ 	gl_FragColor = rgba.bgra;
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index aa210e1..3e8d088 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -687,6 +687,8 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 		return -EINVAL;
+ 
+ 	ccmEnabled_ = ccmEnabled;
++	outputSize_ = outputCfg.size;
++	outputPixelFormat_ = outputCfg.pixelFormat;
+ 
+ 	/*
+ 	 * Lookup tables must be initialized because the initial value is used for
+@@ -1065,6 +1067,46 @@ void DebayerCpu::updateLookupTables(const DebayerParams &params)
+ 	params_ = params;
+ }
+ 
++void DebayerCpu::applySharpness(Span<uint8_t> output, float sharpness)
++{
++	if (sharpness <= 0.0f || outputSize_.width < 3 || outputSize_.height < 3)
++		return;
++
++	const unsigned int bytesPerPixel = outputConfig_.bpp / 8;
++	const unsigned int stride = outputConfig_.stride;
++	std::array<std::vector<uint8_t>, 3> lines;
++	for (unsigned int i = 0; i < lines.size(); ++i) {
++		lines[i].resize(stride);
++		memcpy(lines[i].data(), output.data() + i * stride, stride);
++	}
++
++	for (unsigned int y = 1; y + 1 < outputSize_.height; ++y) {
++		uint8_t *destination = output.data() + y * stride;
++		for (unsigned int x = 1; x + 1 < outputSize_.width; ++x) {
++			for (unsigned int channel = 0; channel < 3; ++channel) {
++				const unsigned int offset = x * bytesPerPixel + channel;
++				const int center = lines[1][offset];
++				const int blur =
++					(4 * center +
++					 lines[0][offset] + lines[2][offset] +
++					 lines[1][offset - bytesPerPixel] +
++					 lines[1][offset + bytesPerPixel] + 4) /
++					8;
++				destination[offset] = std::clamp(
++					static_cast<int>(std::lround(
++						center + sharpness * (center - blur))),
++					0, 255);
++			}
++		}
++
++		lines[0].swap(lines[1]);
++		lines[1].swap(lines[2]);
++		if (y + 2 < outputSize_.height)
++			memcpy(lines[2].data(), output.data() + (y + 2) * stride,
++			       stride);
++	}
++}
++
+ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
+ {
+ 	bench_.startFrame();
+@@ -1112,6 +1154,8 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 		});
+ 	}
+ 
++	applySharpness(out.planes()[0], params.sharpness);
++
+ 	metadata.planes()[0].bytesused = out.planes()[0].size();
+ 
+ 	dmaSyncers.clear();
+diff --git a/src/libcamera/software_isp/debayer_cpu.h b/src/libcamera/software_isp/debayer_cpu.h
+index 5281c65..b8e01e5 100644
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -17,6 +17,7 @@
+ 
+ #include <libcamera/base/mutex.h>
+ #include <libcamera/base/object.h>
++#include <libcamera/base/span.h>
+ 
+ #include <libcamera/camera_manager.h>
+ 
+@@ -128,6 +129,7 @@ private:
+ 				bool ccmEnabled);
+ 	void updateGammaTable(const DebayerParams &params);
+ 	void updateLookupTables(const DebayerParams &params);
++	void applySharpness(Span<uint8_t> output, float sharpness);
+ 
+ 	static constexpr unsigned int kRGBLookupSize = 256;
+ 	static constexpr unsigned int kGammaLookupSize = 1024;
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index dbe224e..6daddb4 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -311,6 +311,8 @@ int DebayerEGL::initScaleShaders(PixelFormat outputFormat)
+ 	scaleAttributeVertex_ = glGetAttribLocation(scaleProgramId_, "vertexIn");
+ 	scaleAttributeTexture_ = glGetAttribLocation(scaleProgramId_, "textureIn");
+ 	scaleTextureUniformRgb_ = glGetUniformLocation(scaleProgramId_, "tex_rgb");
++	scaleTextureUniformStep_ = glGetUniformLocation(scaleProgramId_, "texel_step");
++	scaleSharpnessUniform_ = glGetUniformLocation(scaleProgramId_, "sharpness");
+ 
+ 	return 0;
+ }
+@@ -547,7 +549,8 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+ 	return;
+ }
+ 
+-void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
++void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn,
++					      const DebayerParams &params)
+ {
+ 	static const GLfloat vcoordinates[4][2] = {
+ 		{ -1.0f, -1.0f },
+@@ -558,10 +561,10 @@ void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
+ 	const GLfloat left = static_cast<GLfloat>(displayWindow_.x) / width_;
+ 	const GLfloat top = static_cast<GLfloat>(displayWindow_.y) / height_;
+ 	const GLfloat right = static_cast<GLfloat>(displayWindow_.x +
+-						    displayWindow_.width) /
++						   displayWindow_.width) /
+ 			      width_;
+ 	const GLfloat bottom = static_cast<GLfloat>(displayWindow_.y +
+-						     displayWindow_.height) /
++						    displayWindow_.height) /
+ 			       height_;
+ 	scaleTextureCoordinates_[0][0] = left;
+ 	scaleTextureCoordinates_[0][1] = top;
+@@ -581,6 +584,14 @@ void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn)
+ 
+ 	egl_.activateBindTexture(eglImageIn);
+ 	glUniform1i(scaleTextureUniformRgb_, eglImageIn.texture_unit_uniform_id_);
++	const GLfloat texelStep[] = {
++		static_cast<GLfloat>(displayWindow_.width) /
++			(outputSize_.width * width_),
++		static_cast<GLfloat>(displayWindow_.height) /
++			(outputSize_.height * height_),
++	};
++	glUniform2fv(scaleTextureUniformStep_, 1, texelStep);
++	glUniform1f(scaleSharpnessUniform_, params.sharpness);
+ }
+ 
+ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
+@@ -696,7 +707,7 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 
+ 	egl_.useProgram(scaleProgramId_);
+ 	egl_.attachTextureToFBO(*eglImageOut);
+-	setScaleShaderVariableValues(*intermediateImage_);
++	setScaleShaderVariableValues(*intermediateImage_, params);
+ 	glViewport(0, 0, outputSize_.width, outputSize_.height);
+ 	glClear(GL_COLOR_BUFFER_BIT);
+ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+@@ -786,7 +797,7 @@ int DebayerEGL::start()
+ 		return -EINVAL;
+ 
+ 	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
+-						 width_ * 4, GL_TEXTURE2, 2);
++							width_ * 4, GL_TEXTURE2, 2);
+ 	egl_.createOutputTexture2D(*intermediateImage_);
+ 	egl_.activateBindTexture(*intermediateImage_);
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index d608ce1..2d632a7 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -68,7 +68,8 @@ private:
+ 	int initScaleShaders(PixelFormat outputFormat);
+ 	int getShaderVariableLocations();
+ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
+-	void setScaleShaderVariableValues(eGLImage &eGLImageIn);
++	void setScaleShaderVariableValues(eGLImage &eGLImageIn,
++					  const DebayerParams &params);
+ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+@@ -102,6 +103,8 @@ private:
+ 	GLint scaleAttributeVertex_;
+ 	GLint scaleAttributeTexture_;
+ 	GLint scaleTextureUniformRgb_;
++	GLint scaleTextureUniformStep_;
++	GLint scaleSharpnessUniform_;
+ 	GLfloat scaleTextureCoordinates_[4][2];
+ 
+ 	/* Per-frame AWB gains */
+-- 
+2.49.0
