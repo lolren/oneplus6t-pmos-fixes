@@ -273,7 +273,7 @@ mapping stage.
 
 ### Safe postmarketOS updates
 
-Use the installed guard for ordinary system upgrades:
+After installing this package, use its guard for ordinary system upgrades:
 
 ```sh
 pmos-safe-upgrade --simulate
@@ -299,10 +299,10 @@ outside this workflow.
   all three Camera2 stream/AF/EV probes and the GPU/JPEG acceptance capture.
 - Next priorities: complete Advanced Snapshot visual photo/video acceptance
   and UI work. The first immutable camera manifest and guarded generation
-  manager plus the ordinary-update safety gate now pass host and real-phone
-  simulation; next add the VibeMarketOS signed downstream repository,
-  compatibility-gated published generations, then broaden Waydroid app testing
-  and Play Store setup.
+  manager plus the ordinary-update safety gate pass host simulation, while the
+  generation manager retains its real-phone simulation; next add the VibeMarketOS
+  signed downstream repository, compatibility-gated published generations,
+  then broaden Waydroid app testing and Play Store setup.
   See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
