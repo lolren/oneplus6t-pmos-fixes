@@ -114,7 +114,7 @@ esac
 	usage_error '--apply is not valid with status'
 
 if [ -z "$manifest" ]; then
-	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r1.psv
+	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r2.psv
 fi
 [ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
 manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
@@ -181,6 +181,15 @@ candidate_lang_version=$(manifest_package candidate advanced-snapshot-lang 3)
 rollback_pipewire_version=$(manifest_package rollback pipewire-spa-libcamera 3)
 rollback_app_version=$(manifest_package rollback advanced-snapshot 3)
 rollback_lang_version=$(manifest_package rollback advanced-snapshot-lang 3)
+
+transition_count=0
+[ "$candidate_pipewire_version" = "$rollback_pipewire_version" ] || \
+	transition_count=$((transition_count + 1))
+[ "$candidate_app_version" = "$rollback_app_version" ] || \
+	transition_count=$((transition_count + 1))
+[ "$candidate_lang_version" = "$rollback_lang_version" ] || \
+	transition_count=$((transition_count + 1))
+[ "$transition_count" -gt 0 ] || die 'candidate and rollback generations are identical'
 
 installed_version() {
 	state_package=$1
@@ -376,7 +385,17 @@ run_transaction() {
 				"$candidate_app" "$candidate_lang"
 		fi
 	else
-		if [ "$transaction_mode" = simulate ]; then
+		if [ "$rollback_pipewire_version" = "$candidate_pipewire_version" ]; then
+			if [ "$transaction_mode" = simulate ]; then
+				root_run apk add --simulate --allow-untrusted --network=no \
+					--interactive=no --repository "$rollback_root" \
+					"$rollback_app" "$rollback_lang"
+			else
+				root_run apk add --allow-untrusted --network=no \
+					--interactive=no --repository "$rollback_root" \
+					"$rollback_app" "$rollback_lang"
+			fi
+		elif [ "$transaction_mode" = simulate ]; then
 			root_run apk add --simulate --allow-untrusted --network=no \
 				--interactive=no --repository "$rollback_root" \
 				"$rollback_pipewire" "$rollback_app" "$rollback_lang"
@@ -409,14 +428,21 @@ validate_transaction_log() {
 		to_lang=$rollback_lang_version
 		forbidden_actions='Installing|Upgrading|Removing|Purging'
 	fi
-	grep -F "$log_action pipewire-spa-libcamera ($from_pipewire -> $to_pipewire)" \
-		"$log_path" >/dev/null || die 'PipeWire transition missing from apk output'
-	grep -F "$log_action advanced-snapshot ($from_app -> $to_app)" \
-		"$log_path" >/dev/null || die 'application transition missing from apk output'
-	grep -F "$log_action advanced-snapshot-lang ($from_lang -> $to_lang)" \
-		"$log_path" >/dev/null || die 'language transition missing from apk output'
+	if [ "$from_pipewire" != "$to_pipewire" ]; then
+		grep -F "$log_action pipewire-spa-libcamera ($from_pipewire -> $to_pipewire)" \
+			"$log_path" >/dev/null || die 'PipeWire transition missing from apk output'
+	fi
+	if [ "$from_app" != "$to_app" ]; then
+		grep -F "$log_action advanced-snapshot ($from_app -> $to_app)" \
+			"$log_path" >/dev/null || die 'application transition missing from apk output'
+	fi
+	if [ "$from_lang" != "$to_lang" ]; then
+		grep -F "$log_action advanced-snapshot-lang ($from_lang -> $to_lang)" \
+			"$log_path" >/dev/null || die 'language transition missing from apk output'
+	fi
 	log_count=$(grep -c " $log_action " "$log_path" || true)
-	[ "$log_count" -eq 3 ] || die "expected exactly three $log_action operations"
+	[ "$log_count" -eq "$transition_count" ] || \
+		die "expected exactly $transition_count $log_action operations"
 	if grep -Eq " ($forbidden_actions) " "$log_path"; then
 		die 'apk output contains an unexpected package operation'
 	fi
@@ -443,7 +469,7 @@ if [ "$apply" = no ]; then
 	record_packages "$evidence/packages.after-simulation.psv"
 	printf 'mode=simulation\n'
 	printf 'operation=%s\n' "$operation"
-	printf 'transitions=3\n'
+	printf 'transitions=%s\n' "$transition_count"
 	printf 'world_sha256=%s\n' "$world_before_hash"
 	printf 'evidence=%s\n' "$evidence"
 	exit 0
@@ -519,7 +545,8 @@ if ! run_transaction apply >"$actual_log" 2>&1; then
 fi
 validate_transaction_log "$actual_log"
 
-if [ "$operation" = rollback ]; then
+if [ "$operation" = rollback ] && \
+	[ "$candidate_pipewire_version" != "$rollback_pipewire_version" ]; then
 	apk info -r pipewire-spa-libcamera >"$evidence/rollback.reverse-dependencies.log"
 	if ! root_run apk del --simulate --network=no --interactive=no \
 		pipewire-spa-libcamera >"$evidence/rollback.unpin.simulation.log" 2>&1; then

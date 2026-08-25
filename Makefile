@@ -48,6 +48,7 @@ install:
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 data/camera-generation-r7-r1.psv \
+		data/camera-generation-r7-r2.psv \
 		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a8b0868.rsa.pub \
 		"$(DESTDIR)$(LIBEXECDIR)/keys/"

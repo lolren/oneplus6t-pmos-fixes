@@ -673,6 +673,52 @@ coredump. PipeWire, WirePlumber and both portal units ended active; failed user
 units, stale camera processes and `LIBCAMERA_LOG_*` environment entries were
 all zero. `/etc/apk/world` remained at the accepted r7/r1 hash.
 
+## r7/r2 synchronized-zoom package gate
+
+- Date: 2026-08-25
+- Advanced Snapshot feature commit:
+  `7be55d5ccce9023acec8a88219a3333ca397e0e3`
+- Packaging commit: `3e89329`
+- Build target: postmarketOS edge, AArch64, strict isolated pmbootstrap root
+- Release build: passed in 16 minutes 19 seconds
+- Test-profile build: passed in 1 minute 11 seconds
+- Application tests: 4 passed, 0 failed
+- Aperture tests: 6 passed, 0 failed
+
+The pinned Git archive SHA-512 is
+`c271272431ab4348187418b09a70d9554789aa0a9807716b136164ff024e63c329bf8ad3f3403e7646e8f73e167069bb09e23314501eac5af53bf5a30b231511`.
+The updated all-stack pmaports patch SHA-256 is
+`a55eb222e38ccd4abc25d0366e8fcc0526ee0d4c73e4103e39ab149fed199f71`;
+it passed `git apply --check`, applied cleanly to documented base
+`875bddba6538818f2c3c9849e184f40688ad5140`, and produced the expected r2
+source pin and checksum.
+Both APKs use the already documented `pmos@local-6a8b0868` signing identity.
+The main package passed its exact file manifest, AArch64 ELF, desktop, D-Bus,
+AppStream, schema, resource namespace, stale-identity and distro Snapshot
+ownership-overlap checks. The language package passed its signature, noarch
+identity, `install_if`, locale-only payload and main-package non-overlap checks.
+
+| r7/r2 package | SHA-256 |
+| --- | --- |
+| `advanced-snapshot-0.1.0-r2.apk` | `73d8fd40640a5a73521cc376418c38fae6413abcd450c18193d9568b236a9d18` |
+| `advanced-snapshot-lang-0.1.0-r2.apk` | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
+
+The r7/r2 offline candidate index SHA-256 is
+`96f7d3ff83692ae168219695b3254e9995dcf85b920982fae175d580819e29b3`;
+the exact r7/r1 rollback index SHA-256 is
+`cfada4dca32fdc325f72cb12f499059a3829c0edaa147ee769b743ed1301ca4b`.
+Each repository contains exactly three APKs, including the same accepted
+PipeWire r7 package on both sides.
+
+The generation manager now derives its expected operation count from the six
+immutable manifest rows. Its original r6/r0-to-r7/r1 three-transition tests
+still pass. New install, rollback and simulation tests require exactly two app
+operations for r7/r1-to-r7/r2, prove PipeWire remains r7, prove no PipeWire
+world identity is created and prove the legacy unpin path is skipped. All APN,
+Messages, generation-manager and image-metric tests pass, as does a staged
+`make install` containing both immutable manifests. Phone installation and
+visual/touch acceptance remain separate gates and are not claimed here.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

@@ -12,7 +12,7 @@ device-specific identifier.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
+`a55eb222e38ccd4abc25d0366e8fcc0526ee0d4c73e4103e39ab149fed199f71`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -38,8 +38,8 @@ Applying the integration patch to the reviewed base produces:
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r1` plus
-  `advanced-snapshot-lang-0.1.0-r1`.
+- `advanced-snapshot-0.1.0-r2` plus
+  `advanced-snapshot-lang-0.1.0-r2`.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -54,8 +54,8 @@ during live diagnosis. They do not imply that many public releases.
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
-| `advanced-snapshot-0.1.0-r1.apk` | `1e19e6d3bfa990d9ae4440fcc0364383e7cfc36de835689d2a2d5d1748368795` |
-| `advanced-snapshot-lang-0.1.0-r1.apk` | `7329bc3133cacd288e1f95e9cb93e69f71acc986b0bf1a875e8e4cd0469a47c8` |
+| `advanced-snapshot-0.1.0-r2.apk` | `73d8fd40640a5a73521cc376418c38fae6413abcd450c18193d9568b236a9d18` |
+| `advanced-snapshot-lang-0.1.0-r2.apk` | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -106,10 +106,18 @@ that an online repository will continue to carry old versions.
 | `advanced-snapshot-0.1.0-r0.apk` | `f76372802060de0722cddec238da63ec97dfeae7faf6dc29058bd061fed63bad` |
 | `advanced-snapshot-lang-0.1.0-r0.apk` | `13c9078e499a22ea292f9024b443dbd37d9c9181fb4cc18dbb810665cfd1cd43` |
 
+| r7/r2 UI candidate or immediate r7/r1 rollback package | SHA-256 |
+| --- | --- |
+| `pipewire-spa-libcamera-1.6.8-r7.apk` (both sides) | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
+| `advanced-snapshot-0.1.0-r2.apk` | `73d8fd40640a5a73521cc376418c38fae6413abcd450c18193d9568b236a9d18` |
+| `advanced-snapshot-lang-0.1.0-r2.apk` | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
+| `advanced-snapshot-0.1.0-r1.apk` (rollback) | `1e19e6d3bfa990d9ae4440fcc0364383e7cfc36de835689d2a2d5d1748368795` |
+| `advanced-snapshot-lang-0.1.0-r1.apk` (rollback) | `7329bc3133cacd288e1f95e9cb93e69f71acc986b0bf1a875e8e4cd0469a47c8` |
+
 ## Installation boundary
 
 The build commands above do not copy or install anything, update boot files or
-reboot. The r7/r1 generation is userspace-only and needs no reboot. Installing
+reboot. The r7/r2 generation is userspace-only and needs no reboot. Installing
 on another phone still requires root, a reviewed simulation and an explicit
 decision by its owner.
 
@@ -117,17 +125,19 @@ The preferred interface is the simulation-first generation manager:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   install
 ```
 
-It consumes the immutable manifest in `data/camera-generation-r7-r1.psv`,
+It consumes the immutable manifest in `data/camera-generation-r7-r2.psv`,
 checks the bundled public-key hash and all six package hashes/signatures, then
-requires exactly the transition documented below. Add `--apply` only after
-reviewing the evidence. `rollback` selects the guarded reverse transition. See
+requires exactly the two app transitions and no PipeWire operation. Add
+`--apply` only after reviewing the evidence. `rollback` selects the guarded
+reverse transition. See
 `docs/CAMERA_GENERATIONS.md` for its complete refusal and health-check policy.
 
-To reproduce the completed r6/r0-to-r7/r1 update, stage the three candidate
+To reproduce the completed r6/r0-to-r7/r1 update instead, pass
+`--manifest data/camera-generation-r7-r1.psv` and stage the three candidate
 APKs and three rollback APKs in separate offline repositories. apk-tools 3 reads
 `APKINDEX.tar.gz` from the native `aarch64/` directory. Pass the repository
 root to apk, not its `aarch64/` subdirectory.

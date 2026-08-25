@@ -12,8 +12,8 @@ The current scripts may:
 - perform bounded connectivity tests;
 - inspect camera/media state and private captures without publishing them;
 - build kernel or userspace packages on the host without installing them;
-- simulate or explicitly apply the exact manifest-verified native r7/r1 and
-  r6/r0 camera generations through `manage-camera-generation`;
+- simulate or explicitly apply the exact manifest-verified native r7/r2,
+  r7/r1 and r6/r0 camera generations through `manage-camera-generation`;
 - stop and start the Waydroid container/session; and
 - install a matched Android userspace camera bundle into the Waydroid overlay
   after preserving replaced files and recording newly created paths.

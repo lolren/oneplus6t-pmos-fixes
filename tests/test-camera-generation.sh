@@ -147,4 +147,98 @@ if run_manager --evidence "$TEST_ROOT/tampered" install >/dev/null 2>&1; then
 	exit 1
 fi
 
+# A UI-only generation must retain an already accepted PipeWire package and
+# require exactly the two app-package transitions in both directions.
+stage=$TEST_ROOT/stage-static-pipewire
+state=$TEST_ROOT/packages-static-pipewire.psv
+world=$TEST_ROOT/world-static-pipewire
+manifest=$TEST_ROOT/generation-static-pipewire.psv
+mkdir -p "$stage/candidate/aarch64" "$stage/candidate/noarch" \
+	"$stage/rollback/aarch64" "$stage/rollback/noarch"
+: >"$stage/candidate/aarch64/APKINDEX.tar.gz"
+: >"$stage/rollback/aarch64/APKINDEX.tar.gz"
+printf '%s\n' 'accepted pipewire r7' \
+	>"$stage/candidate/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk"
+printf '%s\n' 'accepted pipewire r7' \
+	>"$stage/rollback/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk"
+printf '%s\n' 'candidate app r2' \
+	>"$stage/candidate/aarch64/advanced-snapshot-0.1.0-r2.apk"
+printf '%s\n' 'candidate lang r2' \
+	>"$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r2.apk"
+printf '%s\n' 'rollback app r1' \
+	>"$stage/rollback/aarch64/advanced-snapshot-0.1.0-r1.apk"
+printf '%s\n' 'rollback lang r1' \
+	>"$stage/rollback/noarch/advanced-snapshot-lang-0.1.0-r1.apk"
+
+{
+	printf '%s\n' 'schema|1' 'generation|test-r7-r2' 'compatible|oneplus,fajita'
+	printf 'signing-key|mock.rsa.pub|%s\n' "$(hash_file "$keys/mock.rsa.pub")"
+	printf 'candidate|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|%s\n' \
+		"$(hash_file "$stage/candidate/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk")"
+	printf 'candidate|advanced-snapshot|0.1.0-r2|aarch64|advanced-snapshot-0.1.0-r2.apk|%s\n' \
+		"$(hash_file "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r2.apk")"
+	printf 'candidate|advanced-snapshot-lang|0.1.0-r2|noarch|advanced-snapshot-lang-0.1.0-r2.apk|%s\n' \
+		"$(hash_file "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r2.apk")"
+	printf 'rollback|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|%s\n' \
+		"$(hash_file "$stage/rollback/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk")"
+	printf 'rollback|advanced-snapshot|0.1.0-r1|aarch64|advanced-snapshot-0.1.0-r1.apk|%s\n' \
+		"$(hash_file "$stage/rollback/aarch64/advanced-snapshot-0.1.0-r1.apk")"
+	printf 'rollback|advanced-snapshot-lang|0.1.0-r1|noarch|advanced-snapshot-lang-0.1.0-r1.apk|%s\n' \
+		"$(hash_file "$stage/rollback/noarch/advanced-snapshot-lang-0.1.0-r1.apk")"
+} >"$manifest"
+
+printf '%s\n' \
+	'pipewire-spa-libcamera|1.6.8-r7' \
+	'advanced-snapshot|0.1.0-r1' \
+	'advanced-snapshot-lang|0.1.0-r1' >"$state"
+printf '%s\n' \
+	'base-package' \
+	'advanced-snapshot><mock-r1' \
+	'advanced-snapshot-lang><mock-r1-lang' | sort >"$world"
+: >"$systemctl_log"
+: >"$smoke_log"
+
+PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION=1.6.8-r7
+PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION=1.6.8-r7
+PMOS_MOCK_CANDIDATE_APP_VERSION=0.1.0-r2
+PMOS_MOCK_ROLLBACK_APP_VERSION=0.1.0-r1
+PMOS_MOCK_CANDIDATE_LANG_VERSION=0.1.0-r2
+PMOS_MOCK_ROLLBACK_LANG_VERSION=0.1.0-r1
+export PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION \
+	PMOS_MOCK_CANDIDATE_APP_VERSION PMOS_MOCK_ROLLBACK_APP_VERSION \
+	PMOS_MOCK_CANDIDATE_LANG_VERSION PMOS_MOCK_ROLLBACK_LANG_VERSION
+
+static_world_hash=$(hash_file "$world")
+static_status=$(run_manager status)
+printf '%s\n' "$static_status" | grep -q '^state=rollback$'
+static_install_sim=$(run_manager --evidence "$TEST_ROOT/static-install-sim" install)
+printf '%s\n' "$static_install_sim" | grep -q '^transitions=2$'
+[ "$(hash_file "$world")" = "$static_world_hash" ]
+
+static_install=$(run_manager --evidence "$TEST_ROOT/static-install" --apply install)
+printf '%s\n' "$static_install" | grep -q '^state=candidate$'
+grep -q '^pipewire-spa-libcamera|1.6.8-r7$' "$state"
+grep -q '^advanced-snapshot|0.1.0-r2$' "$state"
+grep -q '^advanced-snapshot><mock-r2$' "$world"
+! grep -q '^pipewire-spa-libcamera' "$world"
+tail -n 1 "$smoke_log" | grep -q '^required$'
+
+static_candidate_world_hash=$(hash_file "$world")
+static_rollback_sim=$(run_manager --evidence "$TEST_ROOT/static-rollback-sim" rollback)
+printf '%s\n' "$static_rollback_sim" | grep -q '^transitions=2$'
+[ "$(hash_file "$world")" = "$static_candidate_world_hash" ]
+
+static_rollback=$(run_manager --evidence "$TEST_ROOT/static-rollback" --apply rollback)
+printf '%s\n' "$static_rollback" | grep -q '^state=rollback$'
+grep -q '^pipewire-spa-libcamera|1.6.8-r7$' "$state"
+grep -q '^advanced-snapshot|0.1.0-r1$' "$state"
+[ "$(hash_file "$world")" = "$static_world_hash" ]
+! grep -q '^pipewire-spa-libcamera' "$world"
+[ ! -e "$TEST_ROOT/static-rollback/rollback.unpin.simulation.log" ]
+tail -n 1 "$smoke_log" | grep -q '^accepted$'
+
+unset PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION \
+	PMOS_MOCK_CANDIDATE_APP_VERSION PMOS_MOCK_ROLLBACK_APP_VERSION \
+	PMOS_MOCK_CANDIDATE_LANG_VERSION PMOS_MOCK_ROLLBACK_LANG_VERSION
+
 printf '%s\n' 'Camera generation manager tests passed'

@@ -181,40 +181,41 @@ Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
 
-To reproduce the accepted r6/r0-to-r7/r1 native update, stage the matching
-PipeWire SPA, Advanced Snapshot and language APKs in an isolated repository.
-The r0 app packages were installed from local files, so their apk-tools 3
-identity constraints must be replaced by supplying the r1 file paths
-explicitly:
+To reproduce the current r7/r1-to-r7/r2 UI update, stage the unchanged r7
+PipeWire SPA, the r2 app packages and the exact r7/r1 rollback in isolated
+repositories:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   install
 ```
 
 That command is simulation-only by default. It verifies the device, immutable
 six-APK manifest, pinned public key, hashes, signatures, installed baseline and
-exact three-package solver result. After reviewing its evidence, repeat it with
-`--apply` to use the guarded service/world-file checks and all-sensor health
-test. Use the `rollback` operation for the exact reverse transition. See
+exact two-app-package solver result while requiring PipeWire to remain at r7.
+After reviewing its evidence, repeat it with `--apply` to use the guarded
+service/world-file checks and all-sensor health test. Use the `rollback`
+operation for the exact reverse transition. See
 [docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md).
 
 The equivalent low-level simulation is:
 
 ```sh
-stage=/absolute/path/to/camera-r7-r1
+stage=/absolute/path/to/camera-r7-r2
 sudo apk add --simulate --upgrade --allow-untrusted --network=no \
   --interactive=no --repository "$stage/candidate" \
-  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r1.apk" \
-  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r1.apk"
+  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r2.apk" \
+  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r2.apk"
 ```
 
-Use `--allow-untrusted` only for locally built APKs whose source, version and
-hashes you verified. Require exactly the PipeWire r6-to-r7 and both app
-r0-to-r1 upgrades with no removal, then rerun the same command without
+Use `--allow-untrusted` only for locally built APKs whose source, version,
+signature and hashes you verified. Require exactly both r1-to-r2 app upgrades,
+no PipeWire operation and no removal, then rerun the same command without
 `--simulate`. The complete guide records repository indexing, service handling,
-the expected two-line world-file diff and guarded rollback cleanup.
+the expected two-line world-file diff and guarded rollback cleanup. Reproduce
+the historical r6/r0-to-r7/r1 lower-stack update by explicitly passing
+`--manifest data/camera-generation-r7-r1.psv` and its matching stage.
 
 On installed Snapshot r3:
 

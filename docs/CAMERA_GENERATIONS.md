@@ -1,8 +1,10 @@
 # Camera generation manager
 
-`scripts/manage-camera-generation` is the guarded installer for the accepted
-OnePlus 6T PipeWire r7 plus Advanced Snapshot r1 generation and its exact r6/r0
-rollback. It is deliberately narrower than a general package updater.
+`scripts/manage-camera-generation` is the guarded installer for the current
+OnePlus 6T PipeWire r7 plus Advanced Snapshot r2 generation and its exact r7/r1
+rollback. It is deliberately narrower than a general package updater. The
+legacy `camera-generation-r7-r1.psv` remains available for the earlier
+r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r2.
 
 ## Requirements
 
@@ -21,21 +23,21 @@ SHA-256 of the public signing key. The public key is kept under
 ## Stage layout
 
 ```text
-camera-r7-r1/
+camera-r7-r2/
 ├── candidate/
 │   ├── aarch64/
 │   │   ├── APKINDEX.tar.gz
-│   │   ├── advanced-snapshot-0.1.0-r1.apk
+│   │   ├── advanced-snapshot-0.1.0-r2.apk
 │   │   └── pipewire-spa-libcamera-1.6.8-r7.apk
 │   └── noarch/
-│       └── advanced-snapshot-lang-0.1.0-r1.apk
+│       └── advanced-snapshot-lang-0.1.0-r2.apk
 └── rollback/
     ├── aarch64/
     │   ├── APKINDEX.tar.gz
-    │   ├── advanced-snapshot-0.1.0-r0.apk
-    │   └── pipewire-spa-libcamera-1.6.8-r6.apk
+    │   ├── advanced-snapshot-0.1.0-r1.apk
+    │   └── pipewire-spa-libcamera-1.6.8-r7.apk
     └── noarch/
-        └── advanced-snapshot-lang-0.1.0-r0.apk
+        └── advanced-snapshot-lang-0.1.0-r1.apk
 ```
 
 Each repository must contain exactly its three APKs. Extra APK files are a
@@ -55,12 +57,13 @@ contents and exact apk transaction, without changing installed state:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   install
 ```
 
-Simulation is the default. The command requires exactly three upgrades and
-proves both the package versions and `/etc/apk/world` are unchanged afterward.
+Simulation is the default. The current manifest requires exactly the two r1-to-r2
+app upgrades while proving that PipeWire remains at r7 and that both package
+versions and `/etc/apk/world` are unchanged afterward.
 All logs and trust hashes are written to a new dated directory under
 `STAGE/evidence/`; use `--evidence EMPTY_DIR` to choose another location.
 
@@ -70,14 +73,14 @@ Run as the graphical login user, not root:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   --apply install
 ```
 
 `--apply` repeats all preflight checks and the simulation. It refuses a mixed
 package state or an active camera/GStreamer client, stops the main desktop
-portal and its wlroots backend before PipeWire, performs only the three audited
-upgrades, restores services, checks that only the two app identity lines
+portal and its wlroots backend before PipeWire, performs only the manifest's
+two audited app upgrades, restores services, checks that only the two app identity lines
 changed in `/etc/apk/world`, and runs the all-sensor non-image test. Both rear
 cameras must report a
 generation-correlated `focused` result; the fixed-focus front must stream and
@@ -92,7 +95,7 @@ Preview the exact reverse transition first:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   rollback
 ```
 
@@ -100,15 +103,16 @@ Apply only after that simulation lists the three expected downgrades:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r1 \
+  --stage /absolute/path/to/camera-r7-r2 \
   --apply rollback
 ```
 
-The local r6 PipeWire file temporarily creates a world identity constraint.
-The manager simulates removing that constraint, requires installed reverse
-dependencies to retain the plugin, removes only the constraint, then verifies
-r6/r0 and runs the compatibility-mode all-sensor test. It never replaces the
-whole world file.
+The current rollback changes only r2 to r1 and leaves PipeWire r7 untouched,
+so it creates no PipeWire world identity and performs no unpin transaction.
+When the legacy r7/r1 manifest changes PipeWire to r6, the manager still
+simulates removing the temporary identity constraint, requires installed
+reverse dependencies to retain the plugin, and removes only that constraint.
+It never replaces the whole world file.
 
 ## Refusal conditions
 
@@ -126,10 +130,11 @@ health gate before activating camera-critical postmarketOS updates.
 
 ## Validation
 
-The host-side suite covers simulation, applied install, applied rollback,
-dependency-preserving PipeWire unpin, mixed-generation refusal, unexpected apk
-operations, a repository-index race and tampered packages. `make test` passes
-all manager, APN, Messages and image-metric tests.
+The host-side suite covers both two-transition static-PipeWire and
+three-transition lower-stack generations: simulation, applied install, applied
+rollback, dependency-preserving PipeWire unpin, mixed-generation refusal,
+unexpected apk operations, a repository-index race and tampered packages.
+`make test` passes all manager, APN, Messages and image-metric tests.
 
 On the reference phone, the manager identified the live r7/r1 generation and
 world SHA-256
