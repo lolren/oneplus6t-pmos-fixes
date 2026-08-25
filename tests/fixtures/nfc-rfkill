@@ -1,0 +1,6 @@
+0: phy0: Bluetooth
+	Soft blocked: no
+	Hard blocked: no
+1: nfc0: NFC
+	Soft blocked: no
+	Hard blocked: no

@@ -1,0 +1,134 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+sysfs_root=${PMOS_NFC_SYSFS_ROOT:-/sys}
+dev_root=${PMOS_NFC_DEV_ROOT:-/dev}
+rfkill_cmd=${PMOS_NFC_RFKILL:-rfkill}
+systemctl_cmd=${PMOS_NFC_SYSTEMCTL:-systemctl}
+nfc_list_cmd=${PMOS_NFC_LIST:-nfc-list}
+nfc_poll_cmd=${PMOS_NFC_POLL:-nfc-poll}
+output=${PMOS_NFC_OUTPUT:-}
+poll=no
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--output FILE] [--poll]
+
+Collect a read-only NFC readiness report. By default this only inspects
+sysfs, device nodes and installed reader tools. --poll explicitly runs
+nfc-list -v when that tool is available and may activate the NFC reader.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	--poll)
+		poll=yes
+		shift
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+list_entries() {
+	label=$1
+	root=$2
+	if [ -d "$root" ]; then
+		entries=$(find "$root" -mindepth 1 -maxdepth 2 -print 2>/dev/null |
+			sed "s#^$root/##" | sort)
+		if [ -n "$entries" ]; then
+			printf '%s=%s\n' "$label" "$entries"
+		else
+			printf '%s=none\n' "$label"
+		fi
+	else
+		printf '%s=unavailable\n' "$label"
+	fi
+}
+
+printf 'report=oneplus6t-nfc\n'
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
+
+printf '\n[nfc-sysfs]\n'
+list_entries nfc_class "$sysfs_root/class/nfc"
+list_entries rfkill_class "$sysfs_root/class/rfkill"
+
+printf '\n[device-nodes]\n'
+found_node=no
+for node in "$dev_root"/nfc* "$dev_root"/pn*; do
+	[ -e "$node" ] || continue
+	found_node=yes
+	printf 'node=%s\n' "${node##*/}"
+done
+[ "$found_node" = yes ] || printf '%s\n' 'node=none'
+
+printf '\n[rfkill]\n'
+if command -v "$rfkill_cmd" >/dev/null 2>&1; then
+	printf 'rfkill_list_begin\n'
+	"$rfkill_cmd" list 2>&1 || true
+	printf 'rfkill_list_end\n'
+else
+	printf 'rfkill=unavailable\n'
+fi
+
+printf '\n[userspace]\n'
+if command -v "$nfc_list_cmd" >/dev/null 2>&1; then
+	printf 'nfc-list=available\n'
+else
+	printf 'nfc-list=unavailable\n'
+fi
+if command -v "$nfc_poll_cmd" >/dev/null 2>&1; then
+	printf 'nfc-poll=available\n'
+else
+	printf 'nfc-poll=unavailable\n'
+fi
+if command -v "$systemctl_cmd" >/dev/null 2>&1; then
+	for unit in neard.service pcscd.service; do
+		printf '%s=' "$unit"
+		"$systemctl_cmd" is-active "$unit" 2>&1 || true
+	done
+else
+	printf 'systemctl=unavailable\n'
+fi
+
+printf '\n[poll]\n'
+if [ "$poll" = yes ]; then
+	if command -v "$nfc_list_cmd" >/dev/null 2>&1; then
+		printf 'poll=started\n'
+		"$nfc_list_cmd" -v 2>&1 || true
+	else
+		printf 'poll=unavailable (nfc-list is not installed)\n'
+	fi
+else
+	printf '%s\n' 'poll=disabled (read-only inspection only)'
+fi
+
+printf '\n[acceptance]\n'
+printf '%s\n' 'note=controller detection, rfkill state and userspace reader availability still require physical-phone validation'
+printf '%s\n' 'note=this report does not claim payment support and does not change NFC state unless --poll is explicitly used'

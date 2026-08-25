@@ -294,6 +294,14 @@ explicitly a mock-provider diagnostic until the phone's native GNSS and an
 Android map application have been tested; it does not pretend to provide a
 vendor GNSS HAL.
 
+### NFC
+
+The read-only NFC readiness report checks the controller/rfkill exposure,
+device nodes and installed tag-reader tools without enabling polling. Run
+`pmos-check-nfc --poll` only for an explicit tag test. NFC tag reading and
+payment support remain unaccepted until the recovered phone can detect a real
+tag. See [docs/NFC.md](docs/NFC.md).
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
@@ -319,6 +327,9 @@ vendor GNSS HAL.
 - Battery/power: the read-only `pmos-check-power` report and acceptance
   sequence are documented in [docs/POWER.md](docs/POWER.md); no unverified
   governor or suspend tweak has been forced.
+- NFC: the read-only `pmos-check-nfc` report and explicit polling procedure are
+  documented; physical controller and tag acceptance are pending device
+  recovery.
 - Full modem-call audio, display-driver and battery-policy acceptance remain
   separate from this camera revision.
 

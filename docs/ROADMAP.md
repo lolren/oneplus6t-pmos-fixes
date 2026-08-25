@@ -34,7 +34,8 @@ location and Android-container failures cannot obscure one another.
    separately so a network-derived fallback cannot be mistaken for GPS.
 6. Investigate read-only NFC tag support, audio-route/microphone policy,
    suspend/resume and power use as separate bounded workstreams after camera
-   and location acceptance.
+   and location acceptance. The reproducible NFC readiness report is now
+   available; controller and real-tag acceptance remain device-gated.
 7. Keep every accepted change packaged, documented, rollback-safe and pushed
    before moving to the next subsystem.
 
