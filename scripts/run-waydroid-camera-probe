@@ -56,6 +56,9 @@ waydroid app install "$apk"
 waydroid shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
 waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell rm -f \
+	/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
+	2>/dev/null || :
 waydroid shell am start -W -n \
 	dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
 	--es profile "$profile"

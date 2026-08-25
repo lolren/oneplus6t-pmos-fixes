@@ -112,9 +112,9 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
 
 Use `preview-yuv` or `full` as the second argument for the other profiles.
 The runner installs the APK, grants its camera permission, stops any previous
-probe instance, waits for `PROBE_DONE`, and refuses to overwrite an existing
-result file. Set `PMOS_WAYDROID_PROBE_TIMEOUT` when the phone is especially
-slow.
+probe instance, clears only the probe's old generated result, waits for
+`PROBE_DONE`, and refuses to overwrite an existing host result file. Set
+`PMOS_WAYDROID_PROBE_TIMEOUT` when the phone is especially slow.
 
 Read `result.txt` after the activity exits. A performance run ends with a
 profile-qualified summary such as:

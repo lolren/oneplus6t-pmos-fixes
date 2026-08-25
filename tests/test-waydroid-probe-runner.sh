@@ -44,6 +44,8 @@ grep -q 'shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA
 	"$TEST_DIR/waydroid.log"
 grep -q 'shell am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
+grep -q 'shell rm -f /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt' \
+	"$TEST_DIR/waydroid.log"
 grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile preview' \
 	"$TEST_DIR/waydroid.log"
 
