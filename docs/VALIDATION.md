@@ -971,3 +971,45 @@ mode; a large drop only after adding YUV/JPEG implicates multi-stream
 conversion pressure. The GPU path still performs a synchronous RGBA readback
 and NV12 conversion, so it must be benchmarked on this phone before the GPU
 configuration is changed or declared faster.
+
+## Waydroid conditional-mipmap candidate
+
+Date: 2026-08-25. Static review of the EGL software-ISP path found that the
+filtered RGB scaler regenerated a complete mipmap chain on every frame, even
+when the cropped source was kept at the same size or enlarged for the Android
+preview. The new Android-only patch `0007` records the scale geometry during
+configuration and calls `glGenerateMipmap()` only for a true downscale. The
+explicit five-tap scaler remains active in all cases, so the change does not
+remove the configured sharpness pass.
+
+The patch applies cleanly after the existing generic series and Android
+patches `0001`–`0006`; `git diff --check` passed on the complete reviewed
+libcamera tree. Its SHA-256 is:
+
+```text
+0007-android-avoid-needless-preview-mipmap-generation.patch: acc7675cc09e4bfdd48a0184c71422200ac39f72abbe0717daab19b8e16b2086
+```
+
+The exact ARMv7 GPU build also compiled all 197 targets and completed the
+staging/package/signature pass. The staged library hashes and package hashes
+were:
+
+```text
+camera.libcamera.so: 813bd3d6b9f7a9febacc5c0fd8449eb04b9b127faed2b3de33ddfea2a6780376
+libcamera.so: 239211b85eb490ed0c35c53f4e8be07d3772b0bfb4b46a03c8c1c5ced76d52f5
+libcamera-base.so: fe16feb04ec18b1463a742ac98225b93abec3d01c3760b3bc91e00c724287cc0
+ipa_soft_simple.so: 709e83e4c7009fadbfc60b4db57c4c38a80bd0a14772068b48920d302653ddf8
+waydroid-camera-mipmap-r35-gpu.tar.gz: 6543d7c1d51bb8f60799aa487d7eb56b8408718de37778add7596d2219df48ac
+waydroid-camera-mipmap-r35-gpu.sha256: 9c14fc6b54533c5eb38eef2d10563b0764e3df0afe1ad12caee1aaaa53a75fdf
+```
+
+No package was installed for this candidate because the phone was still
+unreachable for SSH health checks after its earlier Waydroid rootfs/I/O
+blocker. The ARMv7 build was performed offline against the preserved
+source and dependency prefix. After
+physical recovery,
+rebuild a fresh matched bundle with `0007`, run the isolated `preview` and
+`preview-yuv` profiles against the old baseline, and keep the candidate only
+if frame delivery and image output remain healthy. The synchronous RGBA
+readback and NV12 conversion are unchanged, so this is an incremental GPU
+optimization rather than a complete Android-camera performance fix.

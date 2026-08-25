@@ -1,0 +1,63 @@
+From 2d9ab6552fd3851138b64aa81f83284a5f8e44d4 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 23:15:40 +0100
+Subject: [PATCH] android: avoid needless preview mipmap generation
+
+The RGB scaling pass already applies an explicit five-tap filter. Generating
+a complete mipmap chain for every frame adds GPU work when the cropped source
+is kept at the same size or enlarged for the Android preview. Keep mipmaps
+for true downscales, where texture minification benefits from them.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 63b5c6b..89df7b1 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -404,6 +404,15 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	displayWindow_ = Rectangle(cropX, cropY, cropWidth, cropHeight);
+ 	stats_->setWindow(displayWindow_);
+ 
++	/*
++	 * Mipmaps improve texture minification, but generating the complete
++	 * chain for every frame is wasted when the RGB pass keeps or enlarges
++	 * the cropped source. The scale shader already applies its explicit
++	 * five-tap filter in those cases.
++	 */
++	scaleUsesMipmaps_ = displayWindow_.width > outputSize_.width ||
++				    displayWindow_.height > outputSize_.height;
++
+ 	inputBufferCount_ = inputCfg.bufferCount;
+ 	outputBufferCount_ = outputCfg.bufferCount;
+ 
+@@ -716,9 +725,13 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	glClear(GL_COLOR_BUFFER_BIT);
+ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+ 	egl_.activateBindTexture(*intermediateImage_);
+-	glGenerateMipmap(GL_TEXTURE_2D);
+-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+-			GL_LINEAR_MIPMAP_LINEAR);
++	if (scaleUsesMipmaps_) {
++		glGenerateMipmap(GL_TEXTURE_2D);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
++				GL_LINEAR_MIPMAP_LINEAR);
++	} else {
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++	}
+ 
+ 	egl_.useProgram(scaleProgramId_);
+ 	egl_.attachTextureToFBO(*eglImageOut);
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index 8756e97..1ddc37a 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -91,6 +91,7 @@ private:
+ 	unsigned int inputBufferCount_;
+ 	unsigned int outputBufferCount_;
+ 	bool outputIsNv12_ = false;
++	bool scaleUsesMipmaps_ = false;
+ 
+ 	/* Shader parameters */
+ 	float firstRed_x_;
+-- 
+2.49.0
