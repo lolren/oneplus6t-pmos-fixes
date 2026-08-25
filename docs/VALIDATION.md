@@ -858,3 +858,32 @@ unimplemented and are not represented as completed work. The Snapshot GUI
 remains below the requested Android-camera control level and is the next camera
 workstream. Waydroid needs
 broader third-party camera-app, Play Store and lifecycle testing.
+
+## Host diagnostics and current device gate
+
+Date: 2026-08-25. The reproducible host-side diagnostics in
+`oneplus6t-pmos-fixes` are now committed and pushed through `0f81faa`:
+
+- `pmos-check-location` reports the discovered ModemManager modem,
+  `--location-status`, `--location-get`, GeoClue service state and
+  NetworkManager devices without enabling GPS or changing providers;
+- `pmos-check-nfc` inspects controller/rfkill exposure and reader tools without
+  polling by default;
+- `pmos-check-power` reports battery, CPU policy and suspend information
+  without applying a power policy; and
+- `pmos-check-waydroid-health` reports rootfs mounts and kernel I/O pressure,
+  and only calls the read-only `waydroid status` command when `--status` is
+  explicitly requested.
+
+The complete `make test` suite and staged `make install` validation pass for
+all four reports. Their fixture tests do not require a phone, modem, NFC tag or
+Waydroid container.
+
+The reference phone was checked read-only over SSH on this date and reported
+approximately `io some avg10=99.93`, load averages above 57 and five mounts
+under `/var/lib/waydroid/rootfs`. A remote execution of the new health report
+then stalled during the same storage pressure. No overlay install, rollback,
+service stop or reboot was attempted. Runtime acceptance therefore still
+requires a physical recovery, `rootfs_mounts=0`,
+`overlay_precondition=pass`, the guarded preview candidate install, and the
+camera/location/NFC/power/audio acceptance sequences above.
