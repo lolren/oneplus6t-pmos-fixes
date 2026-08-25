@@ -184,6 +184,29 @@ Do not mix a HAL from one build with a library or signed IPA from another.
 
 ## Install into the Waydroid overlay
 
+### Preflight
+
+Before stopping services or opening the overlay, collect the read-only
+preflight report:
+
+```sh
+pmos-check-waydroid-health --status \
+  --output /private/path/oneplus6t-waydroid-health.txt
+```
+
+Proceed only when the report contains:
+
+```text
+rootfs_mounts=0
+overlay_precondition=pass
+```
+
+The check also records `/proc/loadavg` and `/proc/pressure/io`. It does not
+stop Waydroid, unmount anything, kill a process or write the overlay. If a
+rootfs mount remains or storage I/O is pressured, recover the phone and repeat
+the report before using the installer. The installer independently rechecks
+`/proc/self/mountinfo` and refuses a mounted rootfs.
+
 The package helper produces a tarball and a manifest. Extract the tarball into
 a fresh staging directory, then use the installer so the provider GID is
 resolved on the target phone and every managed target is backed up before it is

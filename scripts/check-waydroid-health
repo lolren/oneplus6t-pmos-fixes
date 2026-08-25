@@ -1,0 +1,131 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+proc_root=${PMOS_WAYDROID_PROC_ROOT:-/proc}
+mountinfo=${PMOS_WAYDROID_MOUNTINFO:-$proc_root/self/mountinfo}
+rootfs=${PMOS_WAYDROID_ROOTFS:-/var/lib/waydroid/rootfs}
+waydroid_cmd=${PMOS_WAYDROID_STATUS_CMD:-waydroid}
+status_timeout=${PMOS_WAYDROID_STATUS_TIMEOUT:-5}
+output=${PMOS_WAYDROID_OUTPUT:-}
+include_status=no
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--status] [--output FILE]
+
+Collect a read-only Waydroid overlay preflight report. The default checks
+mounts and kernel load/I/O pressure only. --status additionally runs
+"waydroid status" with a bounded timeout when available.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--status)
+		include_status=yes
+		shift
+		;;
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+print_file() {
+	label=$1
+	path=$2
+	if [ -r "$path" ]; then
+		printf '%s=' "$label"
+		tr '\n' ' ' <"$path"
+		printf '\n'
+	else
+		printf '%s=unavailable\n' "$label"
+	fi
+}
+
+printf 'report=oneplus6t-waydroid-health\n'
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
+printf 'rootfs=%s\n' "$rootfs"
+
+printf '\n[proc]\n'
+print_file load_average "$proc_root/loadavg"
+io_avg10=unavailable
+if [ -r "$proc_root/pressure/io" ]; then
+	printf 'io_pressure_begin\n'
+	cat "$proc_root/pressure/io"
+	printf 'io_pressure_end\n'
+	io_avg10=$(awk '$1 == "some" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) {
+				sub(/^avg10=/, "", $i)
+				print $i
+				exit
+			}
+	}' "$proc_root/pressure/io")
+	[ -n "$io_avg10" ] || io_avg10=unavailable
+else
+	printf 'io_pressure=unavailable\n'
+fi
+printf 'io_some_avg10=%s\n' "$io_avg10"
+
+printf '\n[mounts]\n'
+rootfs_mounts=unavailable
+if [ -r "$mountinfo" ]; then
+	rootfs_mounts=$(awk -v root="$rootfs" \
+		'$5 == root || index($5, root "/") == 1 {n++}
+		 END {print n + 0}' "$mountinfo")
+	printf 'rootfs_mounts=%s\n' "$rootfs_mounts"
+else
+	printf 'mountinfo=unavailable\n'
+fi
+
+printf '\n[assessment]\n'
+if [ "$rootfs_mounts" = unavailable ]; then
+	printf '%s\n' 'overlay_precondition=unknown-mountinfo-unavailable'
+elif [ "$rootfs_mounts" != 0 ]; then
+	printf '%s\n' 'overlay_precondition=blocked-rootfs-mounted'
+elif [ "$io_avg10" = unavailable ]; then
+	printf '%s\n' 'overlay_precondition=unknown-i/o-unavailable'
+elif awk -v value="$io_avg10" 'BEGIN { exit !(value + 0 == 0) }'; then
+	printf '%s\n' 'overlay_precondition=pass'
+else
+	printf '%s\n' 'overlay_precondition=blocked-i/o-pressure'
+fi
+printf '%s\n' 'note=do not install or roll back a Waydroid overlay until rootfs_mounts=0 and I/O pressure is no longer blocking storage'
+
+if [ "$include_status" = yes ]; then
+	printf '\n[waydroid-status]\n'
+	if command -v "$waydroid_cmd" >/dev/null 2>&1; then
+		if command -v timeout >/dev/null 2>&1; then
+			timeout "$status_timeout" "$waydroid_cmd" status 2>&1 || true
+		else
+			"$waydroid_cmd" status 2>&1 || true
+		fi
+	else
+		printf 'waydroid=unavailable\n'
+	fi
+fi

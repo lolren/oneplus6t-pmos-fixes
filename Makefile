@@ -17,6 +17,7 @@ SCRIPTS = \
 	scripts/check-power \
 	scripts/check-nfc \
 	scripts/check-location \
+	scripts/check-waydroid-health \
 	scripts/audio-route-policy \
 	scripts/check-audio-routing
 
@@ -57,6 +58,7 @@ test:
 	./tests/test-power-report.sh
 	./tests/test-nfc-report.sh
 	./tests/test-location-report.sh
+	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
 	./tests/test-update-guard.sh
@@ -122,6 +124,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-nfc"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-location" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-location"
+	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-health" \
+		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-health"
 	ln -sfn "$(LIBEXECDIR)/scripts/v4l2-focus-control.py" "$(DESTDIR)$(SBINDIR)/pmos-v4l2-focus-control"
 	ln -sfn "$(LIBEXECDIR)/scripts/waydroid-location-bridge.py" \
 		"$(DESTDIR)$(SBINDIR)/pmos-waydroid-location-bridge"

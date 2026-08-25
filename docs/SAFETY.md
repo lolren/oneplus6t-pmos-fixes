@@ -11,6 +11,8 @@ The current scripts may:
 - enable normal system time synchronization;
 - perform bounded connectivity tests;
 - inspect camera/media state and private captures without publishing them;
+- inspect Waydroid mounts, load and I/O pressure with
+  `pmos-check-waydroid-health` without changing services or storage;
 - build kernel or userspace packages on the host without installing them;
 - simulate or explicitly apply the exact manifest-verified native r7/r2,
   r7/r1 and r6/r0 camera generations through `manage-camera-generation`;
@@ -76,6 +78,16 @@ unrelated changes. A Waydroid rollback restores only files recorded as present
 and removes only paths explicitly recorded as absent before installation. A
 Waydroid restart is sufficient for this userspace overlay; it does not require
 a phone reboot.
+
+Before an overlay install or rollback, run:
+
+```sh
+pmos-check-waydroid-health --status
+```
+
+Proceed only when `rootfs_mounts=0` and
+`overlay_precondition=pass`. A mounted rootfs or non-zero I/O pressure means
+the storage path is not safe for a copy operation; recover the phone first.
 
 The mobile-data rollback script reads the UUID recorded at installation and
 refuses to delete a non-GSM profile. Existing user-created profiles are left
