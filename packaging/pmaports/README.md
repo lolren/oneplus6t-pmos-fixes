@@ -5,14 +5,16 @@ pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier.
+device-specific identifier. The current patch carries the r5 Advanced Snapshot
+source recipe; the phone's accepted runtime baseline remains Advanced Snapshot
+r1 until the new preview candidate passes a fresh package and device check.
 
 ## Reviewed base and build
 
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`a55eb222e38ccd4abc25d0366e8fcc0526ee0d4c73e4103e39ab149fed199f71`.
+`4de7c7f8510816ba5f5607a3daa7c3e7af5449ca95f34aa8e0885421bb656249`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -38,8 +40,8 @@ Applying the integration patch to the reviewed base produces:
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r2` plus
-  `advanced-snapshot-lang-0.1.0-r2`.
+- `advanced-snapshot-0.1.0-r5` plus
+  `advanced-snapshot-lang-0.1.0-r5` (source candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -54,14 +56,24 @@ during live diagnosis. They do not imply that many public releases.
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
-| `advanced-snapshot-0.1.0-r2.apk` | `73d8fd40640a5a73521cc376418c38fae6413abcd450c18193d9568b236a9d18` |
-| `advanced-snapshot-lang-0.1.0-r2.apk` | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
+| `advanced-snapshot-0.1.0-r2.apk` (previous accepted app build) | `73d8fd40640a5a73521cc376418c38fae6413abcd450c18193d9568b236a9d18` |
+| `advanced-snapshot-lang-0.1.0-r2.apk` (previous accepted app build) | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
 The reference IMX519 module has matching `7.1.0-rc1-sdm845` vermagic and a
 PKCS#7 SHA-512 signature from its kernel build key. The final kernel package
 does not contain the discarded actuator-readiness or diagnostics experiments.
+
+The current r5 source candidate is pinned to Advanced Snapshot commit
+`d012a5149e69fb37bd619220d7deac8cf0881280`. Its GitHub source archive has
+SHA-512
+`f2fa81b741a761ec9848be5a0b41ea305d3f8185056c81a93447d408577bc2396f79f5b1dbee645e36e367276b99ed0a0c0d5b86c00fc62645abc72ee06a1813`.
+It adds the asynchronous live-sink preview candidate (`sync=false`, `qos=true`)
+on top of the previously accepted one-buffer preview queue. The corresponding
+r5 APK was not installed or claimed as accepted because the reference phone's
+Waydroid rootfs/I/O recovery gate is still closed; build the package in a clean
+aarch64 buildroot and validate it on the phone before replacing the r1 baseline.
 
 ## Current installation and rollback baseline
 
