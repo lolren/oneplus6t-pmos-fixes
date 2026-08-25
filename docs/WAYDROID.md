@@ -6,8 +6,10 @@ software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The r24 overlay is installed and exposes three Android cameras. The native
-postmarketOS stack is packaged separately; see [CAMERA.md](CAMERA.md).
+The r35 overlay is installed and exposes three Android cameras. It includes
+the Mesa EGL software-ISP path, a DMA-heap allocator fallback and the
+Camera3 logical-JPEG-size fix. The native postmarketOS stack is packaged
+separately; see [CAMERA.md](CAMERA.md).
 
 ## Features and their benefit
 
@@ -17,7 +19,10 @@ postmarketOS stack is packaged separately; see [CAMERA.md](CAMERA.md).
 | Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path. |
 | minigbm plane parsing | The HAL reads Waydroid's real buffer offsets, strides and sizes, preventing corrupt mappings and one-plane assumptions. |
 | Software NV12 output | The mainline software ISP can fill Android YUV and implementation-defined preview buffers without a proprietary ISP HAL. |
+| Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
+| DMA-heap internal buffers | Falls back to CMA/system DMA heaps when the mainline image does not provide the legacy Android gralloc allocator. |
 | YUV, JPEG and private streams | Preview, analysis and still-capture paths used by ordinary Camera2 applications all return data. |
+| Logical JPEG BLOB sizing | Places the Camera3 JPEG footer at the logical buffer end expected by Android even when minigbm aligns the physical plane. |
 | Valid low-frame-rate metadata | A camera whose usable mode is below 30 fps remains in Android's stream map instead of causing malformed Camera2 characteristics. |
 | Variable 15–30 fps preview | In low light, applications may allow a frame to grow to about 66.7 ms for more exposure; a fixed 30 fps video request stays fixed. |
 | Exposure compensation | Camera2 -1 to +1 EV requests reach libcamera and the applied value returns in capture results. |
@@ -36,16 +41,24 @@ camera UI by themselves; an Android camera application consumes them.
   final two add `FrameDurationLimits` and stable progressive autofocus
   transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
-  patch. Apply it after the complete generic series.
+  series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
+  software-ISP and robust DMA/JPEG patches (`0002`–`0004`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
-- `config/waydroid/init.oneplus6t-camera.rc.in` is the provider override. Its
-  `@VIDEO_GID@` placeholder must become the numeric postmarketOS `video` GID.
+- `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
+  the input buffer and limits the soft-ISP worker count.
+- `config/waydroid/init.zz-oneplus6t-camera.rc.in` is the provider override.
+  Its `@VIDEO_GID@` placeholder must become the numeric postmarketOS `video`
+  GID; the `zz` prefix makes the ordering explicit.
 - `scripts/build-waydroid-camera` creates a clean Android ARMv7 libcamera build
   and runtime staging tree.
+- `scripts/package-waydroid-camera` creates a tarball and matching file
+  manifest from a staging tree.
+- `scripts/install-waydroid-camera` performs a target-scoped backup, install
+  and rollback without touching partitions or firmware.
 - `tests/waydroid-camera-probe/` builds the validation APK.
 
-The Android patch depends on the generic frame-duration and autofocus work. It
+The Android series depends on the generic frame-duration and autofocus work. It
 is intentionally separate from pmaports because Android HAL code and its ABI
 dependencies do not belong in the native Alpine package.
 
@@ -86,7 +99,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's sixteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the Android patch:
+the four Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -96,12 +109,16 @@ git checkout v0.7.2
 git am /path/to/patched-pmaports/temp/libcamera/0001-*.patch
 git am /path/to/patched-pmaports/temp/libcamera/0002-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/v0.7.2/*.patch
-git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0001-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0002-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0003-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0004-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
 mismatch. The reviewed order ends with generic frame duration, generic
-autofocus-transition stability and then the Android Camera3 commit.
+autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion
+and robust buffer/JPEG handling.
 
 ## Build a runtime bundle
 
@@ -111,23 +128,32 @@ Choose new, empty build and stage directories:
 export ANDROID_NDK_ROOT=/path/to/Android/Sdk/ndk/29.0.14206865
 export WAYDROID_DEPS_PREFIX=/path/to/android-armv7-dependencies
 export ANDROID_API=33
+export WAYDROID_SOFTISP_GPU=enabled
 
 /path/to/oneplus6t-pmos-fixes/scripts/build-waydroid-camera \
   /path/to/libcamera-waydroid \
   /path/to/build-waydroid-camera \
   /path/to/stage-waydroid-camera
+
+/path/to/oneplus6t-pmos-fixes/scripts/package-waydroid-camera \
+  /path/to/stage-waydroid-camera \
+  /path/to/waydroid-camera-r35-gpu
 ```
 
 The helper configures only the simple pipeline/IPA and generic Android HAL,
 builds for ARMv7, signs the IPA with the build-local key, installs under the
 staging `vendor/` tree, adds `libc++_shared.so`, and installs the reviewed
-OnePlus tuning and camera map. The generated IPA private key remains in the
-build directory and must not be committed.
+OnePlus tuning, camera map and GPU configuration. `enabled` selects the
+validated Mesa path; `auto` lets Meson choose and `disabled` is a CPU-only
+fallback for diagnosis. The generated IPA private key remains in the build
+directory and must not be committed. Build and stage directories must be new
+or empty; this prevents mixing signed IPAs or libraries from different builds.
 
 At minimum, retain these runtime files together:
 
 ```text
 vendor/etc/libcamera/camera_hal.yaml
+vendor/etc/libcamera/configuration.yaml
 vendor/lib/hw/camera.libcamera.so
 vendor/lib/libcamera.so
 vendor/lib/libcamera-base.so
@@ -138,43 +164,43 @@ vendor/libexec/libcamera/soft_ipa_proxy
 vendor/share/libcamera/ipa/simple/imx371.yaml
 vendor/share/libcamera/ipa/simple/imx376.yaml
 vendor/share/libcamera/ipa/simple/imx519.yaml
+vendor/share/libcamera/ipa/simple/uncalibrated.yaml
 ```
 
 Do not mix a HAL from one build with a library or signed IPA from another.
 
 ## Install into the Waydroid overlay
 
-First render the provider configuration on the phone. The reference
-postmarketOS `video` group is GID 27, but another installation must resolve its
-own value:
+The package helper produces a tarball and a manifest. Extract the tarball into
+a fresh staging directory, then use the installer so the provider GID is
+resolved on the target phone and every managed target is backed up before it is
+replaced:
 
 ```sh
-video_gid=$(getent group video | cut -d: -f3)
-test -n "$video_gid"
-sed "s/@VIDEO_GID@/$video_gid/" \
-  config/waydroid/init.oneplus6t-camera.rc.in \
-  > /tmp/init.oneplus6t-camera.rc
+mkdir -p /tmp/waydroid-camera-r35-gpu
+tar -xzf /path/to/waydroid-camera-r35-gpu.tar.gz \
+  -C /tmp/waydroid-camera-r35-gpu
+
+sudo scripts/install-waydroid-camera --dry-run \
+  /tmp/waydroid-camera-r35-gpu
 ```
 
-Create a dated backup outside the overlay. Preserve every existing target and
-record which targets were absent before installation. Then stop only Waydroid:
+Stop only Waydroid after reviewing the dry run, then install:
 
 ```sh
-sudo waydroid session stop
+waydroid session stop
 sudo waydroid container stop
+sudo scripts/install-waydroid-camera \
+  /tmp/waydroid-camera-r35-gpu
 ```
 
-Copy the runtime files to the same relative paths below
-`/var/lib/waydroid/overlay/`, and install the rendered provider file as:
-
-```text
-/var/lib/waydroid/overlay/system/etc/init/init.oneplus6t-camera.rc
-```
-
-Shared objects, YAML and the signature may be mode 0644; executable helpers
-must be mode 0755. Keep root ownership. The provider override runs as Android's
-`cameraserver`, adds the host video GID so it can open the mainline media
-devices, and writes bounded diagnostic logs to
+The installer manages the 13 runtime files plus
+`system/etc/init/init.zz-oneplus6t-camera.rc`. It creates a dated backup under
+`/var/lib/waydroid/backups/` and prints its path. Set
+`WAYDROID_CAMERA_BACKUP_ROOT` to use another backup root. Shared objects, YAML
+and the signature are mode 0644; the software-IPA proxy is mode 0755. The
+provider override runs as Android's `cameraserver`, adds the host video GID so
+it can open the mainline media devices, and writes bounded diagnostic logs to
 `/data/local/tmp/libcamera-provider.log` inside Android.
 
 Start the container as root and the session as the normal login user:
@@ -185,7 +211,8 @@ waydroid session start
 ```
 
 This operation does not alter a partition, boot slot, kernel or firmware and
-does not require a phone reboot.
+does not require a phone reboot. The installer does not start or stop services;
+that is kept explicit so it cannot unexpectedly interrupt a camera session.
 
 ## Verify
 
@@ -203,15 +230,41 @@ Then build and run the probe as documented in
 PROBE_DONE valid=3 total=3
 ```
 
-The final r24 run on 24 August 2026 verified all three YUV/JPEG/private stream
-sets. Both
-rear cameras reported autofocus states `[3, 4]`; the front reported fixed
-focus `[0]`. All cameras returned -1/0/+1 EV metadata and visible pixel
-movement. The result file SHA-256 was
-`425a0525ed08c039cba6831b0ec9c6566bec0ebbb1d7b03267b16f71feac2483`.
-Generated photographs remain private and are not part of the repository.
+The final r35 run on 25 August 2026 verified all three YUV/JPEG/private stream
+sets. Camera 0 reported rear autofocus states `[3, 4]`, camera 2 reported
+`[3, 5]`, and the fixed-focus front camera reported `[0]`. All cameras
+returned -1/0/+1 EV metadata and visible pixel movement. A clean Aperture
+capture produced a valid Exif JPEG at 1600x1200 with no
+`fixUpHidlJpegBlobHeader` or `Image_getBlobSize` warning. Generated photographs
+remain private and are not part of the repository.
 
-Reference runtime hashes were:
+The reproducible r35 GPU bundle is:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `waydroid-camera-r35-gpu-final.tar.gz` | `6d1f03878991825d0dd0edfce5f98b9825dfd9e15f2aae59ad0fcde1ed4c8f6f` |
+| `waydroid-camera-r35-gpu-final.sha256` | `2ff519dcf00bc09ebecb575260f88998f83e76fb1e6ff5cd3c9b8640b3a93b7a` |
+
+Current r35 runtime hashes from that bundle are:
+
+| File | SHA-256 |
+| --- | --- |
+| rendered `init.zz-oneplus6t-camera.rc` (video GID 27) | `872ddc99936135b0865d3f2fbc89d8d4ad7f4c06f63bceed75d2dd1ccd27ae05` |
+| `camera.libcamera.so` | `2bb84d7bce0e1cefffd5ccb171bfbebb3a9bb752a13e60f422e2ed66ace105db` |
+| `libcamera.so` | `418cbea4a985ddd45ea8475c2dfdf8d569c35a256164f5ccb667b299fb325077` |
+| `libcamera-base.so` | `8b7e553e07ec651e17c231b2c35a27cd66fa9552d80e1d5eb0ce51bef8a0967a` |
+| `libc++_shared.so` | `7ce65fd0fdd49236bc2ee618f6968dbb3fca46445f563f2bb4c994878853e` |
+| `ipa_soft_simple.so` | `fea5c0662bb580f04ca26aed51780883367363ab29a732b593a084077dccbe14` |
+| `ipa_soft_simple.so.sign` | `d4553fb5dbe02ea5e8fc415107bd6510279bbe4ba00c918a5a37f7c37aa554c0` |
+| `soft_ipa_proxy` | `d521e909e7259624076ef838a8244a6a881f91f78d6985701303325d81328e3f` |
+| `camera_hal.yaml` | `559eeec4df67ea5b2f884a28de312ea25b34d89789d570f2ae3a86266882fa65` |
+| `configuration.yaml` | `1d7c6962e4af26831b2752e4ec683db16c05b95bbeb535127eaf97ae5fae50cc` |
+| `imx371.yaml` | `7369cbd1fb61371bd0462ce71e51d10b37c85f05c41c6184aeca517ca03388a3` |
+| `imx376.yaml` | `85bb26e2b6eeda694290d8da1ca100f2c1f5b33f3fd8e518ae7f523226b33551` |
+| `imx519.yaml` | `b8a876520db79d059a3ff01576d0db2161a86c8ce50be25605976704b78ec473` |
+| `uncalibrated.yaml` | `0689579ca79036bbd31d104deafca70fb8b267c4c8f8492e07bd6f6e875ee1ac` |
+
+Historical r24 runtime hashes follow for rollback comparison:
 
 | File | SHA-256 |
 | --- | --- |
@@ -225,29 +278,36 @@ Reference runtime hashes were:
 
 The signature changes when a new build-local IPA key is generated, so hashes
 are reference evidence rather than a substitute for source verification.
-The rendered provider fragment was also installed beside the existing
-Waydroid init overlay and tested through a complete container/session restart.
-Android boot completed, the provider retained supplementary GID 27, and all
-three camera devices returned closed and available without an init override
-error.
+The installer renders the provider fragment with the target's actual video
+GID, stores a presence manifest and SHA-256 list in a dated rollback tree, and
+does not overwrite unrelated overlay files. The r35 deployment retained
+supplementary GID 27 and completed a container/session restart. The clean
+probe ended with:
 
-The r24 installation first copied all thirteen replaced targets into a dated
-rollback tree with a presence manifest and SHA-256 file. The native Android
-probe then returned `PROBE_DONE valid=3 total=3`: camera IDs 0 and 2 reported
-AF states `[3, 4]` with real metering regions, camera 1 reported fixed-focus
-state `[0]`, and every camera passed YUV, private preview, JPEG, EV and sensor
-timing checks. The Waydroid Android session was returned to its prior stopped
-state afterward; the container service remained active. The complete r23
-overlay backup remains the immediate Android rollback.
+```text
+PROBE_DONE valid=3 total=3
+```
+
+The probe passed YUV, private preview, JPEG, EV and sensor-timing checks for
+all three cameras. Run it from a clean camera state: if Aperture still owns
+the CAMSS media device, the probe can report a transient busy link rather than
+a camera regression.
 
 ## Rollback
 
-Stop the Waydroid session and container, restore every backed-up file to its
-original relative overlay path, and remove only targets explicitly recorded as
-absent before installation. In particular, remove
-`init.oneplus6t-camera.rc` only when the backup record proves it was newly
-created. Start the container/session again and require the prior camera count
-and provider state.
+Stop the Waydroid session and container, then pass the exact backup directory
+printed by the installer to the rollback command:
+
+```sh
+sudo scripts/install-waydroid-camera --rollback \
+  /var/lib/waydroid/backups/camera-YYYYMMDDTHHMMSSZ-PID
+sudo waydroid container start
+waydroid session start
+```
+
+The script restores every backed-up file to its original relative overlay path
+and removes only targets explicitly recorded as absent before installation.
+Require the prior camera count and provider state after restarting.
 
 Never replace the complete Waydroid overlay with an old copy: it may contain
 unrelated user changes. Never restore only the HAL while leaving a mismatched
@@ -261,10 +321,11 @@ libcamera or IPA in place.
 - The front camera has no physical focus actuator.
 - Very dark scenes remain noisy even though a client can request a slower
   frame duration.
-- The Android framework logged a recoverable JPEG blob-footer warning and
-  occasional close/flush timeout during the automated stress probe. All three
-  JPEGs decoded and all cameras reopened, but broader third-party-app testing
-  is still required.
+- The r35 lower layer has a clean JPEG-footer path in the accepted Aperture
+  capture. Broader third-party-app and lifecycle testing is still required.
+- Running the probe while Aperture or another camera client owns CAMSS can
+  produce a transient media-link-busy result; stop camera clients and rerun the
+  probe before treating it as a regression.
 - Camera2 numeric IDs are provider enumeration details; applications should
   use facing/characteristics rather than assuming a fixed number.
 - Play Store installation, GPS and the Waydroid location bridge are separate

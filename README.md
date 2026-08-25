@@ -121,6 +121,9 @@ and through an open Camera3 HAL in Waydroid.
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
+| Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
+| Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
+| Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7, Snapshot r3 and
@@ -128,8 +131,10 @@ Advanced Snapshot r1 are installed. Exact r23 libcamera APKs are the immediate
 libcamera rollback; the older
 r20/r6/r2 complete userspace set is also retained. The native r24 stack passed
 bounded captures on all three stable camera paths, rear tap/reset tests and
-70/95-second continuous-focus stability runs. The Waydroid r24 overlay passed
-all three Camera2 YUV/JPEG/private, autofocus and exposure tests.
+70/95-second continuous-focus stability runs. The Waydroid r35 overlay uses the
+Mesa GPU software-ISP path, passed a clean three-camera Camera2
+YUV/JPEG/private, autofocus and exposure probe, and produced a clean 1600x1200
+JPEG capture.
 
 Advanced Snapshot r1 is installed beside Snapshot. Its signed package and the
 matching PipeWire SPA r7 package build reproducibly and passed one coherent
@@ -180,6 +185,14 @@ rollback procedure in [packaging/pmaports/README.md](packaging/pmaports/README.m
 Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
+
+The Android/Waydroid camera bundle is a separate ARMv7 runtime. Build and
+package it with `scripts/build-waydroid-camera` and
+`scripts/package-waydroid-camera`, stop the Waydroid session/container, and
+install it atomically with `sudo scripts/install-waydroid-camera`. That helper
+backs up only its managed targets and prints the exact rollback directory.
+Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
+package hashes, clean three-camera probe and rollback command.
 
 To reproduce the current r7/r1-to-r7/r2 UI update, stage the unchanged r7
 PipeWire SPA, the r2 app packages and the exact r7/r1 rollback in isolated
@@ -243,8 +256,8 @@ mapping stage.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
 - Cameras: installed native r8/r24/r7/r3 plus Advanced Snapshot r1 passed
   coherent package, D-Bus launch and all-sensor non-image acceptance. Exact
-  r6/r0 APKs remain the immediate rollback; the Waydroid r24 lower layer passes
-  all three Camera2 stream/AF/EV probes.
+  r6/r0 APKs remain the immediate rollback; the Waydroid r35 lower layer passes
+  all three Camera2 stream/AF/EV probes and the GPU/JPEG acceptance capture.
 - Next priorities: complete Advanced Snapshot visual photo/video acceptance
   and UI work. The first immutable camera manifest and guarded generation
   manager now pass host and real-phone simulation; next add the VibeMarketOS

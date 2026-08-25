@@ -719,6 +719,49 @@ Messages, generation-manager and image-metric tests pass, as does a staged
 `make install` containing both immutable manifests. Phone installation and
 visual/touch acceptance remain separate gates and are not claimed here.
 
+## Waydroid r35 GPU/JPEG acceptance
+
+Date: 2026-08-25. The final ARMv7 Waydroid bundle was built from libcamera
+0.7.2 with the Android patch series `0001`–`0004` and
+`WAYDROID_SOFTISP_GPU=enabled`. The package and manifest hashes are:
+
+```text
+waydroid-camera-r35-gpu-final.tar.gz
+6d1f03878991825d0dd0edfce5f98b9825dfd9e15f2aae59ad0fcde1ed4c8f6f
+waydroid-camera-r35-gpu-final.sha256
+2ff519dcf00bc09ebecb575260f88998f83e76fb1e6ff5cd3c9b8640b3a93b7a
+```
+
+The bundle was copied to the phone, verified against both hashes, extracted
+into `/var/lib/waydroid/overlay`, and checked with the 13-file manifest. A
+pre-install backup was retained at
+`/var/lib/waydroid/backups/camera-r34-before-r35-20260825T171946`; its tarball
+SHA-256 is
+`35bfccfe44189a244c5f2bc34b4ea6563b4a3838f9dfde5db1580e85293ed1d2` and its
+manifest SHA-256 is
+`e6f0201b2a109e41720ff6a2f0a247ab45ec8e6f7d869f664b2dfc5eb70e8ee1`.
+
+The clean Camera2 probe ended with:
+
+```text
+PROBE_DONE valid=3 total=3
+```
+
+Camera 0 returned AF states `[3, 4]`, camera 1 truthfully returned fixed-focus
+state `[0]`, and camera 2 returned AF states `[3, 5]`. All three passed YUV,
+private, JPEG, EV movement and sensor-timing checks. A clean Aperture capture
+then produced a valid Exif JPEG at 1600x1200. The framework log contained
+`Aperture: Photo capture succeeded` and no `fixUpHidlJpegBlobHeader` or
+`Image_getBlobSize` warning. The provider remained stable with both the legacy
+and external camera service processes present.
+
+The r35 GPU benchmark was materially faster than the earlier CPU-only
+1600x1200 path: representative GPU runs were about 36.8–42.1 ms/frame, while
+the earlier CPU run was about 125 ms/frame. These are processing benchmarks,
+not a claim of Android vendor-camera image-quality parity. Running the probe
+while Aperture owns CAMSS can still produce a transient media-link-busy result;
+the accepted probe was rerun with camera clients stopped.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.
@@ -726,8 +769,8 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r24/r7/r3 native userspace stack, Advanced Snapshot r1 and r24 Waydroid
-overlay are installed and required no phone reboot. Exact r6/r0, r23 libcamera
+The r24/r7/r3 native userspace stack, Advanced Snapshot r1 and r35 Waydroid
+GPU/JPEG overlay are installed and required no phone reboot. Exact r6/r0, r23 libcamera
 and older r20/r6/r2 rollback APKs remain staged in separate user-owned offline
 repositories.
 An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution

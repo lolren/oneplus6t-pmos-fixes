@@ -3,10 +3,10 @@
 Work is intentionally serialized on the reference phone so camera, audio,
 location and Android-container failures cannot obscure one another.
 
-1. Preserve the completed lower camera layer: r24/r7/r3 plus Advanced Snapshot
-   r1 is installed, both
-   rear focus transitions pass automated hunting tests, and all three native
-   and Waydroid sensors capture. Keep this exact stack as a compatibility
+1. Preserve the completed lower camera layer: native r24/r7/r3 plus Advanced
+   Snapshot r1 is installed, and the Waydroid r35 GPU/JPEG bundle is validated.
+   Both rear focus transitions pass automated hunting tests, and all three
+   native and Waydroid sensors capture. Keep this exact stack as a compatibility
    baseline while application work proceeds.
 2. Build Advanced Snapshot as a separately named, GPL-compatible Snapshot fork
    with a polished photo/video interface, truthful focus state and only controls
@@ -22,10 +22,11 @@ location and Android-container failures cannot obscure one another.
    immutable r7/r1 manifest, simulation-first generation manager and native
    health gate now pass; repository signing, update interception and retained
    published generations remain.
-4. Broaden Android acceptance: the Waydroid r24 Camera3 lower layer is installed
-   and its all-camera YUV/JPEG/private, AF and EV probe passes. Test real camera
-   applications and lifecycle transitions, resolve the remaining JPEG-footer
-   and close/flush warnings, then add Play Store support.
+4. Broaden Android acceptance: the Waydroid r35 Camera3 lower layer now passes
+   the clean all-camera YUV/JPEG/private, AF and EV probe, and its GPU path
+   produces a clean full-size JPEG. Test real camera applications and lifecycle
+   transitions, then add Play Store support; Android computational HDR and
+   vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. Validate native coordinates and Android applications
    separately so a network-derived fallback cannot be mistaken for GPS.
