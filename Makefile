@@ -50,6 +50,7 @@ test:
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
+	./tests/test-audio-route-policy.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
 	./tests/test-update-guard.sh

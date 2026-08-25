@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+case "$1" in
+info)
+	printf '%s\n' 'Server String: mock'
+	;;
+get-default-sink)
+	printf '%s\n' "${PMOS_AUDIO_SINK:?PMOS_AUDIO_SINK is required}"
+	;;
+get-default-source)
+	printf '%s\n' "${PMOS_AUDIO_CURRENT_SOURCE:?PMOS_AUDIO_CURRENT_SOURCE is required}"
+	;;
+	list)
+	[ "${2:-}" = short ] && [ "${3:-}" = sources ] || exit 1
+	printf '%s\n' \
+		'41 alsa_input.platform-sound.HiFi__Mic2__source PipeWire' \
+		'42 alsa_input.platform-sound.Voice_Call__Mic__source PipeWire' \
+		'43 alsa_input.platform-sound.Headset__source PipeWire'
+	;;
+	set-default-source)
+	printf '%s\n' "${2:?missing target}" >"${PMOS_AUDIO_LOG:?PMOS_AUDIO_LOG is required}"
+	;;
+*)
+	printf 'unsupported mock pactl call: %s\n' "$*" >&2
+	exit 1
+	;;
+esac

@@ -7,25 +7,49 @@
 
 set -u
 
+pactl_command=${PMOS_PACTL:-pactl}
+once=no
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--once)
+		once=yes
+		shift
+		;;
+	-h|--help)
+		printf '%s\n' "usage: $0 [--once]"
+		exit 0
+		;;
+	*)
+		printf 'unknown argument: %s\n' "$1" >&2
+		exit 2
+		;;
+	esac
+done
+
+run_pactl() {
+	"$pactl_command" "$@"
+}
+
 internal_source_for_sink() {
 	sink=$1
 	case "$sink" in
 		*Speaker*)
-			pactl list short sources 2>/dev/null |
+			run_pactl list short sources 2>/dev/null |
 				awk '$2 ~ /^alsa_input\.platform-sound\..*Mic2.*source$/ { print $2; exit }'
 			;;
 		*Headphones*)
-			headset=$(pactl list short sources 2>/dev/null |
+			headset=$(run_pactl list short sources 2>/dev/null |
 				awk '$2 ~ /^alsa_input\.platform-sound\..*Headset.*source$/ { print $2; exit }')
 			if [ -n "$headset" ]; then
 				printf '%s\n' "$headset"
 			else
-				pactl list short sources 2>/dev/null |
+				run_pactl list short sources 2>/dev/null |
 					awk '$2 ~ /^alsa_input\.platform-sound\..*(Mic1|Voice_Call__Mic).*source$/ { print $2; exit }'
 			fi
 			;;
 		*Earpiece*|*Voice_Call__*)
-			pactl list short sources 2>/dev/null |
+			run_pactl list short sources 2>/dev/null |
 				awk '$2 ~ /^alsa_input\.platform-sound\..*(Mic1|Voice_Call__Mic).*source$/ { print $2; exit }'
 			;;
 		*)
@@ -35,7 +59,7 @@ internal_source_for_sink() {
 }
 
 reconcile() {
-	sink=$(pactl get-default-sink 2>/dev/null) || return 0
+	sink=$(run_pactl get-default-sink 2>/dev/null) || return 0
 	case "$sink" in
 		alsa_output.platform-sound.*) ;;
 		*) return 0 ;;
@@ -43,15 +67,16 @@ reconcile() {
 
 	target=$(internal_source_for_sink "$sink")
 	[ -n "$target" ] || return 0
-	current=$(pactl get-default-source 2>/dev/null || true)
+	current=$(run_pactl get-default-source 2>/dev/null || true)
 	[ "$current" = "$target" ] && return 0
-	pactl set-default-source "$target" 2>/dev/null || true
+	run_pactl set-default-source "$target" 2>/dev/null || true
 }
 
 while :; do
-	if pactl info >/dev/null 2>&1; then
+	if run_pactl info >/dev/null 2>&1; then
 		reconcile
 	fi
+	[ "$once" = yes ] && exit 0
 	# A short poll is intentional here. It avoids a process storm when a
 	# profile change creates several Pulse compatibility objects at once, while
 	# still making a route change visible within two seconds.

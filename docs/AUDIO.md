@@ -25,6 +25,12 @@ built-in OnePlus node:
 USB and Bluetooth defaults are left alone. The policy does not rewrite ALSA
 mixer controls and does not change the modem, q6voice service or boot files.
 
+The policy supports `--once` for bounded validation. The repository test suite
+uses a fake PulseAudio-compatibility endpoint to verify the speaker-to-top-mic,
+earpiece-to-bottom-mic and headphones-to-headset-mic mappings without touching
+the host audio session. The installed user service runs the normal continuous
+two-second reconciliation loop.
+
 ## Install and enable
 
 From this repository:
