@@ -116,25 +116,27 @@ and through an open Camera3 HAL in Waydroid.
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
 | Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
-| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; the r7/r1 candidate correlates the result and uses amber/green/red state. |
+| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; installed r7/r1 correlates the result and uses amber/green/red state. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
-Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r6 and Snapshot r3 are
-installed. Exact r23 libcamera APKs are the immediate rollback; the older
+Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7, Snapshot r3 and
+Advanced Snapshot r1 are installed. Exact r23 libcamera APKs are the immediate
+libcamera rollback; the older
 r20/r6/r2 complete userspace set is also retained. The native r24 stack passed
 bounded captures on all three stable camera paths, rear tap/reset tests and
 70/95-second continuous-focus stability runs. The Waydroid r24 overlay passed
 all three Camera2 YUV/JPEG/private, autofocus and exposure tests.
 
-Advanced Snapshot r0 is installed beside Snapshot. Its signed r1 candidate and
-the matching PipeWire SPA r7 package build reproducibly. r7 carries
+Advanced Snapshot r1 is installed beside Snapshot. Its signed package and the
+matching PipeWire SPA r7 package build reproducibly and passed one coherent
+offline installation plus all-sensor acceptance. r7 carries
 generation-correlated `AfState`; r1 keeps the focus marker amber while waiting,
-turns it green only for metadata-confirmed focus and red for failure. They are
-one coherent update and retain r6/r0 as the immediate rollback.
+turns it green only for metadata-confirmed focus and red for failure. Exact
+r6/r0 APKs are retained as the immediate rollback.
 
 The current native UI exposes a visible tap reticle plus Exposure, Colour,
 Contrast, Detail, Zoom and Reset. The lower-layer focus instability is fixed:
@@ -179,22 +181,25 @@ Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
 
-For the current r6/r0-to-r7/r1 native update, stage only the matching PipeWire
-SPA, Advanced Snapshot and language APKs in an isolated repository and
-simulate before installing:
+To reproduce the accepted r6/r0-to-r7/r1 native update, stage the matching
+PipeWire SPA, Advanced Snapshot and language APKs in an isolated repository.
+The r0 app packages were installed from local files, so their apk-tools 3
+identity constraints must be replaced by supplying the r1 file paths
+explicitly:
 
 ```sh
-mkdir -p patched/aarch64 patched/noarch
-apk index --allow-untrusted -o patched/aarch64/APKINDEX.tar.gz \
-  patched/aarch64/*.apk patched/noarch/*.apk
-apk upgrade --simulate --interactive=no --allow-untrusted --network=no \
-  --repository "$PWD/patched" \
-  pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang
+stage=/absolute/path/to/camera-r7-r1
+sudo apk add --simulate --upgrade --allow-untrusted --network=no \
+  --interactive=no --repository "$stage/candidate" \
+  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r1.apk" \
+  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r1.apk"
 ```
 
 Use `--allow-untrusted` only for locally built APKs whose source, version and
-hashes you verified. If and only if the simulation lists the expected camera
-upgrades and no removal, rerun the same command without `--simulate`.
+hashes you verified. Require exactly the PipeWire r6-to-r7 and both app
+r0-to-r1 upgrades with no removal, then rerun the same command without
+`--simulate`. The complete guide records repository indexing, service handling,
+the expected two-line world-file diff and guarded rollback cleanup.
 
 On installed Snapshot r3:
 
@@ -205,10 +210,9 @@ On installed Snapshot r3:
 4. adjust Exposure, Colour, Contrast, Detail or Zoom; and
 5. use **Reset** to restore the tuned defaults for the active sensor.
 
-After coherent r7/r1 acceptance, open **Advanced Snapshot** for the truthful
-reticle: amber means scanning, green means libcamera reported `Focused`, and
-red means `Failed` or a transport error. The fixed-focus front camera has no
-focus gesture.
+Open **Advanced Snapshot** for the truthful reticle: amber means scanning,
+green means libcamera reported `Focused`, and red means `Failed` or a transport
+error. The fixed-focus front camera has no focus gesture.
 
 The sliders affect both preview and saved output. HDR is intentionally shown as
 unavailable because the open pipeline has no valid multi-frame merge and tone
@@ -221,12 +225,12 @@ mapping stage.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Cameras: installed native r8/r24/r6/r3 plus Advanced Snapshot r0 remains the
-  rollback baseline. The signed r7/r1 candidate and verified pmaports overlay
-  are ready for coherent all-sensor acceptance; the Waydroid r24 lower layer
-  passes all three Camera2 stream/AF/EV probes.
-- Next priorities: complete native r7/r1 acceptance and the Advanced Snapshot
-  UI, then add the VibeMarketOS signed downstream repository,
+- Cameras: installed native r8/r24/r7/r3 plus Advanced Snapshot r1 passed
+  coherent package, D-Bus launch and all-sensor non-image acceptance. Exact
+  r6/r0 APKs remain the immediate rollback; the Waydroid r24 lower layer passes
+  all three Camera2 stream/AF/EV probes.
+- Next priorities: complete Advanced Snapshot visual photo/video acceptance
+  and UI work, then add the VibeMarketOS signed downstream repository,
   compatibility-gated updates and rollback generations; broaden Waydroid app
   testing and Play Store setup afterward. See
   [docs/ROADMAP.md](docs/ROADMAP.md).

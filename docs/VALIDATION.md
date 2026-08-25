@@ -521,10 +521,11 @@ real metering regions, front ID 1 returned fixed-focus state `[0]`, and all
 three passed YUV, private preview, JPEG, EV and sensor-timing checks. The
 sanitized result SHA-256 is
 `425a0525ed08c039cba6831b0ec9c6566bec0ebbb1d7b03267b16f71feac2483`.
-Generated JPEGs remain private. Waydroid was returned to its prior stopped
-state; the complete r23 overlay backup remains available for rollback.
+Generated JPEGs remain private. The Waydroid Android session was returned to
+its prior stopped state; its continuously running container service was not
+changed. The complete r23 overlay backup remains available for rollback.
 
-## r7/r1 truthful autofocus package checkpoint
+## r7/r1 truthful autofocus package and device acceptance
 
 The PipeWire transport was extended without changing libcamera or the kernel.
 Its three read-only node properties are
@@ -571,11 +572,83 @@ app aport. It applied and reverse-checked on a fresh detached pmaports
 matched the audited staging tree byte-for-byte. Its SHA-256 is
 `e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
 
-At this checkpoint the phone still runs r6/r0. Its `/etc/apk/world` SHA-256 is
-`e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`,
-PipeWire and WirePlumber are active, Waydroid is stopped and no camera client
-is active. The three-package simulation and all-sensor result test are the
-remaining gates before replacing this rollback baseline.
+The candidate and rollback repositories were copied to
+`/home/user/camera-focus-state-r7-r1-20260825`. All six APK signatures and
+hashes were verified before installation. apk-tools 3 retained identity
+constraints because both r0 app packages had originally been installed from
+local files, so a package-name-only upgrade proposed only PipeWire r7 and was
+rejected. The accepted command supplied both r1 app file paths explicitly and
+used the candidate repository to resolve their PipeWire dependency. Its
+simulation proposed exactly these upgrades and no removal:
+
+```text
+pipewire-spa-libcamera  1.6.8-r6 -> 1.6.8-r7
+advanced-snapshot       0.1.0-r0 -> 0.1.0-r1
+advanced-snapshot-lang  0.1.0-r0 -> 0.1.0-r1
+```
+
+The simulation output SHA-256 is
+`50b587d9ccf0bc01a957b8c12ff0024d9b3a9c0819ce4e21d2fc2e5bfc817369`.
+The real transaction performed the same three upgrades; its output SHA-256 is
+`bc1c20a23af1542bb1221af3bbc053e2da71bd399212c3080958e578a7fda269`.
+The installed package manifest SHA-256 is
+`8ae365661b1e91e7f2f49a9ae3fb7ebeb679f1ddd8fb459803314ba2ba283a63`.
+
+`/etc/apk/world` changed from SHA-256
+`e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`
+to
+`d032cb41e42bda904382159b10198e5c2dd9b73cda58d3f0060993756388e276`.
+Its diff contained exactly two identity-line replacements: Advanced Snapshot
+and its language package moved from the r0 local identities to the r1 local
+identities. PipeWire stayed dependency-owned and no unrelated world entry
+changed.
+
+The final central-target all-sensor run returned:
+
+```text
+main|serial=59|tap_result=focused|post_reset_metrics=183|restarts=0|lens_requests=0
+secondary|serial=63|tap_result=focused|post_reset_metrics=239|restarts=0|lens_requests=0
+front|serial=61|frames=120|focus_status=unsupported
+RESULT|pass|rear_stability_seconds=60
+```
+
+The summary SHA-256 is
+`e5663d4a894169c097396f7f825199d4bcd211efa398fbb2c274e3fd76acb98c`.
+Each rear result file contained only `focused` and has SHA-256
+`6c6a45ac86c5a830cda6b4f9552c0d6e782ca4b0ceff9ce261296168bb67699e`.
+The front helper truthfully reported that the camera does not support
+tap-to-focus; its log SHA-256 is
+`fcad6f02190e3fb1d5af2c671becbdcbdfed290aa54d079462dd182166a8bad4`.
+An earlier off-centre low-detail target returned `failed`; a centre target then
+returned `focused`. This is a useful negative result: the helper reports the
+optical terminal state instead of turning control acceptance into success.
+
+The desktop portal had lost its PipeWire connection during the controlled
+service stop. Restarting it restored a live Camera interface with
+`IsCameraPresent=true` and zero failed user units. The installed r1 app then
+launched through `io.github.lolren.AdvancedSnapshot`, reported the independent
+version and datadir, stayed alive and terminated cleanly in one second. Its
+stdout/stderr were empty and runtime evidence SHA-256 is
+`c72f813b583e15bf70616d0f9369727fec91e95332fad1101a78210abb5129ae`.
+The unattended phone was not used for visual preview, saved-photo or video
+acceptance, so those remain open.
+
+Live rollback was intentionally not performed. The isolated rollback
+simulation proposed exactly the three r7/r1-to-r6/r0 downgrades and has
+SHA-256
+`80ed193f2cda1948189513281e51df615b7ab19a62efa9bd8d71b90fb39fbad9`.
+A copied apk database then performed the same local-file downgrade with package
+scripts disabled. This temporarily added a PipeWire identity line; modeled
+`apk del pipewire-spa-libcamera` removed only that world constraint because the
+installed Phosh base, Snapshot and Advanced Snapshot retain the plugin. r6/r0
+remained installed and the modeled world hash returned byte-for-byte to
+`e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`.
+
+After cleanup PipeWire, WirePlumber and the desktop portal were active, no
+camera client or autofocus environment remained, and no user unit was failed.
+The Waydroid container service has been continuously active since before this
+transaction while its Android session remains stopped; no Waydroid state was
+changed by the native camera update.
 
 ## Remaining validation
 
@@ -584,9 +657,10 @@ NetworkManager profile persistence and autoconnect were verified with a manual
 down/up cycle; boot-time reconnection must be recorded separately after an
 explicitly approved reboot.
 
-The r24/r6/r3 native userspace stack and r24 Waydroid overlay are installed and
-required no phone reboot. Exact r23 libcamera and older r20/r6/r2 rollback APKs
-remain staged in separate user-owned offline repositories.
+The r24/r7/r3 native userspace stack, Advanced Snapshot r1 and r24 Waydroid
+overlay are installed and required no phone reboot. Exact r6/r0, r23 libcamera
+and older r20/r6/r2 rollback APKs remain staged in separate user-owned offline
+repositories.
 An unlocked Snapshot touchscreen tap, focus indicator, saved full-resolution
 photo, video, flash expectations, screen-off/on, suspend/resume and an actual
 exact-version rollback test remain to be recorded. Android-level HDR, temporal

@@ -236,8 +236,9 @@ rollback tree with a presence manifest and SHA-256 file. The native Android
 probe then returned `PROBE_DONE valid=3 total=3`: camera IDs 0 and 2 reported
 AF states `[3, 4]` with real metering regions, camera 1 reported fixed-focus
 state `[0]`, and every camera passed YUV, private preview, JPEG, EV and sensor
-timing checks. Waydroid was returned to its prior stopped state afterward. The
-complete r23 overlay backup remains the immediate Android rollback.
+timing checks. The Waydroid Android session was returned to its prior stopped
+state afterward; the container service remained active. The complete r23
+overlay backup remains the immediate Android rollback.
 
 ## Rollback
 

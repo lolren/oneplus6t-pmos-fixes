@@ -69,14 +69,17 @@ The reference phone currently runs:
 
 - kernel package `7.1_rc1-r8`;
 - `libcamera` and `libcamera-ipa` `99990.7.2-r24`;
-- `pipewire-spa-libcamera` `1.6.8-r6`; and
+- `pipewire-spa-libcamera` `1.6.8-r7`;
 - Snapshot and Snapshot language data `50.0-r3`; and
-- Advanced Snapshot and its language data `0.1.0-r0`.
+- Advanced Snapshot and its language data `0.1.0-r1`.
 
-The r7/r1 packages above are one coherent candidate: r7 transports
+The r7/r1 packages above are one coherent installed generation: r7 transports
 generation-correlated `AfState`, while r1 waits for that result and never
-reports control acceptance as optical success. Keep all three r6/r0 APKs as
-the immediate rollback and install or roll them back together.
+reports control acceptance as optical success. Both rear cameras returned a
+correlated `focused` result and survived the 60-second post-reset test; the
+fixed-focus front completed 120 frames and rejected focus as unsupported. Keep
+all three r6/r0 APKs as the immediate rollback and install or roll them back
+together.
 
 The exact r23 libcamera packages are the preferred rollback for the r24
 autofocus-transition update. The older complete r20/r6/r2 set remains useful when rolling
@@ -106,12 +109,12 @@ that an online repository will continue to carry old versions.
 ## Installation boundary
 
 The build commands above do not copy or install anything, update boot files or
-reboot. The r7/r1 candidate is userspace-only and needs no reboot. Installing
+reboot. The r7/r1 generation is userspace-only and needs no reboot. Installing
 on another phone still requires root, a reviewed simulation and an explicit
 decision by its owner.
 
-For the current r6/r0-to-r7/r1 update, stage the three candidate APKs and three
-rollback APKs in separate offline repositories. apk-tools 3 reads
+To reproduce the completed r6/r0-to-r7/r1 update, stage the three candidate
+APKs and three rollback APKs in separate offline repositories. apk-tools 3 reads
 `APKINDEX.tar.gz` from the native `aarch64/` directory. Pass the repository
 root to apk, not its `aarch64/` subdirectory.
 
@@ -121,19 +124,25 @@ noarch APK beside the native index causes a late lookup failure and can split
 a larger transaction.
 
 ```sh
-mkdir -p patched/aarch64 patched/noarch rollback/aarch64 rollback/noarch
-apk index --allow-untrusted -o patched/aarch64/APKINDEX.tar.gz \
-  patched/aarch64/*.apk patched/noarch/*.apk
+mkdir -p candidate/aarch64 candidate/noarch rollback/aarch64 rollback/noarch
+apk index --allow-untrusted -o candidate/aarch64/APKINDEX.tar.gz \
+  candidate/aarch64/*.apk candidate/noarch/*.apk
 apk index --allow-untrusted -o rollback/aarch64/APKINDEX.tar.gz \
   rollback/aarch64/*.apk rollback/noarch/*.apk
 ```
 
-From the directory containing `patched/`, simulate first:
+The original r0 app packages were installed from local files, so apk-tools 3
+records identity constraints for them in `/etc/apk/world`. A package-name-only
+`apk upgrade` can update PipeWire while silently retaining both r0 app
+packages. Supply the two candidate app files explicitly and let their r7
+dependency resolve from the candidate repository:
 
 ```sh
-apk upgrade --simulate --allow-untrusted --network=no \
-  --interactive=no --repository "$PWD/patched" \
-  pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang
+stage=$PWD
+sudo apk add --simulate --upgrade --allow-untrusted --network=no \
+  --interactive=no --repository "$stage/candidate" \
+  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r1.apk" \
+  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r1.apk"
 ```
 
 Starting from the documented baseline, it must list exactly these
@@ -145,13 +154,31 @@ advanced-snapshot       0.1.0-r0 -> 0.1.0-r1
 advanced-snapshot-lang  0.1.0-r0 -> 0.1.0-r1
 ```
 
-Only after reviewing that output and receiving approval may the same command
-be run as root without `--simulate`. Record a SHA-256 of `/etc/apk/world`
-before and after; the current baseline is
+Only after reviewing that output may the same command be run without
+`--simulate`. Close camera applications and stop PipeWire/WirePlumber for the
+short package transaction; start them and restart the desktop portal
+afterward. On the reference phone the portal had retained a dead PipeWire
+connection and recovered cleanly when restarted:
+
+```sh
+systemctl --user stop wireplumber.service pipewire.service pipewire.socket
+# Run the accepted apk command above without --simulate.
+systemctl --user start pipewire.socket pipewire.service wireplumber.service
+systemctl --user reset-failed xdg-desktop-portal.service \
+  xdg-desktop-portal-wlr.service
+systemctl --user restart xdg-desktop-portal.service
+```
+
+Record `/etc/apk/world` before and after. The reference hash changed from
 `e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`
-and the upgrade must leave it unchanged. `--allow-untrusted` is appropriate
-only for locally built packages whose source, version and hash were
-independently verified.
+to
+`d032cb41e42bda904382159b10198e5c2dd9b73cda58d3f0060993756388e276`.
+The diff contained exactly the two expected r0-to-r1 Advanced Snapshot
+identity-line replacements and no PipeWire entry or unrelated change. A
+different verified build has different identity values, so review the diff
+rather than copying these hashes. `--allow-untrusted` is appropriate only for
+locally built packages whose source, version and hashes were independently
+verified.
 
 Close all camera applications before the userspace transaction and reopen them
 afterward. On a fresh installation that also needs kernel r8, handle the kernel
@@ -161,21 +188,39 @@ be opened between that transaction and the approved reboot.
 
 ## Rollback
 
-Simulate exact-version r7/r1 rollback against the isolated rollback repository:
+Simulate the exact local-file r7/r1 rollback against the isolated rollback
+repository:
 
 ```sh
-apk add --simulate --allow-untrusted --network=no \
-  --interactive=no --repository "$PWD/rollback" \
-  'pipewire-spa-libcamera=1.6.8-r6' \
-  'advanced-snapshot=0.1.0-r0' \
-  'advanced-snapshot-lang=0.1.0-r0'
+stage=$PWD
+sudo apk add --simulate --allow-untrusted --network=no \
+  --interactive=no --repository "$stage/rollback" \
+  "$stage/rollback/aarch64/pipewire-spa-libcamera-1.6.8-r6.apk" \
+  "$stage/rollback/aarch64/advanced-snapshot-0.1.0-r0.apk" \
+  "$stage/rollback/noarch/advanced-snapshot-lang-0.1.0-r0.apk"
 ```
 
 Require exactly three downgrades, no libcamera or Snapshot change and no
-removals. Exact-version `apk add` temporarily pins those versions in
-`/etc/apk/world`; preserve a pre-test copy and hash, then remove only the pins
-added by this command after verifying the installed versions. Never replace
-the whole file with an unverified copy.
+removals. Then use the same service boundary as installation and run the same
+command without `--simulate`.
+
+Supplying the PipeWire APK temporarily adds it as a local identity constraint
+even though the normal installation is dependency-owned. Verify its reverse
+dependencies and simulate removal of only that world constraint:
+
+```sh
+apk info -r pipewire-spa-libcamera
+sudo apk del --simulate pipewire-spa-libcamera
+```
+
+On the documented Phosh baseline the simulation must say the package is not
+removed because `postmarketos-ui-phosh`, Advanced Snapshot and Snapshot retain
+it. Only then run `sudo apk del pipewire-spa-libcamera`, and verify that
+`apk list --installed pipewire-spa-libcamera` still reports r6. In an isolated
+copy of the live apk database this returned the world file byte-for-byte to the
+pre-update hash while retaining r6/r0. The downgrade solver and copied-database
+transaction passed; a live rollback has deliberately not been performed.
+Never replace the whole world file with an unverified copy.
 
 Never use `apk upgrade --available` with either partial repository. apk-tools
 3 may reconcile the whole installation against that partial index and remove

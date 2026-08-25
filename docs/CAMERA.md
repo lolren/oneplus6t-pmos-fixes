@@ -5,13 +5,13 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r6 and Snapshot r3 are
-installed on the reference phone, with Advanced Snapshot r0 beside Snapshot.
+Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7 and Snapshot r3 are
+installed on the reference phone, with Advanced Snapshot r1 beside Snapshot.
 The complete baseline was built for aarch64, hash-verified, simulated offline
 and installed without a reboot. Exact r23 libcamera packages are the immediate
 r24 rollback, and the complete r20/r6/r2 set is also retained. The matching
-PipeWire r7 and Advanced Snapshot r1 candidate is built and retains r6/r0 for
-coherent rollback. The r21
+PipeWire r7 and Advanced Snapshot r1 generation passed coherent all-sensor
+acceptance and retains r6/r0 for rollback. The r21
 libcamera build is also retained as diagnostic evidence but is superseded
 because its fixed highlight ceiling weakened positive EV compensation. Nothing
 in this work flashes a partition, changes a boot slot or reboots the phone.
@@ -358,19 +358,25 @@ lenses were parked at DAC 0 after tests.
   Every resulting file matched the audited staging tree byte-for-byte; its
   SHA-256 is
   `e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
+- The coherent r7/r1 transaction upgraded exactly the PipeWire SPA, Advanced
+  Snapshot and its language package with no removal. Both rear cameras emitted
+  a generation-correlated `focused` result, completed 60 seconds after reset
+  with zero restarts or lens requests, and the fixed-focus front completed 120
+  frames while rejecting focus as unsupported. The packaged app also stayed
+  alive through desktop D-Bus activation and terminated cleanly. This is
+  non-image runtime acceptance; visual photo/video checks remain separate.
 
 The retained r23 libcamera APKs remain the immediate r24 rollback. The r8 plus
 r20/r6/r2 package set remains the complete older baseline. The reference phone
-currently runs kernel r8 with validated r24/r6/r3 userspace and Advanced
-Snapshot r0; the r7/r1 pair remains a device-acceptance candidate at this
-checkpoint.
+currently runs kernel r8 with validated r24/r7/r3 userspace and Advanced
+Snapshot r1. Exact r6/r0 packages remain the immediate app/transport rollback.
 
 ## Installation boundary
 
 Do not unload camera modules on a running phone. A kernel package replaces
 modules under the current release path, so after any approved kernel upgrade
 do not open the camera or load modules before the approved reboot. The current
-r7/r1 candidate is userspace-only and does not require a kernel upgrade or
+r7/r1 generation is userspace-only and does not require a kernel upgrade or
 reboot.
 
 To reproduce the completed installation safely:

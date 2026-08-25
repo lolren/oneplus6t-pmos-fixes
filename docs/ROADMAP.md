@@ -3,15 +3,17 @@
 Work is intentionally serialized on the reference phone so camera, audio,
 location and Android-container failures cannot obscure one another.
 
-1. Preserve the completed lower camera layer: r24/r6/r3 is installed, both
+1. Preserve the completed lower camera layer: r24/r7/r3 plus Advanced Snapshot
+   r1 is installed, both
    rear focus transitions pass automated hunting tests, and all three native
    and Waydroid sensors capture. Keep this exact stack as a compatibility
    baseline while application work proceeds.
 2. Build Advanced Snapshot as a separately named, GPL-compatible Snapshot fork
    with a polished photo/video interface, truthful focus state and only controls
    implemented by the lower stack. The independent package and correlated
-   focus-state source now build; native r7/r1 acceptance is the current gate.
-   Do not advertise fake HDR, flash behavior or uncalibrated manual values.
+   focus-state source passed native r7/r1 acceptance; visual photo/video,
+   control-surface and lifecycle acceptance are the current gates. Do not
+   advertise fake HDR, flash behavior or uncalibrated manual values.
 3. Create the VibeMarketOS product layer: a small pmaports overlay, signed APK
    repository, versioned Waydroid bundle, known-good manifest, pre-activation
    camera health checks and retained rollback generations. Upstream
