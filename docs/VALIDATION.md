@@ -924,6 +924,14 @@ cycle/reboot remains required before another remote installer attempt; the
 phone must be checked again from a fresh SSH session rather than inferred from
 the host USB link.
 
+The USB product database labels the same `18d1:d001` device as “Nexus 4
+(fastboot)”, but its live descriptors expose only a CDC-NCM control/data
+interface, not fastboot endpoints. The working `172.16.42.2/16` host link and
+`172.16.42.1` ping therefore prove that postmarketOS networking is alive; an
+empty `fastboot devices` result is expected in this state. Do not try to flash
+or issue fastboot commands based on that product-database label. This matches
+postmarketOS's [documented NCM networking gadget behavior](https://postmarketos.org/edge/2023/10/29/rndis-ncm/).
+
 The new read-only `pmos-measure-power --duration 0` sampler also collected a
 baseline without changing policy:
 
