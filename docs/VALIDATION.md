@@ -905,3 +905,35 @@ physical reboot or any overlay operation.
 Runtime acceptance therefore still requires physical recovery,
 `rootfs_mounts=0`, `overlay_precondition=pass`, the guarded preview candidate
 install, and the camera/location/NFC/power/audio acceptance sequences above.
+
+## Recovery attempt and timed power baseline
+
+Date: 2026-08-25. The phone remained reachable at `172.16.42.1` over the
+OnePlus 6T USB CDC-NCM gadget, but new SSH connections stopped at the banner
+while the five Waydroid mounts and saturated I/O state remained. A normal
+systemd reboot and a forced systemd reboot both waited on the same blocked
+teardown. The direct reboot path then dropped SSH but did not produce a
+confirmed new login; no partition, boot slot, firmware or overlay write was
+performed during recovery.
+
+The host identified the exact USB device as `ID_MODEL=OnePlus_6T` on
+`3-3.3:3`, performed one logical USB reset and one authorization
+detach/reattach, and confirmed that the NCM interface re-registered. These
+operations did not clear the phone-side mount deadlock. A physical power
+cycle/reboot remains required before another remote installer attempt; the
+phone must be checked again from a fresh SSH session rather than inferred from
+the host USB link.
+
+The new read-only `pmos-measure-power --duration 0` sampler also collected a
+baseline without changing policy:
+
+```text
+capacity_percent=97
+current_now_ua=0
+voltage_now_uv=4336000
+temperature_tenths_c=276
+status=Not charging
+```
+
+This is a one-sample baseline, not battery-life acceptance. Repeat it at idle,
+camera preview, modem activity and screen-off after recovery.
