@@ -20,6 +20,17 @@ that source is intentionally static and can mask a real GNSS result.
 After the phone is responsive, inspect the source without changing it:
 
 ```sh
+pmos-check-location --output /private/path/oneplus6t-location.txt
+```
+
+The report discovers the current ModemManager modem instead of assuming that
+its numeric ID is stable, records `--location-status` and `--location-get`,
+checks GeoClue and lists NetworkManager devices. It never enables GPS or
+changes a refresh rate. The report's `native_fix=coordinates-present` is a
+useful prerequisite, not proof of a stable outdoor fix. The underlying
+commands can still be inspected directly when needed:
+
+```sh
 mmcli -L
 mmcli -m 0 --location-status
 mmcli -m 0 --location-get
@@ -94,6 +105,11 @@ Record all of the following privately after recovery:
   reports a mock-location warning.
 
 No coordinates, modem identifiers or location logs belong in Git.
+
+The report is installed by the project Makefile as
+`/usr/sbin/pmos-check-location`. Its fixture-driven test runs without a modem
+and verifies that coordinate fields are distinguished from a missing native
+fix.
 
 Background: the [OnePlus 6T postmarketOS status page](https://wiki.postmarketos.org/wiki/OnePlus_6T_%28oneplus-fajita%29)
 currently lists GPS as partial, and Waydroid's upstream

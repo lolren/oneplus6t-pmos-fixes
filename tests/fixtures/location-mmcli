@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+case "$*" in
+	-L)
+		printf '%s\n' '    /org/freedesktop/ModemManager1/Modem/0 [mock] test-modem'
+		;;
+	*--location-status)
+		printf '%s\n' \
+			'    gps-nmea: enabled' \
+			'    gps-raw: enabled' \
+			'    gps-unmanaged: disabled'
+		;;
+	*--location-get)
+		printf '%s\n' \
+			'    gps: latitude: 51.747000' \
+			'    gps: longitude: -2.218000' \
+			'    gps: altitude: 70.0'
+		;;
+	*)
+		exit 1
+		;;
+esac

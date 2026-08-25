@@ -292,7 +292,8 @@ Native GeoClue/ModemManager GNSS checks and the dry-run-first Waydroid location
 bridge are documented in [docs/LOCATION.md](docs/LOCATION.md). The bridge is
 explicitly a mock-provider diagnostic until the phone's native GNSS and an
 Android map application have been tested; it does not pretend to provide a
-vendor GNSS HAL.
+vendor GNSS HAL. `pmos-check-location` now provides the read-only native
+ModemManager/GeoClue report needed before using the bridge.
 
 ### NFC
 
@@ -322,8 +323,9 @@ tag. See [docs/NFC.md](docs/NFC.md).
   See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
-- Location: native GNSS and Android bridge acceptance are pending device
-  recovery; no static Reading/Stroud coordinate has been hard-coded.
+- Location: the read-only native report and dry-run Android bridge are
+  documented; GNSS and Android map acceptance are pending device recovery, and
+  no static Reading/Stroud coordinate has been hard-coded.
 - Battery/power: the read-only `pmos-check-power` report and acceptance
   sequence are documented in [docs/POWER.md](docs/POWER.md); no unverified
   governor or suspend tweak has been forced.

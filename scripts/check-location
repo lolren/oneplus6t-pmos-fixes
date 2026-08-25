@@ -1,0 +1,141 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+mmcli_cmd=${PMOS_LOCATION_MMCLI:-mmcli}
+systemctl_cmd=${PMOS_LOCATION_SYSTEMCTL:-systemctl}
+nmcli_cmd=${PMOS_LOCATION_NMCLI:-nmcli}
+modem=${PMOS_LOCATION_MODEM:-}
+output=${PMOS_LOCATION_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--modem ID_OR_PATH] [--output FILE]
+
+Collect a read-only native ModemManager, GeoClue and NetworkManager location
+report. It does not enable GPS, change refresh rates, or inject a location.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*"
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--modem)
+		[ "$#" -ge 2 ] || die '--modem requires an ID or object path'
+		modem=$2
+		shift 2
+		;;
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1"
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+capture() {
+	label=$1
+	shift
+	capture_data=
+	capture_status=0
+	if capture_data=$("$@" 2>&1); then
+		capture_status=0
+	else
+		capture_status=$?
+	fi
+	printf '%s_status=%s\n' "$label" "$capture_status"
+	[ -n "$capture_data" ] && printf '%s\n' "$capture_data"
+}
+
+printf 'report=oneplus6t-location\n'
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
+
+printf '\n[modemmanager]\n'
+location_get_data=
+if command -v "$mmcli_cmd" >/dev/null 2>&1; then
+	if [ -n "$modem" ]; then
+		printf 'modem=%s\n' "$modem"
+	else
+		if modem_list=$("$mmcli_cmd" -L 2>&1); then
+			printf '%s\n' "$modem_list"
+		else
+			modem_list=
+			printf 'modem_list_status=unavailable\n'
+		fi
+		modem=$(printf '%s\n' "$modem_list" |
+			sed -n 's#.*Modem/\([0-9][0-9]*\).*#\1#p' | sed -n '1p')
+		[ -n "$modem" ] && printf 'modem=%s\n' "$modem" || printf '%s\n' 'modem=none'
+	fi
+	if [ -n "$modem" ]; then
+		printf 'location_status_begin\n'
+		capture location_status "$mmcli_cmd" -m "$modem" --location-status
+		printf 'location_status_end\n'
+		printf 'location_get_begin\n'
+		capture location_get "$mmcli_cmd" -m "$modem" --location-get
+		location_get_data=$capture_data
+		printf 'location_get_end\n'
+	else
+		printf '%s\n' 'location_status=not-run (no modem found)'
+		printf '%s\n' 'location_get=not-run (no modem found)'
+	fi
+else
+	printf 'mmcli=unavailable\n'
+fi
+
+printf '\n[geoclue]\n'
+if command -v "$systemctl_cmd" >/dev/null 2>&1; then
+	printf 'geoclue='
+	"$systemctl_cmd" is-active geoclue.service 2>&1 || true
+else
+	printf 'systemctl=unavailable\n'
+fi
+
+printf '\n[networkmanager]\n'
+if command -v "$nmcli_cmd" >/dev/null 2>&1; then
+	printf 'device_status_begin\n'
+	"$nmcli_cmd" -t -f DEVICE,TYPE,STATE,CONNECTION device status 2>&1 || true
+	printf 'device_status_end\n'
+else
+	printf 'nmcli=unavailable\n'
+fi
+
+printf '\n[assessment]\n'
+latitude_present=no
+longitude_present=no
+if printf '%s\n' "$location_get_data" | grep -Eiq \
+	'latitude[^0-9+-]*[-+]?[0-9]+([.][0-9]+)?'; then
+	latitude_present=yes
+fi
+if printf '%s\n' "$location_get_data" | grep -Eiq \
+	'longitude[^0-9+-]*[-+]?[0-9]+([.][0-9]+)?'; then
+	longitude_present=yes
+fi
+printf 'latitude_fields=%s\n' "$latitude_present"
+printf 'longitude_fields=%s\n' "$longitude_present"
+if [ "$latitude_present" = yes ] && [ "$longitude_present" = yes ]; then
+	printf '%s\n' 'native_fix=coordinates-present'
+else
+	printf '%s\n' 'native_fix=not-confirmed'
+fi
+printf '%s\n' 'note=coordinates-present means ModemManager returned coordinate fields; outdoor GNSS stability still requires timed physical testing'
+printf '%s\n' 'note=this report never enables GPS, changes refresh rates, or changes Android location providers'

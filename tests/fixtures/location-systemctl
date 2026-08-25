@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+[ "$1" = is-active ] || exit 1
+[ "$2" = geoclue.service ] || exit 1
+printf '%s\n' active
