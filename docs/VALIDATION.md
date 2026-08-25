@@ -821,7 +821,11 @@ uninterruptible storage I/O were still present, so remote installation would
 have repeated the previously blocked overlay backup. Runtime acceptance is
 pending a physical reboot, a zero-stale-mount check, the guarded installer,
 the three-camera Camera2 probe, JPEG capture and a before/after preview timing
-comparison. The candidate must be rolled back if any of those regress.
+comparison. The probe now requests a large private preview when available and
+records Camera2 delivery timing (`privateSize`, `privateFps` and
+`privateIntervalMs`) without turning an FPS value into a pass/fail threshold.
+The candidate must be rolled back if any required stream, JPEG or provider
+stability check regresses.
 
 ## Remaining validation
 

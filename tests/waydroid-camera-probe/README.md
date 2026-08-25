@@ -10,7 +10,10 @@ For every camera reported by Android, the probe checks:
 
 - Camera2 characteristics can be read without malformed-metadata assertions;
 - a 640x480 YUV stream produces non-flat luminance and chroma data;
-- an implementation-defined preview stream continues to deliver frames;
+- an implementation-defined preview stream continues to deliver frames at a
+  common large size (preferably 1600x1200, then 1920x1080); and
+- private-preview frame timestamps are reported so before/after source-mode
+  performance can be compared without treating FPS as a pass/fail claim;
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
@@ -69,9 +72,12 @@ A complete pass ends with:
 PROBE_DONE valid=3 total=3
 ```
 
-The preceding `CAMERA` records contain per-camera stream, autofocus, exposure
-and SHA-256 evidence. Generated JPEGs remain in the application's private
-directory. Do not add them to Git.
+The preceding `CAMERA` records contain per-camera stream, private-preview
+size, `privateFps`, `privateIntervalMs`, autofocus, exposure and SHA-256
+evidence. The timing fields describe frames delivered to the Camera2 reader;
+they are not a display-latency measurement and do not claim image-quality
+parity. Generated JPEGs remain in the application's private directory. Do not
+add them to Git.
 
 ## Remove
 

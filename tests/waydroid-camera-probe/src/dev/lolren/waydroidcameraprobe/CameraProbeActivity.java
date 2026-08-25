@@ -45,6 +45,7 @@ public final class CameraProbeActivity extends Activity {
     private static final int MIN_WARMUP_FRAMES = 30;
     private static final int MAX_WARMUP_FRAMES = 360;
     private static final int SENSOR_STABLE_FRAMES = 20;
+    private static final int MIN_PRIVATE_TIMING_FRAMES = 30;
     private static final long CAMERA_TIMEOUT_MS = 120000;
 
     private final List<String> results = new ArrayList<>();
@@ -57,6 +58,10 @@ public final class CameraProbeActivity extends Activity {
     private int generation;
     private int frameCount;
     private int privateFrames;
+    private int privateTimedFrames;
+    private long privateFirstTimestamp;
+    private long privateLastTimestamp;
+    private Size privateStreamSize;
     private int selectedAfMode;
     private int currentExposureCompensation;
     private int[] exposureRequests;
@@ -133,6 +138,10 @@ public final class CameraProbeActivity extends Activity {
         final String id = cameraIds[cameraIndex];
         frameCount = 0;
         privateFrames = 0;
+        privateTimedFrames = 0;
+        privateFirstTimestamp = 0;
+        privateLastTimestamp = 0;
+        privateStreamSize = null;
         cameraCompleting = false;
         yuvAccepted = false;
         jpegRequested = false;
@@ -180,6 +189,9 @@ public final class CameraProbeActivity extends Activity {
                 failCamera(token, id, "no YUV_420_888 output size");
                 return;
             }
+            Size privateSize = choosePrivateProbeSize(
+                    map.getOutputSizes(ImageFormat.PRIVATE), size);
+            privateStreamSize = privateSize;
             if (!containsSize(map.getOutputSizes(ImageFormat.JPEG), size)) {
                 failCamera(token, id, "matching JPEG output size is unavailable");
                 return;
@@ -235,6 +247,7 @@ public final class CameraProbeActivity extends Activity {
                     + " sensorOrientation=" + sensorOrientation
                     + " probeSize=" + size + " aeRange=" + exposureRange
                     + " aeStep=" + exposureStep
+                    + " privateSize=" + privateSize
                     + " fpsRanges=" + Arrays.toString(fpsRanges)
                     + " selectedFps=" + selectedFpsRange
                     + " sensorExposureRangeNs=" + sensorExposureRange
@@ -245,14 +258,16 @@ public final class CameraProbeActivity extends Activity {
             jpegReader = ImageReader.newInstance(
                     size.getWidth(), size.getHeight(), ImageFormat.JPEG, 2);
             privateReader = ImageReader.newInstance(
-                    size.getWidth(), size.getHeight(), ImageFormat.PRIVATE, 3);
+                    privateSize.getWidth(), privateSize.getHeight(),
+                    ImageFormat.PRIVATE, 3);
             yuvReader.setOnImageAvailableListener(r -> onYuvImage(token, id, r), handler);
             jpegReader.setOnImageAvailableListener(r -> onJpegImage(token, id, r), handler);
             privateReader.setOnImageAvailableListener(r -> onPrivateImage(token, r), handler);
 
             timeout = () -> failCamera(token, id,
                     "timed out: yuv=" + yuvAccepted + " jpeg=" + jpegAccepted
-                            + " private=" + privateAccepted + " afStates=" + afStates);
+                            + " private=" + privateAccepted + "/" + privateFrames
+                            + " afStates=" + afStates);
             handler.postDelayed(timeout, CAMERA_TIMEOUT_MS);
             manager.openCamera(id, cameraStateCallback(token, id), handler);
         } catch (Throwable e) {
@@ -401,6 +416,14 @@ public final class CameraProbeActivity extends Activity {
             if (!isCurrent(token))
                 return;
             privateFrames++;
+            long timestamp = image.getTimestamp();
+            if (timestamp > 0) {
+                if (privateFirstTimestamp == 0)
+                    privateFirstTimestamp = timestamp;
+                if (privateLastTimestamp > 0 && timestamp > privateLastTimestamp)
+                    privateTimedFrames++;
+                privateLastTimestamp = timestamp;
+            }
             privateAccepted = true;
             maybeCompleteCamera(token);
         } finally {
@@ -597,6 +620,8 @@ public final class CameraProbeActivity extends Activity {
     private void maybeCompleteCamera(int token) {
         if (!isCurrent(token) || !yuvAccepted || !jpegAccepted || !privateAccepted)
             return;
+        if (privateFrames < MIN_PRIVATE_TIMING_FRAMES)
+            return;
 
         boolean autofocusRequired =
                 selectedAfMode == CaptureRequest.CONTROL_AF_MODE_AUTO;
@@ -615,8 +640,10 @@ public final class CameraProbeActivity extends Activity {
                 && exposureMetadata.contains(exposureRequests[3]);
         String result = String.format(Locale.US,
                 "CAMERA id=%s valid=%s %s %s privateFrames=%d afMode=%d "
-                        + "afStates=%s afRegion=%s aeMetadata=%s %s",
+                        + "privateSize=%s %s afStates=%s afRegion=%s "
+                        + "aeMetadata=%s %s",
                 id, valid, yuvResult, jpegResult, privateFrames, selectedAfMode,
+                privateStreamSize, privateTiming(),
                 afStates, focusRegions == null ? "none" : focusRegions[0].toString(),
                 exposureMetadata, exposureResult);
         results.add(result);
@@ -827,6 +854,49 @@ public final class CameraProbeActivity extends Activity {
                 .min(Comparator.comparingLong(
                         size -> (long) size.getWidth() * size.getHeight()))
                 .orElse(sizes[0]);
+    }
+
+    /**
+     * Request a deliberately useful private preview size for the performance
+     * probe.  The common 1600x1200 request exercises the Waydroid reduced
+     * source-mode path; a smaller YUV probe alone would not.
+     */
+    private static Size choosePrivateProbeSize(Size[] sizes, Size fallback) {
+        if (sizes == null || sizes.length == 0)
+            return fallback;
+
+        for (Size size : sizes) {
+            if (size.getWidth() == 1600 && size.getHeight() == 1200)
+                return size;
+        }
+        for (Size size : sizes) {
+            if (size.getWidth() == 1920 && size.getHeight() == 1080)
+                return size;
+        }
+
+        Size best = Arrays.stream(sizes)
+                .filter(size -> size.getWidth() > 1280
+                        && size.getHeight() > 720
+                        && (sameAspect(size, 4, 3) || sameAspect(size, 16, 9)))
+                .min(Comparator.comparingLong(
+                        size -> (long) size.getWidth() * size.getHeight()))
+                .orElse(null);
+        return best == null ? fallback : best;
+    }
+
+    private static boolean sameAspect(Size size, int width, int height) {
+        return (long) size.getWidth() * height == (long) size.getHeight() * width;
+    }
+
+    private String privateTiming() {
+        if (privateTimedFrames <= 0 || privateLastTimestamp <= privateFirstTimestamp)
+            return "privateFps=unavailable privateIntervalMs=unavailable";
+
+        double spanSeconds = (privateLastTimestamp - privateFirstTimestamp) / 1_000_000_000.0;
+        double fps = privateTimedFrames / spanSeconds;
+        double intervalMs = (spanSeconds * 1000.0) / privateTimedFrames;
+        return String.format(Locale.US, "privateFps=%.2f privateIntervalMs=%.2f",
+                fps, intervalMs);
     }
 
     private static boolean containsSize(Size[] sizes, Size wanted) {

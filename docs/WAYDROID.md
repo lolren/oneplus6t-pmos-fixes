@@ -251,6 +251,13 @@ Then build and run the probe as documented in
 PROBE_DONE valid=3 total=3
 ```
 
+The current probe revision deliberately requests a large implementation-
+defined preview when the device advertises one, preferring 1600x1200 and then
+1920x1080. Each `CAMERA` record reports `privateSize`, `privateFps` and
+`privateIntervalMs`; these values make the reduced-source candidate measurable
+against the previous bundle. They measure frames delivered to Camera2, not
+display latency, and are diagnostic fields rather than pass/fail thresholds.
+
 The final r35 run on 25 August 2026 verified all three YUV/JPEG/private stream
 sets. Camera 0 reported rear autofocus states `[3, 4]`, camera 2 reported
 `[3, 5]`, and the fixed-focus front camera reported `[0]`. All cameras
