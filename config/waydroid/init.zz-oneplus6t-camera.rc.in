@@ -1,4 +1,6 @@
 # Render @VIDEO_GID@ as the numeric postmarketOS video group before install.
+# The zz prefix makes this override load after the stock Waydroid camera
+# provider definition while leaving the provider binary itself unchanged.
 service vendor.camera-provider-2-4 /vendor/bin/hw/android.hardware.camera.provider@2.4-service
     override
     interface android.hardware.camera.provider@2.4::ICameraProvider legacy/0

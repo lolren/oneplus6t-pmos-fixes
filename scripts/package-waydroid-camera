@@ -1,0 +1,69 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	printf '%s\n' \
+		'usage: package-waydroid-camera STAGE_DIR OUTPUT_PREFIX' \
+		'' \
+		'STAGE_DIR must be produced by build-waydroid-camera.' \
+		'OUTPUT_PREFIX creates OUTPUT_PREFIX.tar.gz and OUTPUT_PREFIX.sha256.'
+}
+
+if [ "$#" -ne 2 ]; then
+	usage >&2
+	exit 2
+fi
+
+stage_dir=$1
+output_prefix=$2
+package_file=$output_prefix.tar.gz
+manifest_file=$output_prefix.sha256
+
+if [ ! -d "$stage_dir" ]; then
+	printf 'Stage directory does not exist: %s\n' "$stage_dir" >&2
+	exit 1
+fi
+
+for command in mkdir sha256sum tar; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+if [ -e "$package_file" ] || [ -e "$manifest_file" ]; then
+	printf '%s\n' 'Refusing to overwrite an existing package or manifest.' >&2
+	exit 1
+fi
+
+set -- \
+	vendor/lib/hw/camera.libcamera.so \
+	vendor/lib/libcamera.so \
+	vendor/lib/libcamera-base.so \
+	vendor/lib/libc++_shared.so \
+	vendor/lib/libcamera/ipa/ipa_soft_simple.so \
+	vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign \
+	vendor/libexec/libcamera/soft_ipa_proxy \
+	vendor/etc/libcamera/camera_hal.yaml \
+	vendor/etc/libcamera/configuration.yaml \
+	vendor/share/libcamera/ipa/simple/imx371.yaml \
+	vendor/share/libcamera/ipa/simple/imx376.yaml \
+	vendor/share/libcamera/ipa/simple/imx519.yaml \
+	vendor/share/libcamera/ipa/simple/uncalibrated.yaml
+
+for file in "$@"; do
+	if [ ! -f "$stage_dir/$file" ]; then
+		printf 'Missing runtime file: %s\n' "$stage_dir/$file" >&2
+		exit 1
+	fi
+done
+
+mkdir -p "$(dirname "$output_prefix")"
+( cd "$stage_dir"; sha256sum "$@" ) > "$manifest_file"
+( cd "$stage_dir"; tar -czf "$package_file" "$@" )
+
+printf 'package: '
+sha256sum "$package_file"
+printf 'manifest: '
+sha256sum "$manifest_file"
+cat "$manifest_file"

@@ -14,7 +14,10 @@ SCRIPTS = \
 
 PYTHON_SCRIPTS = scripts/v4l2-focus-control.py
 
-HOST_BUILD_SCRIPTS = scripts/build-waydroid-camera
+HOST_BUILD_SCRIPTS = \
+	scripts/build-waydroid-camera \
+	scripts/package-waydroid-camera \
+	scripts/install-waydroid-camera
 
 CAMERA_TEST_SCRIPTS = \
 	tests/camera/run-light-step.sh \
@@ -50,11 +53,22 @@ test:
 install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/scripts"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/data"
+	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple"
+	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/waydroid"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/keys"
 	$(INSTALL) -d "$(DESTDIR)$(SBINDIR)"
 	$(INSTALL) -d "$(DESTDIR)$(DOCDIR)"
 	$(INSTALL) -m 0755 $(SCRIPTS) "$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0755 $(PYTHON_SCRIPTS) "$(DESTDIR)$(LIBEXECDIR)/scripts/"
+	$(INSTALL) -m 0755 $(HOST_BUILD_SCRIPTS) "$(DESTDIR)$(LIBEXECDIR)/scripts/"
+	$(INSTALL) -m 0644 config/waydroid/camera_hal.yaml \
+		config/waydroid/configuration.yaml \
+		config/waydroid/init.zz-oneplus6t-camera.rc.in \
+		"$(DESTDIR)$(LIBEXECDIR)/config/waydroid/"
+	$(INSTALL) -m 0644 config/libcamera/simple/imx371.yaml \
+		config/libcamera/simple/imx376.yaml \
+		config/libcamera/simple/imx519.yaml \
+		"$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple/"
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"

@@ -1,0 +1,275 @@
+From a4a504b53f151224a26bea4e1aaac0c6a2107463 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 17:24:03 +0100
+Subject: [PATCH 3/4] android: add GPU NV12 software ISP path
+
+
+diff --git a/src/libcamera/egl.cpp b/src/libcamera/egl.cpp
+index 7ec7a65..b8b5fb3 100644
+--- a/src/libcamera/egl.cpp
++++ b/src/libcamera/egl.cpp
+@@ -311,14 +311,21 @@ EGLDisplay eGL::probeDisplay()
+ 	display = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA,
+ 					EGL_DEFAULT_DISPLAY,
+ 					nullptr);
+-
+-	if (display == EGL_NO_DISPLAY) {
+-		LOG(eGL, Info) << "Unable to get EGL display";
+-		return EGL_NO_DISPLAY;
+-	}
+-
+-	if (eglInitialize(display, nullptr, nullptr) != EGL_TRUE) {
+-		LOG(eGL, Error) << "eglInitialize fail";
++	if (display != EGL_NO_DISPLAY &&
++	    eglInitialize(display, nullptr, nullptr) == EGL_TRUE)
++		return display;
++
++	/*
++	 * Android's META-EGL does not necessarily expose Mesa's platform enum,
++	 * even when its selected implementation is Mesa and supports a
++	 * surfaceless context. The default display is the portable Android entry
++	 * point; initEGLContext() still creates and binds no surface.
++	 */
++	LOG(eGL, Info) << "Surfaceless platform unavailable, trying default EGL display";
++	display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++	if (display == EGL_NO_DISPLAY ||
++	    eglInitialize(display, nullptr, nullptr) != EGL_TRUE) {
++		LOG(eGL, Error) << "Unable to initialize EGL display";
+ 		return EGL_NO_DISPLAY;
+ 	}
+ 
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 6daddb4..63b5c6b 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -22,6 +22,8 @@
+ 
+ #include <libcamera/formats.h>
+ 
++#include <libyuv/convert_from_argb.h>
++
+ #include "libcamera/internal/formats.h"
+ #include "libcamera/internal/framebuffer.h"
+ 
+@@ -58,7 +60,8 @@ int DebayerEGL::getInputConfig(PixelFormat inputFormat, DebayerInputConfig &conf
+ 	std::vector<PixelFormat> outputFormats = { formats::XRGB8888,
+ 						   formats::ARGB8888,
+ 						   formats::XBGR8888,
+-						   formats::ABGR8888 };
++						   formats::ABGR8888,
++						   formats::NV12 };
+ 
+ 	if ((bayerFormat.bitDepth == 8 || bayerFormat.bitDepth == 10) &&
+ 	    bayerFormat.packing == BayerFormat::Packing::None &&
+@@ -98,6 +101,11 @@ int DebayerEGL::getInputConfig(PixelFormat inputFormat, DebayerInputConfig &conf
+ 
+ int DebayerEGL::getOutputConfig(PixelFormat outputFormat, DebayerOutputConfig &config)
+ {
++	if (outputFormat == formats::NV12) {
++		config.bpp = 12;
++		return 0;
++	}
++
+ 	if (outputFormat == formats::XRGB8888 || outputFormat == formats::ARGB8888 ||
+ 	    outputFormat == formats::XBGR8888 || outputFormat == formats::ABGR8888) {
+ 		config.bpp = 32;
+@@ -362,6 +370,7 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	}
+ 
+ 	outputPixelFormat_ = outputCfg.pixelFormat;
++	outputIsNv12_ = outputPixelFormat_ == formats::NV12;
+ 	outputSize_ = outputCfg.size;
+ 	nativeOutputSize_ = outSizeRange.max;
+ 
+@@ -429,6 +438,11 @@ DebayerEGL::strideAndFrameSize(const PixelFormat &outputFormat, const Size &size
+ 	if (getOutputConfig(outputFormat, config) != 0)
+ 		return std::make_tuple(0, 0);
+ 
++	if (outputFormat == formats::NV12) {
++		unsigned int stride = utils::alignUp(size.width, 8U);
++		return std::make_tuple(stride, stride * size.height * 3 / 2);
++	}
++
+ 	/* Align stride to 256 bytes as a generic GPU memory access alignment */
+ 	unsigned int stride = libcamera::utils::alignUp(size.width * config.bpp / 8, 256);
+ 
+@@ -687,7 +701,8 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	eglImageIn = getCachedInputFrameBuffer(input, inMapped, inDmaSyncer);
+ 	if (!eglImageIn)
+ 		return -ENOMEM;
+-	eglImageOut = getCachedOutputFrameBuffer(output);
++	eglImageOut = outputIsNv12_ ? nv12IntermediateImage_.get()
++				    : getCachedOutputFrameBuffer(output);
+ 	if (!eglImageOut)
+ 		return -ENOMEM;
+ 
+@@ -723,6 +738,62 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	return 0;
+ }
+ 
++bool DebayerEGL::convertRgbaToNv12(FrameBuffer *output)
++{
++	const unsigned int width = outputSize_.width;
++	const unsigned int height = outputSize_.height;
++	const unsigned int yLength = outputConfig_.stride * height;
++	const unsigned int uvLength = outputConfig_.stride * height / 2;
++
++	if (!outputIsNv12_ || width % 2 || height % 2 ||
++	    rgbaBuffer_.size() < width * height * 4)
++		return false;
++
++	glPixelStorei(GL_PACK_ALIGNMENT, 4);
++	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
++		     rgbaBuffer_.data());
++	if (glGetError() != GL_NO_ERROR) {
++		LOG(eGL, Error) << "Reading GPU NV12 intermediate failed";
++		return false;
++	}
++
++	std::vector<DmaSyncer> outputSyncers;
++	for (const FrameBuffer::Plane &plane : output->planes())
++		outputSyncers.emplace_back(plane.fd, DmaSyncer::SyncType::Write);
++
++	MappedFrameBuffer out(output, MappedFrameBuffer::MapFlag::Write);
++	if (!out.isValid() || out.planes().empty()) {
++		LOG(Debayer, Error) << "mmap-ing NV12 output buffer failed";
++		return false;
++	}
++
++	uint8_t *yPlane;
++	uint8_t *uvPlane;
++	if (out.planes().size() == 1) {
++		if (out.planes()[0].size() < yLength + uvLength)
++			return false;
++		yPlane = out.planes()[0].data();
++		uvPlane = yPlane + yLength;
++	} else {
++		if (out.planes()[0].size() < yLength ||
++		    out.planes()[1].size() < uvLength)
++			return false;
++		yPlane = out.planes()[0].data();
++		uvPlane = out.planes()[1].data();
++	}
++
++	int ret = libyuv::ABGRToNV12(rgbaBuffer_.data(), width * 4,
++				      yPlane, outputConfig_.stride,
++				      uvPlane, outputConfig_.stride,
++				      width, height);
++	if (ret) {
++		LOG(Debayer, Error) << "libyuv RGBA to NV12 conversion failed";
++		return false;
++	}
++
++	return true;
++}
++
+ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
+ {
+ 	bench_.startFrame();
+@@ -745,8 +816,21 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 		LOG(Debayer, Error) << "debayerGPU failed";
+ 		goto error;
+ 	}
++	if (outputIsNv12_ && !convertRgbaToNv12(output)) {
++		LOG(Debayer, Error) << "GPU RGBA to NV12 conversion failed";
++		goto error;
++	}
+ 
+-	metadata.planes()[0].bytesused = output->planes()[0].length;
++	if (outputIsNv12_) {
++		if (metadata.planes().size() == 1)
++			metadata.planes()[0].bytesused = outputConfig_.frameSize;
++		else {
++			metadata.planes()[0].bytesused = outputConfig_.stride * outputSize_.height;
++			metadata.planes()[1].bytesused = outputConfig_.stride * outputSize_.height / 2;
++		}
++	} else {
++		metadata.planes()[0].bytesused = output->planes()[0].length;
++	}
+ 
+ 	/* Calculate stats for the whole frame */
+ 	if (frame % SwStatsCpu::kStatPerNumFrames) {
+@@ -791,9 +875,11 @@ int DebayerEGL::start()
+ 
+ 	LOG(Debayer, Debug) << "Available fragment shader texture units " << maxTextureImageUnits;
+ 
+-	if (initBayerShaders(inputPixelFormat_, outputPixelFormat_))
++	PixelFormat gpuOutputFormat = outputIsNv12_ ? formats::ABGR8888
++					       : outputPixelFormat_;
++	if (initBayerShaders(inputPixelFormat_, gpuOutputFormat))
+ 		return -EINVAL;
+-	if (initScaleShaders(outputPixelFormat_))
++	if (initScaleShaders(gpuOutputFormat))
+ 		return -EINVAL;
+ 
+ 	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
+@@ -803,6 +889,14 @@ int DebayerEGL::start()
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+ 
++	if (outputIsNv12_) {
++		nv12IntermediateImage_ = std::make_unique<eGLImage>(
++			GL_RGBA, outputSize_.width, outputSize_.height,
++			outputSize_.width * 4, GL_TEXTURE1, 1);
++		egl_.createOutputTexture2D(*nv12IntermediateImage_);
++		rgbaBuffer_.resize(outputSize_.width * outputSize_.height * 4);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -811,6 +905,8 @@ void DebayerEGL::stop()
+ 	eglImageOutCache_.clear();
+ 	eglImageInCache_.clear();
+ 	intermediateImage_.reset();
++	nv12IntermediateImage_.reset();
++	rgbaBuffer_.clear();
+ 
+ 	if (programId_)
+ 		glDeleteProgram(programId_);
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index 2d632a7..8756e97 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -71,6 +71,7 @@ private:
+ 	void setScaleShaderVariableValues(eGLImage &eGLImageIn,
+ 					  const DebayerParams &params);
+ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
++	bool convertRgbaToNv12(FrameBuffer *output);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+ 	eGLImage *getCachedOutputFrameBuffer(FrameBuffer *output);
+@@ -85,8 +86,11 @@ private:
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageInCache_;
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageOutCache_;
+ 	std::unique_ptr<eGLImage> intermediateImage_;
++	std::unique_ptr<eGLImage> nv12IntermediateImage_;
++	std::vector<uint8_t> rgbaBuffer_;
+ 	unsigned int inputBufferCount_;
+ 	unsigned int outputBufferCount_;
++	bool outputIsNv12_ = false;
+ 
+ 	/* Shader parameters */
+ 	float firstRed_x_;
+diff --git a/src/libcamera/software_isp/meson.build b/src/libcamera/software_isp/meson.build
+index 58625d3..30bb5be 100644
+--- a/src/libcamera/software_isp/meson.build
++++ b/src/libcamera/software_isp/meson.build
+@@ -9,8 +9,15 @@ if not softisp_enabled
+     subdir_done()
+ endif
+ 
+-libegl = dependency('egl', required : get_option('softisp-gpu'))
+-libglesv2 = dependency('glesv2', required : get_option('softisp-gpu'))
++if get_option('android').allowed()
++    # Android's NDK exposes EGL/GLES as sysroot libraries rather than
++    # pkg-config modules.
++    libegl = cc.find_library('EGL', required : get_option('softisp-gpu'))
++    libglesv2 = cc.find_library('GLESv2', required : get_option('softisp-gpu'))
++else
++    libegl = dependency('egl', required : get_option('softisp-gpu'))
++    libglesv2 = dependency('glesv2', required : get_option('softisp-gpu'))
++endif
+ mesa_works = cc.check_header('EGL/egl.h',
+                              required : get_option('softisp-gpu'),
+                              dependencies : libegl)

@@ -10,7 +10,8 @@ usage() {
 		'  WAYDROID_DEPS_PREFIX   ARMv7 Android static dependency prefix' \
 		'' \
 		'Optional environment:' \
-		'  ANDROID_API            Android API level (default: 33)'
+		'  ANDROID_API            Android API level (default: 33)' \
+		'  WAYDROID_SOFTISP_GPU   Meson softisp-gpu mode (default: auto)'
 }
 
 if [ "$#" -ne 3 ]; then
@@ -22,6 +23,7 @@ source_dir=$1
 build_dir=$2
 stage_dir=$3
 android_api=${ANDROID_API:-33}
+softisp_gpu=${WAYDROID_SOFTISP_GPU:-auto}
 ndk_root=${ANDROID_NDK_ROOT:-}
 deps_prefix=${WAYDROID_DEPS_PREFIX:-}
 
@@ -35,6 +37,16 @@ case "$android_api" in
 		printf 'ANDROID_API must be a positive integer: %s\n' "$android_api" >&2
 		exit 2
 		;;
+esac
+
+case "$softisp_gpu" in
+enabled|disabled|auto)
+	;;
+*)
+	printf 'WAYDROID_SOFTISP_GPU must be enabled, disabled or auto: %s\n' \
+		"$softisp_gpu" >&2
+	exit 2
+	;;
 esac
 
 if [ ! -f "$source_dir/meson.build" ] || \
@@ -144,7 +156,7 @@ meson setup "$build_dir" "$source_dir" \
 	-Dlc-compliance=disabled \
 	-Dpycamera=disabled \
 	-Dqcam=disabled \
-	-Dsoftisp-gpu=disabled \
+	-Dsoftisp-gpu="$softisp_gpu" \
 	-Dtest=false \
 	-Dtracing=disabled \
 	-Dudev=disabled \
@@ -159,6 +171,8 @@ install -Dm0644 "$stage_dir/vendor/lib/libcamera-hal.so" \
 install -Dm0755 "$libcxx" "$stage_dir/vendor/lib/libc++_shared.so"
 install -Dm0644 "$project_dir/config/waydroid/camera_hal.yaml" \
 	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml"
+install -Dm0644 "$project_dir/config/waydroid/configuration.yaml" \
+	"$stage_dir/vendor/etc/libcamera/configuration.yaml"
 for tuning in imx371.yaml imx376.yaml imx519.yaml; do
 	install -Dm0644 "$project_dir/config/libcamera/simple/$tuning" \
 		"$stage_dir/vendor/share/libcamera/ipa/simple/$tuning"
@@ -171,4 +185,10 @@ sha256sum \
 	"$stage_dir/vendor/lib/libc++_shared.so" \
 	"$stage_dir/vendor/lib/libcamera/ipa/ipa_soft_simple.so" \
 	"$stage_dir/vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign" \
-	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml"
+	"$stage_dir/vendor/libexec/libcamera/soft_ipa_proxy" \
+	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml" \
+	"$stage_dir/vendor/etc/libcamera/configuration.yaml" \
+	"$stage_dir/vendor/share/libcamera/ipa/simple/imx371.yaml" \
+	"$stage_dir/vendor/share/libcamera/ipa/simple/imx376.yaml" \
+	"$stage_dir/vendor/share/libcamera/ipa/simple/imx519.yaml" \
+	"$stage_dir/vendor/share/libcamera/ipa/simple/uncalibrated.yaml"

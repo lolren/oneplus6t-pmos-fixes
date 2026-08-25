@@ -1,0 +1,227 @@
+From deaa218ec4252899d769cbfade665ffbea108c29 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 17:24:21 +0100
+Subject: [PATCH 4/4] android: make Waydroid buffers and JPEG output robust
+
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index c20e11f..f425167 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -1231,6 +1231,10 @@ int CameraDevice::processCaptureRequest(camera3_capture_request_t *camera3Reques
+ 		 * for this stream.
+ 		 */
+ 		FrameBuffer *frameBuffer = cameraStream->getBuffer();
++		if (!frameBuffer) {
++			LOG(HAL, Error) << "Failed to allocate mapped source buffer";
++			return -ENOMEM;
++		}
+ 		buffer.internalBuffer = frameBuffer;
+ 
+ 		descriptor->request_->addBuffer(sourceStream->stream(),
+diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+index 7da01dc..b5b7ead 100644
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -224,6 +224,11 @@ FrameBuffer *CameraStream::getBuffer()
+ 		auto frameBuffer = allocator_->allocate(HAL_PIXEL_FORMAT_YCBCR_420_888,
+ 							configuration().size,
+ 							camera3Stream_->usage);
++		if (!frameBuffer) {
++			LOG(HAL, Error) << "Failed to allocate internal stream buffer";
++			return nullptr;
++		}
++
+ 		allocatedBuffers_.push_back(std::move(frameBuffer));
+ 		buffers_.emplace_back(allocatedBuffers_.back().get());
+ 	}
+diff --git a/src/android/mm/generic_camera_buffer.cpp b/src/android/mm/generic_camera_buffer.cpp
+index f72cda7..ecb461e 100644
+--- a/src/android/mm/generic_camera_buffer.cpp
++++ b/src/android/mm/generic_camera_buffer.cpp
+@@ -54,6 +54,8 @@ private:
+ 	void map();
+ 
+ 	int flags_;
++	/* Logical width of an Android BLOB stream, in bytes. */
++	size_t logicalSize_;
+ 	size_t totalLength_;
+ 	bool mapped_;
+ 	std::vector<int> planeFds_;
+@@ -65,7 +67,7 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+ 			       buffer_handle_t camera3Buffer,
+ 			       PixelFormat pixelFormat,
+ 			       const Size &size, int flags)
+-	: flags_(flags), totalLength_(0), mapped_(false)
++	: flags_(flags), logicalSize_(size.width), totalLength_(0), mapped_(false)
+ {
+ 	error_ = 0;
+ 
+@@ -90,6 +92,14 @@ CameraBuffer::Private::Private([[maybe_unused]] CameraBuffer *cameraBuffer,
+ 	 */
+ 	if (const auto *minigbm =
+ 		    android::minigbmBufferHandle(camera3Buffer)) {
++		/*
++		 * For BLOB streams minigbm stores the byte-sized logical width in
++		 * the handle. The camera3 stream width itself is the JPEG pixel
++		 * width, so prefer the gralloc value when it is available.
++		 */
++		if (minigbm->width)
++			logicalSize_ = minigbm->width;
++
+ 		planeInfo_.reserve(minigbm->numPlanes);
+ 		planeFds_.reserve(minigbm->numPlanes);
+ 		mapLengths_.reserve(minigbm->numPlanes);
+@@ -229,7 +239,13 @@ unsigned int CameraBuffer::Private::size(unsigned int plane) const
+ 
+ size_t CameraBuffer::Private::jpegBufferSize(size_t maxJpegBufferSize) const
+ {
+-	return std::min(totalLength_, maxJpegBufferSize);
++	/*
++	 * Android's camera3 BLOB stream exposes its logical width in bytes to the
++	 * framework. minigbm may map a larger, page-aligned dmabuf and report that
++	 * allocation through totalSize, but bytes beyond the logical BLOB are not
++	 * part of the HIDL payload. Keep the footer at the end of that payload.
++	 */
++	return std::min(logicalSize_, maxJpegBufferSize);
+ }
+ 
+ void CameraBuffer::Private::map()
+diff --git a/src/android/mm/generic_frame_buffer_allocator.cpp b/src/android/mm/generic_frame_buffer_allocator.cpp
+index 48ab90c..06938fc 100644
+--- a/src/android/mm/generic_frame_buffer_allocator.cpp
++++ b/src/android/mm/generic_frame_buffer_allocator.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include "libcamera/internal/formats.h"
+ #include "libcamera/internal/framebuffer.h"
++#include "libcamera/internal/dma_buf_allocator.h"
+ 
+ #include <hardware/camera3.h>
+ #include <hardware/gralloc.h>
+@@ -75,7 +76,8 @@ public:
+ 	Private(CameraDevice *const cameraDevice)
+ 		: cameraDevice_(cameraDevice),
+ 		  hardwareModule_(nullptr),
+-		  allocDevice_(nullptr)
++		  allocDevice_(nullptr),
++		  grallocUnavailable_(false)
+ 	{
+ 		int ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
+ 					&hardwareModule_);
+@@ -87,11 +89,15 @@ public:
+ 
+ 	std::unique_ptr<HALFrameBuffer>
+ 	allocate(int halPixelFormat, const libcamera::Size &size, uint32_t usage);
++	std::unique_ptr<HALFrameBuffer>
++	allocateDmaBuf(int halPixelFormat, const libcamera::Size &size);
+ 
+ private:
+ 	const CameraDevice *const cameraDevice_;
+ 	const struct hw_module_t *hardwareModule_;
+ 	struct alloc_device_t *allocDevice_;
++	bool grallocUnavailable_;
++	std::unique_ptr<DmaBufAllocator> dmaBufAllocator_;
+ };
+ 
+ PlatformFrameBufferAllocator::Private::~Private()
+@@ -107,28 +113,35 @@ PlatformFrameBufferAllocator::Private::allocate(int halPixelFormat,
+ 						const libcamera::Size &size,
+ 						uint32_t usage)
+ {
+-	if (!hardwareModule_)
+-		return nullptr;
+-
+-	if (!allocDevice_) {
++	if (hardwareModule_ && !allocDevice_ && !grallocUnavailable_) {
+ 		int ret = gralloc_open(hardwareModule_, &allocDevice_);
+-		if (ret) {
+-			LOG(HAL, Fatal) << "gralloc_open() failed: " << ret;
+-			return nullptr;
++		if (ret || !allocDevice_) {
++			LOG(HAL, Warning)
++				<< "Legacy gralloc allocator unavailable: " << ret
++				<< "; falling back to dma-heap";
++			allocDevice_ = nullptr;
++			grallocUnavailable_ = true;
+ 		}
+ 	}
+ 
++	if (!allocDevice_)
++		return allocateDmaBuf(halPixelFormat, size);
++
+ 	int stride = 0;
+ 	buffer_handle_t handle = nullptr;
+ 	int ret = allocDevice_->alloc(allocDevice_, size.width, size.height,
+ 				      halPixelFormat, usage, &handle, &stride);
+ 	if (ret) {
+-		LOG(HAL, Error) << "failed buffer allocation: " << ret;
+-		return nullptr;
++		LOG(HAL, Warning)
++			<< "Legacy gralloc buffer allocation failed: " << ret
++			<< "; falling back to dma-heap";
++		return allocateDmaBuf(halPixelFormat, size);
+ 	}
+ 	if (!handle) {
+-		LOG(HAL, Fatal) << "invalid buffer_handle_t";
+-		return nullptr;
++		LOG(HAL, Warning)
++			<< "Legacy gralloc returned an invalid buffer handle; "
++				"falling back to dma-heap";
++		return allocateDmaBuf(halPixelFormat, size);
+ 	}
+ 
+ 	/* Prefer the explicit per-plane layout exported by minigbm. */
+@@ -176,4 +189,52 @@ PlatformFrameBufferAllocator::Private::allocate(int halPixelFormat,
+ 		handle);
+ }
+ 
++std::unique_ptr<HALFrameBuffer>
++PlatformFrameBufferAllocator::Private::allocateDmaBuf(
++	int halPixelFormat, const libcamera::Size &size)
++{
++	const libcamera::PixelFormat pixelFormat =
++		cameraDevice_->capabilities()->toPixelFormat(halPixelFormat);
++	const auto &info = PixelFormatInfo::info(pixelFormat);
++	if (!info.isValid()) {
++		LOG(HAL, Error) << "Invalid pixel format for dma-heap allocation: "
++				<< pixelFormat;
++		return nullptr;
++	}
++
++	if (!dmaBufAllocator_) {
++		dmaBufAllocator_ = std::make_unique<DmaBufAllocator>(
++			DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap |
++			DmaBufAllocator::DmaBufAllocatorFlag::SystemHeap);
++		if (!dmaBufAllocator_->isValid()) {
++			LOG(HAL, Error) << "No dma-heap allocator is available";
++			return nullptr;
++		}
++	}
++
++	std::vector<FrameBuffer::Plane> planes(info.numPlanes());
++	size_t frameSize = 0;
++	for (auto [i, plane] : utils::enumerate(planes)) {
++		const unsigned int stride = info.stride(size.width, i, 1u);
++		const size_t planeSize = info.planeSize(size.height, i, stride);
++		plane.offset = frameSize;
++		plane.length = planeSize;
++		frameSize += planeSize;
++	}
++
++	SharedFD fd{ dmaBufAllocator_->alloc("camera-internal", frameSize) };
++	if (!fd.isValid()) {
++		LOG(HAL, Error) << "Failed to allocate " << frameSize
++				<< " bytes from dma-heap";
++		return nullptr;
++	}
++
++	for (FrameBuffer::Plane &plane : planes)
++		plane.fd = fd;
++
++	LOG(HAL, Debug) << "Allocated " << pixelFormat << " " << size
++			<< " internal buffer from dma-heap";
++	return std::make_unique<HALFrameBuffer>(planes, nullptr);
++}
++
+ PUBLIC_FRAME_BUFFER_ALLOCATOR_IMPLEMENTATION

@@ -1,0 +1,12 @@
+---
+version: 1
+configuration:
+  software_isp:
+    # Prefer the validated Mesa EGL path. The libcamera patch still falls
+    # back to CPU processing when Android cannot provide an EGL display.
+    mode: gpu
+    # SDM845 has enough CPU capacity to split the software debayer across
+    # four workers. Keep the defensive cached input copy enabled: CAMSS raw
+    # DMA buffers are not guaranteed to be cheap for repeated CPU reads.
+    copy_input_buffer: true
+    threads: 4

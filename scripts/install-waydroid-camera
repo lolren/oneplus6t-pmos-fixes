@@ -1,0 +1,293 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat >&2 <<'EOF'
+usage:
+  install-waydroid-camera [--dry-run] STAGE_DIR [OVERLAY_DIR]
+  install-waydroid-camera --rollback BACKUP_DIR [OVERLAY_DIR]
+
+STAGE_DIR is the output directory from build-waydroid-camera. The default
+overlay is /var/lib/waydroid/overlay. Installation creates a dated backup
+under /var/lib/waydroid/backups (or WAYDROID_CAMERA_BACKUP_ROOT).
+EOF
+}
+
+project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+config_dir=${WAYDROID_CAMERA_CONFIG_DIR:-$project_dir/config/waydroid}
+default_overlay=/var/lib/waydroid/overlay
+backup_root=${WAYDROID_CAMERA_BACKUP_ROOT:-/var/lib/waydroid/backups}
+dry_run=0
+
+runtime_files() {
+	cat <<'EOF'
+vendor/lib/hw/camera.libcamera.so
+vendor/lib/libcamera.so
+vendor/lib/libcamera-base.so
+vendor/lib/libc++_shared.so
+vendor/lib/libcamera/ipa/ipa_soft_simple.so
+vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign
+vendor/libexec/libcamera/soft_ipa_proxy
+vendor/etc/libcamera/camera_hal.yaml
+vendor/etc/libcamera/configuration.yaml
+vendor/share/libcamera/ipa/simple/imx371.yaml
+vendor/share/libcamera/ipa/simple/imx376.yaml
+vendor/share/libcamera/ipa/simple/imx519.yaml
+vendor/share/libcamera/ipa/simple/uncalibrated.yaml
+EOF
+}
+
+overlay_targets() {
+	runtime_files
+	printf '%s\n' system/etc/init/init.zz-oneplus6t-camera.rc
+}
+
+install_mode_for_target() {
+	case "$1" in
+		vendor/libexec/*) printf '%s\n' 0755 ;;
+		*) printf '%s\n' 0644 ;;
+	esac
+}
+
+fail_if_broad_path() {
+	case "$1" in
+		''|/|/var|/var/lib|/var/lib/waydroid)
+			printf 'Refusing unsafe path: %s\n' "$1" >&2
+			exit 1
+			;;
+	esac
+}
+
+require_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		printf '%s\n' 'This operation must run as root.' >&2
+		exit 1
+	fi
+}
+
+resolve_video_gid() {
+	if [ -n "${VIDEO_GID:-}" ]; then
+		printf '%s\n' "$VIDEO_GID"
+		return
+	fi
+	if command -v getent >/dev/null 2>&1; then
+		gid=$(getent group video 2>/dev/null | awk -F: 'NR == 1 { print $3 }' || true)
+		if [ -n "$gid" ]; then
+			printf '%s\n' "$gid"
+			return
+		fi
+	fi
+	awk -F: '$1 == "video" { print $3; exit }' /etc/group
+}
+
+validate_video_gid() {
+	case "$1" in
+		''|*[!0-9]*)
+			printf 'VIDEO_GID must be numeric: %s\n' "$1" >&2
+			exit 1
+			;;
+	esac
+}
+
+validate_overlay() {
+	fail_if_broad_path "$1"
+	if [ ! -d "$1" ]; then
+		printf 'Overlay directory does not exist: %s\n' "$1" >&2
+		exit 1
+	fi
+}
+
+validate_stage() {
+	if [ ! -d "$1" ]; then
+		printf 'Stage directory does not exist: %s\n' "$1" >&2
+		exit 1
+	fi
+	missing=0
+	while IFS= read -r target; do
+		if [ ! -f "$1/$target" ]; then
+			printf 'Missing runtime file: %s\n' "$1/$target" >&2
+			missing=1
+		fi
+	done <<EOF
+$(runtime_files)
+EOF
+	if [ "$missing" -ne 0 ]; then
+		exit 1
+	fi
+}
+
+render_init() {
+	template=$config_dir/init.zz-oneplus6t-camera.rc.in
+	if [ ! -f "$template" ]; then
+		printf 'Missing provider template: %s\n' "$template" >&2
+		exit 1
+	fi
+	video_gid=$(resolve_video_gid)
+	validate_video_gid "$video_gid"
+	sed "s/@VIDEO_GID@/$video_gid/g" "$template" > "$1"
+	if grep -q '@VIDEO_GID@' "$1"; then
+		printf 'Provider template still contains @VIDEO_GID@\n' >&2
+		exit 1
+	fi
+}
+
+copy_file() {
+	source=$1
+	destination=$2
+	mode=$3
+	if [ -L "$destination" ] || [ -d "$destination" ]; then
+		printf 'Refusing to replace non-regular target: %s\n' "$destination" >&2
+		exit 1
+	fi
+	install -D -m "$mode" "$source" "$destination"
+}
+
+create_backup() {
+	overlay_dir=$1
+	backup_dir=$2
+	mkdir -p "$backup_dir/files"
+	: > "$backup_dir/presence.tsv"
+	while IFS= read -r target; do
+		source=$overlay_dir/$target
+		if [ -e "$source" ] || [ -L "$source" ]; then
+			if [ -L "$source" ] || [ ! -f "$source" ]; then
+				printf 'Refusing to back up non-regular target: %s\n' "$source" >&2
+				exit 1
+			fi
+			mkdir -p "$backup_dir/files/$(dirname "$target")"
+			cp -p "$source" "$backup_dir/files/$target"
+			printf 'present\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		else
+			printf 'absent\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		fi
+	done <<EOF
+$(overlay_targets)
+EOF
+}
+
+write_installed_manifest() {
+	overlay_dir=$1
+	backup_dir=$2
+	(
+		cd "$overlay_dir"
+		while IFS= read -r target; do
+			sha256sum "$target"
+		done <<EOF
+$(overlay_targets)
+EOF
+	) > "$backup_dir/installed.sha256"
+}
+
+do_install() {
+	stage_dir=$1
+	overlay_dir=$2
+	validate_stage "$stage_dir"
+	validate_overlay "$overlay_dir"
+	tmp_dir=$(mktemp -d)
+	trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+	render_init "$tmp_dir/init.zz-oneplus6t-camera.rc"
+
+	backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+	backup_dir=$backup_root/camera-$backup_stamp-$$
+	if [ "$dry_run" -eq 1 ]; then
+		printf 'dry-run: would back up to %s\n' "$backup_dir"
+		printf 'dry-run: would install %s runtime files plus the provider override\n' \
+			"$(runtime_files | wc -l | tr -d ' ')"
+		return
+	fi
+
+	require_root
+	fail_if_broad_path "$backup_root"
+	if [ -e "$backup_dir" ]; then
+		printf 'Refusing to overwrite backup: %s\n' "$backup_dir" >&2
+		exit 1
+	fi
+	create_backup "$overlay_dir" "$backup_dir"
+	printf 'backup: %s\n' "$backup_dir"
+	while IFS= read -r target; do
+		copy_file "$stage_dir/$target" "$overlay_dir/$target" \
+			"$(install_mode_for_target "$target")"
+	done <<EOF
+$(runtime_files)
+EOF
+	copy_file "$tmp_dir/init.zz-oneplus6t-camera.rc" \
+		"$overlay_dir/system/etc/init/init.zz-oneplus6t-camera.rc" 0644
+	write_installed_manifest "$overlay_dir" "$backup_dir"
+	cat "$backup_dir/installed.sha256"
+}
+
+do_rollback() {
+	backup_dir=$1
+	overlay_dir=$2
+	require_root
+	validate_overlay "$overlay_dir"
+	if [ ! -f "$backup_dir/presence.tsv" ]; then
+		printf 'Invalid camera backup: %s\n' "$backup_dir" >&2
+		exit 1
+	fi
+	tab=$(printf '\t')
+	while IFS="$tab" read -r state target; do
+		case "$target" in
+			''|/*|*..*)
+				printf 'Invalid backup target: %s\n' "$target" >&2
+				exit 1
+				;;
+		esac
+		case "$state" in
+			present)
+				if [ ! -f "$backup_dir/files/$target" ]; then
+					printf 'Backup file is missing: %s\n' "$backup_dir/files/$target" >&2
+					exit 1
+				fi
+				copy_file "$backup_dir/files/$target" "$overlay_dir/$target" \
+					"$(install_mode_for_target "$target")"
+				;;
+			absent)
+				if [ -d "$overlay_dir/$target" ]; then
+					printf 'Refusing to remove directory target: %s\n' "$overlay_dir/$target" >&2
+					exit 1
+				fi
+				rm -f "$overlay_dir/$target"
+				;;
+			*)
+				printf 'Invalid backup record: %s %s\n' "$state" "$target" >&2
+				exit 1
+				;;
+		esac
+	done < "$backup_dir/presence.tsv"
+	printf 'rolled back: %s\n' "$backup_dir"
+}
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage
+	exit 2
+fi
+
+if [ "$1" = '--dry-run' ]; then
+	dry_run=1
+	shift
+fi
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage
+	exit 2
+fi
+
+if [ "$1" = '--rollback' ]; then
+	if [ "$dry_run" -eq 1 ] || [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+		usage
+		exit 2
+	fi
+	rollback_dir=$2
+	overlay_dir=${3:-$default_overlay}
+	do_rollback "$rollback_dir" "$overlay_dir"
+	exit 0
+fi
+
+if [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; then
+	usage
+	exit 2
+fi
+stage_dir=$1
+overlay_dir=${2:-$default_overlay}
+do_install "$stage_dir" "$overlay_dir"
