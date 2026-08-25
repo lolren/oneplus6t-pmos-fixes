@@ -25,6 +25,7 @@ separately; see [CAMERA.md](CAMERA.md).
 | Logical JPEG BLOB sizing | Places the Camera3 JPEG footer at the logical buffer end expected by Android even when minigbm aligns the physical plane. |
 | Valid low-frame-rate metadata | A camera whose usable mode is below 30 fps remains in Android's stream map instead of causing malformed Camera2 characteristics. |
 | Variable 15–30 fps preview | In low light, applications may allow a frame to grow to about 66.7 ms for more exposure; a fixed 30 fps video request stays fixed. |
+| Reduced large preview source | For aspect-preserving 1600-wide private/YUV previews, the software ISP can debayer a supported 1280-wide source and scale into Android's requested buffer; JPEG capture remains full-size. |
 | Exposure compensation | Camera2 -1 to +1 EV requests reach libcamera and the applied value returns in capture results. |
 | Exposure result metadata | Exposure time, sensor sensitivity and frame duration let applications understand what automatic exposure actually selected. |
 | Rear autofocus bridge | Camera2 auto/continuous modes, triggers, states and one metering region reach both physical rear actuators. |
@@ -43,7 +44,8 @@ camera UI by themselves; an Android camera application consumes them.
   transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
-  software-ISP, robust DMA/JPEG and SIGPIPE-safe IPC patches (`0002`–`0005`).
+  software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC and reduced-preview-source
+  patches (`0002`–`0006`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -103,7 +105,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's sixteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the four Android patches in numeric order:
+the six Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -118,14 +120,18 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0002-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0003-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0004-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0005-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0006-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
 mismatch. The reviewed order ends with generic frame duration, generic
 autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion,
-robust buffer/JPEG handling and SIGPIPE-safe IPA socket teardown. The fifth
-patch is deliberately small: it changes only the two libcamera IPC send calls
-that can otherwise deliver SIGPIPE after an IPA peer closes.
+robust buffer/JPEG handling, SIGPIPE-safe IPA socket teardown and the
+aspect-preserving reduced preview source. The fifth patch is deliberately
+small: it changes only the two libcamera IPC send calls that can otherwise
+deliver SIGPIPE after an IPA peer closes. The sixth patch is a performance
+candidate and must be accepted on the phone before it is treated as a runtime
+baseline.
 
 ## Build a runtime bundle
 
@@ -307,6 +313,41 @@ The probe passed YUV, private preview, JPEG, EV and sensor-timing checks for
 all three cameras. Run it from a clean camera state: if Aperture still owns
 the CAMSS media device, the probe can report a transient busy link rather than
 a camera regression.
+
+## Large-preview performance candidate
+
+Android applications commonly request a 1600x1200 private/YUV preview even
+when the display shows a smaller image. The software ISP still has to debayer
+that complete source frame. Patch `0006` selects 1280x960 for a 4:3 request or
+1280x720 for a 16:9 request when the corresponding source is smaller and
+supported. The YUV post-processor then performs ratio-preserving scaling into
+the original Android buffer. JPEG streams are not reduced, so still capture
+keeps its requested resolution.
+
+This is a performance trade-off, not an image-quality claim. It compiles and
+applies cleanly, but the phone was not healthy enough for runtime acceptance:
+the existing Waydroid rootfs remained mounted and storage I/O was stuck in an
+uninterruptible wait. Do not install the candidate until a physical reboot has
+cleared that state.
+
+The ARMv7 GPU candidate was built with all 197 compile targets and the final
+install/signature pass:
+
+```text
+patch 0006: a4f892e19efdf6fc3fac89518689d63eb2ba1bcf4ee7b68a069119184b06b987
+waydroid-camera-preview-r35-gpu.tar.gz: 617a3bfc56fa41becaae4c14d75aca55ab4914ef745e75449f83448ee749f9ea
+waydroid-camera-preview-r35-gpu.sha256: f5dd6bfe15f26ff8750fdd8ffc2a22061514339cf3527735f091fb95ba14c186
+camera.libcamera.so: cff49eaebd2bed49f52197dafd417809fcb06936810e392b5c161a196fbb04eb
+libcamera.so: fe9cb65b022b343d6236e99390114b386077649d40321096c7dc80f61048dca0
+libcamera-base.so: 25582a0706149783c8a768d49f8dea45b05a1c6d7d856cb62ede8a99754356ec
+ipa_soft_simple.so: fe9877e1841f5f4b7debbee72b24a1aa51607f6437ffc1bb5429befb9b846816
+soft_ipa_proxy: 91a1d0f276586fc46099bb0c44cfd0f5355ea03a10df2addc72b563c64a982be
+```
+
+After reboot, verify there are no `/var/lib/waydroid/rootfs` mounts, run the
+installer dry-run, install this exact bundle, then repeat the Camera2 probe
+and compare preview frame timing against the r35 baseline. Roll back if
+preview buffers, JPEG capture or provider stability regress.
 
 ## Rollback
 

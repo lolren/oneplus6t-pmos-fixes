@@ -1,0 +1,199 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 20:04:01 +0100
+Subject: [PATCH 6/6] android: reduce large preview source modes
+
+Waydroid commonly requests 1600x1200 private/YUV preview buffers even when
+the UI displays a smaller image.  Use a supported, aspect-ratio-preserving
+1280-wide source mode and scale into Android's requested buffer, while keeping
+JPEG capture at its requested size.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index f425167..86a9670 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstdint>
+ #include <fstream>
+ #include <set>
+ #include <sys/mman.h>
+@@ -41,6 +42,42 @@ LOG_DECLARE_CATEGORY(HAL)
+ 
+ namespace {
+ 
++/*
++ * The software ISP has to debayer every preview frame before Android can
++ * display it.  Waydroid commonly asks for a 1600x1200 private/YUV stream even
++ * though the UI only displays a much smaller image.  Keep the source stream at
++ * a supported, aspect-ratio-preserving 1280-wide mode and scale the result
++ * into Android's requested buffer.  JPEG streams are deliberately excluded
++ * here and retain their requested source size.
++ */
++Size reducedPreviewSourceSize(const camera3_stream_t *stream,
++				      const Size &requested)
++{
++	if (stream->format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
++	    stream->format != HAL_PIXEL_FORMAT_YCBCR_420_888)
++		return requested;
++
++	const Size candidates[] = {
++		{ 1280, 960 },
++		{ 1280, 720 },
++	};
++
++	for (const Size &candidate : candidates) {
++		if (candidate.width >= requested.width ||
++		    candidate.height >= requested.height)
++			continue;
++
++		/* Do not change the field of view or introduce non-uniform scaling. */
++		if (static_cast<uint64_t>(candidate.width) * requested.height !=
++		    static_cast<uint64_t>(candidate.height) * requested.width)
++			continue;
++
++		return candidate;
++	}
++
++	return requested;
++}
++
+ /*
+  * \struct Camera3StreamConfig
+  * \brief Data to store StreamConfiguration associated with camera3_stream(s)
+@@ -601,6 +638,7 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 	for (unsigned int i = 0; i < stream_list->num_streams; ++i) {
+ 		camera3_stream_t *stream = stream_list->streams[i];
+ 		Size size(stream->width, stream->height);
++		Size sourceSize = reducedPreviewSourceSize(stream, size);
+ 
+ 		PixelFormat format = capabilities_.toPixelFormat(stream->format);
+ 
+@@ -660,8 +698,8 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		 */
+ 		auto iter = std::find_if(
+ 			streamConfigs.begin(), streamConfigs.end(),
+-			[&size, &format](const Camera3StreamConfig &streamConfig) {
+-				return streamConfig.config.size == size &&
++			[&sourceSize, &format](const Camera3StreamConfig &streamConfig) {
++				return streamConfig.config.size == sourceSize &&
+ 				       streamConfig.config.pixelFormat == format;
+ 			});
+ 		if (iter != streamConfigs.end()) {
+@@ -673,8 +711,11 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		}
+ 
+ 		Camera3StreamConfig streamConfig;
+-		streamConfig.streams = { { stream, CameraStream::Type::Direct } };
+-		streamConfig.config.size = size;
++		const CameraStream::Type type = sourceSize == size
++			? CameraStream::Type::Direct
++			: CameraStream::Type::Internal;
++		streamConfig.streams = { { stream, type } };
++		streamConfig.config.size = sourceSize;
+ 		streamConfig.config.pixelFormat = format;
+ 		streamConfigs.push_back(std::move(streamConfig));
+ 	}
+@@ -761,7 +802,8 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 			 * be used when constructing the subsequent mapped
+ 			 * streams.
+ 			 */
+-			if (stream.type == CameraStream::Type::Direct)
++			if (stream.type == CameraStream::Type::Direct ||
++			    stream.type == CameraStream::Type::Internal)
+ 				sourceStream = &streams_.back();
+ 		}
+ 	}
+diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+index b5b7ead..af5741f 100644
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -87,10 +87,10 @@ int CameraStream::configure()
+ 	if (type_ == Type::Internal || type_ == Type::Mapped) {
+ 		const PixelFormat outFormat =
+ 			cameraDevice_->capabilities()->toPixelFormat(camera3Stream_->format);
+-		StreamConfiguration output = configuration();
+-		output.pixelFormat = outFormat;
+-		output.size.width = camera3Stream_->width;
+-		output.size.height = camera3Stream_->height;
++		output_ = configuration();
++		output_.pixelFormat = outFormat;
++		output_.size.width = camera3Stream_->width;
++		output_.size.height = camera3Stream_->height;
+ 
+ 		switch (outFormat) {
+ 		case formats::NV12:
+@@ -106,7 +106,7 @@ int CameraStream::configure()
+ 			return -EINVAL;
+ 		}
+ 
+-		int ret = postProcessor_->configure(configuration(), output);
++		int ret = postProcessor_->configure(configuration(), output_);
+ 		if (ret)
+ 			return ret;
+ 
+@@ -182,9 +182,8 @@ int CameraStream::process(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
+ 		streamBuffer->fence.reset();
+ 	}
+ 
+-	const StreamConfiguration &output = configuration();
+ 	streamBuffer->dstBuffer = std::make_unique<CameraBuffer>(
+-		*streamBuffer->camera3Buffer, output.pixelFormat, output.size,
++		*streamBuffer->camera3Buffer, output_.pixelFormat, output_.size,
+ 		PROT_READ | PROT_WRITE);
+ 	if (!streamBuffer->dstBuffer->isValid()) {
+ 		LOG(HAL, Error) << "Failed to create destination buffer";
+diff --git a/src/android/camera_stream.h b/src/android/camera_stream.h
+index 395552d..e4c03ea 100644
+--- a/src/android/camera_stream.h
++++ b/src/android/camera_stream.h
+@@ -172,6 +172,8 @@ private:
+ 	camera3_stream_t *camera3Stream_;
+ 	CameraStream *const sourceStream_;
+ 	const unsigned int index_;
++	/* Requested Android output, which can differ from the source config. */
++	libcamera::StreamConfiguration output_;
+ 
+ 	std::unique_ptr<PlatformFrameBufferAllocator> allocator_;
+ 	std::vector<std::unique_ptr<libcamera::FrameBuffer>> allocatedBuffers_;
+diff --git a/src/android/yuv/post_processor_yuv.cpp b/src/android/yuv/post_processor_yuv.cpp
+index c998807..b6d1b67 100644
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -7,6 +7,8 @@
+ 
+ #include "post_processor_yuv.h"
+ 
++#include <cstdint>
++
+ #include <libyuv/scale.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -33,10 +35,19 @@ int PostProcessorYuv::configure(const StreamConfiguration &inCfg,
+ 	}
+ 
+ 	if (inCfg.size < outCfg.size) {
+-		LOG(YUV, Error) << "Up-scaling is not supported"
+-				<< " (from " << inCfg.size
+-				<< " to " << outCfg.size << ")";
+-		return -EINVAL;
++		/*
++		 * The Android HAL may intentionally use a smaller source preview
++		 * mode and scale it into the framework's requested buffer.  Only
++		 * permit ratio-preserving up-scaling so the field of view remains
++		 * correct; arbitrary aspect-ratio changes are still rejected.
++		 */
++		if (static_cast<uint64_t>(inCfg.size.width) * outCfg.size.height !=
++		    static_cast<uint64_t>(inCfg.size.height) * outCfg.size.width) {
++			LOG(YUV, Error) << "Up-scaling changes aspect ratio"
++					<< " (from " << inCfg.size
++					<< " to " << outCfg.size << ")";
++			return -EINVAL;
++		}
+ 	}
+ 
+ 	if (inCfg.pixelFormat != formats::NV12) {
