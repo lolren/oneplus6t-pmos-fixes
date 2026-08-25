@@ -67,8 +67,6 @@ print_file() {
 }
 
 printf 'report=oneplus6t-waydroid-health\n'
-printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
 printf 'rootfs=%s\n' "$rootfs"
 
 printf '\n[proc]\n'
@@ -116,6 +114,12 @@ else
 	printf '%s\n' 'overlay_precondition=blocked-i/o-pressure'
 fi
 printf '%s\n' 'note=do not install or roll back a Waydroid overlay until rootfs_mounts=0 and I/O pressure is no longer blocking storage'
+
+# Keep the critical proc/mount assessment above metadata that may itself block
+# on a damaged or saturated root filesystem. The report remains useful when a
+# remote command can emit the first part but cannot finish date/uname.
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
 
 if [ "$include_status" = yes ]; then
 	printf '\n[waydroid-status]\n'
