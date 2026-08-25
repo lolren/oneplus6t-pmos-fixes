@@ -316,8 +316,11 @@ vendor GNSS HAL.
 - Reboot persistence: still to be recorded in the validation log.
 - Location: native GNSS and Android bridge acceptance are pending device
   recovery; no static Reading/Stroud coordinate has been hard-coded.
-- Audio routing, display and power improvements are not included in this
-  camera revision.
+- Battery/power: the read-only `pmos-check-power` report and acceptance
+  sequence are documented in [docs/POWER.md](docs/POWER.md); no unverified
+  governor or suspend tweak has been forced.
+- Full modem-call audio, display-driver and battery-policy acceptance remain
+  separate from this camera revision.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 

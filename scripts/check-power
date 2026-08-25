@@ -1,0 +1,142 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+sysfs_root=${PMOS_POWER_SYSFS_ROOT:-/sys}
+proc_root=${PMOS_POWER_PROC_ROOT:-/proc}
+output=${PMOS_POWER_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--output FILE]
+
+Collect a read-only battery, CPU-policy and suspend-capability report. No
+power profile, governor, charging limit or suspend state is changed.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	output_dir=$(dirname -- "$output")
+	mkdir -p "$output_dir"
+	exec >"$output"
+fi
+
+print_file() {
+	label=$1
+	path=$2
+	if [ -r "$path" ]; then
+		printf '%s=' "$label"
+		tr '\n' ' ' <"$path"
+		printf '\n'
+	else
+		printf '%s=unavailable\n' "$label"
+	fi
+}
+
+section() {
+	printf '\n[%s]\n' "$1"
+}
+
+printf 'report=oneplus6t-power\n'
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'kernel=%s\n' "$(uname -srvm 2>/dev/null || printf unavailable)"
+print_file load_average "$proc_root/loadavg"
+
+section power-supplies
+found_supply=no
+for supply in "$sysfs_root"/class/power_supply/*; do
+	[ -d "$supply" ] || continue
+	found_supply=yes
+	name=${supply##*/}
+	printf 'supply=%s\n' "$name"
+	print_file type "$supply/type"
+	print_file status "$supply/status"
+	print_file online "$supply/online"
+	print_file capacity_percent "$supply/capacity"
+	print_file health "$supply/health"
+	print_file temperature_tenths_c "$supply/temp"
+	print_file voltage_now_uv "$supply/voltage_now"
+	print_file current_now_ua "$supply/current_now"
+	print_file charge_now_uah "$supply/charge_now"
+	print_file charge_full_uah "$supply/charge_full"
+	print_file charge_full_design_uah "$supply/charge_full_design"
+	print_file cycle_count "$supply/cycle_count"
+done
+[ "$found_supply" = yes ] || printf '%s\n' 'supply=none'
+
+section cpu-frequency-policy
+found_policy=no
+for policy in "$sysfs_root"/devices/system/cpu/cpufreq/policy*; do
+	[ -d "$policy" ] || continue
+	found_policy=yes
+	name=${policy##*/}
+	printf 'policy=%s\n' "$name"
+	print_file governor "$policy/scaling_governor"
+	print_file available_governors "$policy/scaling_available_governors"
+	print_file energy_preference "$policy/energy_performance_preference"
+	print_file min_khz "$policy/scaling_min_freq"
+	print_file max_khz "$policy/scaling_max_freq"
+	print_file current_khz "$policy/scaling_cur_freq"
+done
+[ "$found_policy" = yes ] || printf '%s\n' 'policy=none'
+
+section suspend
+print_file supported_states "$sysfs_root/power/state"
+print_file memory_sleep_modes "$sysfs_root/power/mem_sleep"
+print_file wakeup_count "$sysfs_root/power/wakeup_count"
+
+section power-services
+if command -v powerprofilesctl >/dev/null 2>&1; then
+	printf 'powerprofilesctl_get='
+	powerprofilesctl get 2>&1 || true
+	printf 'powerprofilesctl_list=\n'
+	powerprofilesctl list 2>&1 || true
+else
+	printf '%s\n' 'powerprofilesctl=unavailable'
+fi
+if command -v systemctl >/dev/null 2>&1; then
+	printf 'power-profiles-daemon='
+	systemctl is-active power-profiles-daemon.service 2>&1 || true
+	printf 'tlp='
+	systemctl is-active tlp.service 2>&1 || true
+else
+	printf '%s\n' 'systemctl=unavailable'
+fi
+
+section recommendations
+if command -v powerprofilesctl >/dev/null 2>&1 &&
+	[ "$(powerprofilesctl get 2>/dev/null || true)" = performance ]; then
+	printf '%s\n' 'suggestion=consider powerprofilesctl set power-saver when sustained performance is not needed'
+fi
+if [ -r "$sysfs_root/power/mem_sleep" ] &&
+	grep -Eq '\[?deep\]?' "$sysfs_root/power/mem_sleep"; then
+	printf '%s\n' 'suggestion=deep suspend is advertised; validate screen-off/wake and modem reconnect before enabling policy'
+else
+	printf '%s\n' 'suggestion=deep suspend is not confirmed; do not force a sleep mode'
+fi
+printf '%s\n' 'note=report is observational; no power setting was changed'
