@@ -36,6 +36,12 @@ manager does not contain APKs or a private key and does nothing without an
 explicit operation. Install/rollback are simulation-only unless the graphical
 login user passes `--apply`; see `docs/CAMERA_GENERATIONS.md`.
 
+The read-only `pmos-check-location`, `pmos-check-nfc`,
+`pmos-check-power` and `pmos-check-waydroid-health` reports are packaged as
+well. They do not enable radios, change GPS state, poll NFC, modify power
+policy or access a Waydroid overlay; the latter only reports whether stale
+mounts and I/O pressure make an overlay operation unsafe.
+
 Before upstreaming this recipe:
 
 1. replace the local-checkout `builddir` with an immutable release or commit
