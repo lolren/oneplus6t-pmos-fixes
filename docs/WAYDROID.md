@@ -284,6 +284,18 @@ defined preview when the device advertises one, preferring 1600x1200 and then
 against the previous bundle. They measure frames delivered to Camera2, not
 display latency, and are diagnostic fields rather than pass/fail thresholds.
 
+The default `full` profile keeps the complete acceptance coverage. To separate
+preview throughput from the cost of additional Camera2 streams, run the same
+APK with `--es profile preview` for private preview only or
+`--es profile preview-yuv` for private plus YUV, as documented in the probe
+README. A private-only result below the camera application's visible frame
+rate points to provider/software-ISP or Waydroid compositor work; a large drop
+only when YUV/JPEG is added points to multi-stream conversion load. This
+distinction is required before changing the GPU default: the GPU path still
+has to read an RGBA frame back to CPU memory and convert it to Android NV12,
+so enabling EGL is not proof that it will outperform the CPU path on every
+SDM845 image.
+
 The final r35 run on 25 August 2026 verified all three YUV/JPEG/private stream
 sets. Camera 0 reported rear autofocus states `[3, 4]`, camera 2 reported
 `[3, 5]`, and the fixed-focus front camera reported `[0]`. All cameras
@@ -412,6 +424,10 @@ libcamera or IPA in place.
   frame duration.
 - The r35 lower layer has a clean JPEG-footer path in the accepted Aperture
   capture. Broader third-party-app and lifecycle testing is still required.
+- The Android preview path currently has a synchronous RGBA readback followed
+  by NV12 conversion when the implementation-defined buffer is NV12. This is
+  a known performance boundary of the open-source path; use the probe's
+  isolated profiles to measure it before selecting a different build mode.
 - Running the probe while Aperture or another camera client owns CAMSS can
   produce a transient media-link-busy result; stop camera clients and rerun the
   probe before treating it as a regression.

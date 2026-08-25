@@ -79,6 +79,47 @@ they are not a display-latency measurement and do not claim image-quality
 parity. Generated JPEGs remain in the application's private directory. Do not
 add them to Git.
 
+## Performance profiles
+
+The default `full` profile intentionally exercises the complete validation
+load: private preview, YUV analysis, JPEG capture, autofocus and exposure
+checks. That is useful for acceptance, but it is not an apples-to-apples
+preview benchmark because several streams are active at once.
+
+Use the Android activity extra to isolate the preview path:
+
+```sh
+# Private/implementation-defined preview only
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile preview
+
+# Private preview plus YUV analysis, without JPEG
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile preview-yuv
+```
+
+Read `result.txt` after the activity exits. A performance run ends with a
+profile-qualified summary such as:
+
+```text
+PROBE_DONE profile=preview valid=3 total=3
+```
+
+Compare `privateFps` and `privateIntervalMs` between `preview` and
+`preview-yuv`, then compare both with `full`. If `preview` is fast but `full`
+is slow, the extra stream/conversion load is the limiting factor. If `preview`
+is already slow, the bottleneck is in the Camera3 provider, software ISP,
+Waydroid compositor or device mode rather than JPEG validation. These profiles
+measure buffers delivered by Camera2, not the number of frames visible on the
+screen; use a camera-app recording or screen capture for display latency.
+
+The profile extra is diagnostic only. An unknown value safely falls back to
+`full`, and the default command remains the complete acceptance probe.
+
 ## Remove
 
 ```sh

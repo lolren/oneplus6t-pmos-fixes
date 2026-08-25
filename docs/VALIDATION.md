@@ -937,3 +937,37 @@ status=Not charging
 
 This is a one-sample baseline, not battery-life acceptance. Repeat it at idle,
 camera preview, modem activity and screen-off after recovery.
+
+## Waydroid isolated preview probe
+
+Date: 2026-08-25. The Camera2 probe was extended with three explicit profiles:
+the unchanged `full` acceptance run, `preview` for a private/
+implementation-defined stream only, and `preview-yuv` for private preview plus
+YUV without JPEG. The latter two avoid confusing a multi-stream validation
+load with the frame rate a camera application can receive from one preview
+stream. Unknown profile values fall back to `full`.
+
+The updated Java source compiled and packaged successfully with the local
+Android SDK platform 34 and build-tools 36.0.0. The generated debug APK was
+verified by `apksigner`; its hash is intentionally not a release artifact
+because the probe build creates a local debug key when one is not present.
+`make test` also passed, including shell syntax, installer guards, update
+safety and Python checks. Device acceptance is pending physical recovery.
+
+After `rootfs_mounts=0` and `overlay_precondition=pass`, run the profiles in
+order and compare `privateFps`/`privateIntervalMs`:
+
+```sh
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile preview
+waydroid shell cat \
+  /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt
+```
+
+Repeat with `preview-yuv`, then the default full probe. A slow private-only
+result implicates the provider/software ISP, Waydroid compositor or device
+mode; a large drop only after adding YUV/JPEG implicates multi-stream
+conversion pressure. The GPU path still performs a synchronous RGBA readback
+and NV12 conversion, so it must be benchmarked on this phone before the GPU
+configuration is changed or declared faster.

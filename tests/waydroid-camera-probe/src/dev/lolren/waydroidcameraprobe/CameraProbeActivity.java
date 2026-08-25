@@ -39,6 +39,9 @@ import java.util.TreeSet;
 
 public final class CameraProbeActivity extends Activity {
     private static final String TAG = "WaydroidCameraProbe";
+    private static final String PROFILE_FULL = "full";
+    private static final String PROFILE_PREVIEW = "preview";
+    private static final String PROFILE_PREVIEW_YUV = "preview-yuv";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
@@ -50,6 +53,7 @@ public final class CameraProbeActivity extends Activity {
 
     private final List<String> results = new ArrayList<>();
     private final Set<Integer> afStates = new TreeSet<>();
+    private String profile = PROFILE_FULL;
     private HandlerThread cameraThread;
     private Handler handler;
     private CameraManager manager;
@@ -105,6 +109,9 @@ public final class CameraProbeActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+
+        profile = normalizeProfile(getIntent().getStringExtra("profile"));
+        Log.i(TAG, "PROBE_PROFILE " + profile);
 
         cameraThread = new HandlerThread("waydroid-camera-probe");
         cameraThread.start();
@@ -184,15 +191,22 @@ public final class CameraProbeActivity extends Activity {
                 return;
             }
 
-            Size size = chooseProbeSize(map.getOutputSizes(ImageFormat.YUV_420_888));
-            if (size == null) {
-                failCamera(token, id, "no YUV_420_888 output size");
-                return;
+            Size size = null;
+            if (needsYuv()) {
+                size = chooseProbeSize(map.getOutputSizes(ImageFormat.YUV_420_888));
+                if (size == null) {
+                    failCamera(token, id, "no YUV_420_888 output size");
+                    return;
+                }
             }
             Size privateSize = choosePrivateProbeSize(
                     map.getOutputSizes(ImageFormat.PRIVATE), size);
+            if (privateSize == null) {
+                failCamera(token, id, "no PRIVATE output size");
+                return;
+            }
             privateStreamSize = privateSize;
-            if (!containsSize(map.getOutputSizes(ImageFormat.JPEG), size)) {
+            if (needsJpeg() && !containsSize(map.getOutputSizes(ImageFormat.JPEG), size)) {
                 failCamera(token, id, "matching JPEG output size is unavailable");
                 return;
             }
@@ -210,20 +224,25 @@ public final class CameraProbeActivity extends Activity {
                     CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
             exposureStep = characteristics.get(
                     CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
-            if (exposureRange == null || exposureStep == null
+            if (needsFullValidation() && (exposureRange == null || exposureStep == null
                     || exposureRange.getLower() >= 0
                     || exposureRange.getUpper() <= 0
-                    || exposureStep.doubleValue() <= 0.0) {
+                    || exposureStep.doubleValue() <= 0.0)) {
                 failCamera(token, id, "exposure compensation unavailable: range="
                         + exposureRange + " step=" + exposureStep);
                 return;
             }
-            exposureRequests = new int[]{0, exposureRange.getLower(), 0,
-                    exposureRange.getUpper(), 0};
-            exposureMeans = new double[exposureRequests.length];
-            sensorExposureTimes = new long[exposureRequests.length];
-            sensorSensitivities = new int[exposureRequests.length];
-            sensorFrameDurations = new long[exposureRequests.length];
+            if (needsFullValidation()) {
+                exposureRequests = new int[]{0, exposureRange.getLower(), 0,
+                        exposureRange.getUpper(), 0};
+                exposureMeans = new double[exposureRequests.length];
+                sensorExposureTimes = new long[exposureRequests.length];
+                sensorSensitivities = new int[exposureRequests.length];
+                sensorFrameDurations = new long[exposureRequests.length];
+            } else {
+                exposureComplete = true;
+                exposureWarm = true;
+            }
             Range<Integer>[] fpsRanges = characteristics.get(
                     CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             selectedFpsRange = choosePreviewFpsRange(fpsRanges);
@@ -253,15 +272,19 @@ public final class CameraProbeActivity extends Activity {
                     + " sensorExposureRangeNs=" + sensorExposureRange
                     + " sensorSensitivityRange=" + sensorSensitivityRange);
 
-            yuvReader = ImageReader.newInstance(
-                    size.getWidth(), size.getHeight(), ImageFormat.YUV_420_888, 3);
-            jpegReader = ImageReader.newInstance(
-                    size.getWidth(), size.getHeight(), ImageFormat.JPEG, 2);
+            if (needsYuv()) {
+                yuvReader = ImageReader.newInstance(
+                        size.getWidth(), size.getHeight(), ImageFormat.YUV_420_888, 3);
+                yuvReader.setOnImageAvailableListener(r -> onYuvImage(token, id, r), handler);
+            }
+            if (needsJpeg()) {
+                jpegReader = ImageReader.newInstance(
+                        size.getWidth(), size.getHeight(), ImageFormat.JPEG, 2);
+                jpegReader.setOnImageAvailableListener(r -> onJpegImage(token, id, r), handler);
+            }
             privateReader = ImageReader.newInstance(
                     privateSize.getWidth(), privateSize.getHeight(),
                     ImageFormat.PRIVATE, 3);
-            yuvReader.setOnImageAvailableListener(r -> onYuvImage(token, id, r), handler);
-            jpegReader.setOnImageAvailableListener(r -> onJpegImage(token, id, r), handler);
             privateReader.setOnImageAvailableListener(r -> onPrivateImage(token, r), handler);
 
             timeout = () -> failCamera(token, id,
@@ -285,9 +308,13 @@ public final class CameraProbeActivity extends Activity {
                 }
                 camera = opened;
                 try {
-                    opened.createCaptureSession(Arrays.asList(
-                                    privateReader.getSurface(), yuvReader.getSurface(),
-                                    jpegReader.getSurface()),
+                    List<android.view.Surface> surfaces = new ArrayList<>();
+                    surfaces.add(privateReader.getSurface());
+                    if (yuvReader != null)
+                        surfaces.add(yuvReader.getSurface());
+                    if (jpegReader != null)
+                        surfaces.add(jpegReader.getSurface());
+                    opened.createCaptureSession(surfaces,
                             sessionStateCallback(token, id, opened), handler);
                 } catch (Exception e) {
                     failCamera(token, id,
@@ -321,7 +348,8 @@ public final class CameraProbeActivity extends Activity {
                     previewRequest = opened.createCaptureRequest(
                             CameraDevice.TEMPLATE_PREVIEW);
                     previewRequest.addTarget(privateReader.getSurface());
-                    previewRequest.addTarget(yuvReader.getSurface());
+                    if (yuvReader != null)
+                        previewRequest.addTarget(yuvReader.getSurface());
                     applyAutomaticControls(previewRequest, false);
                     configured.setRepeatingRequest(previewRequest.build(),
                             captureCallback(token), handler);
@@ -330,7 +358,8 @@ public final class CameraProbeActivity extends Activity {
                         CaptureRequest.Builder trigger = opened.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
                         trigger.addTarget(privateReader.getSurface());
-                        trigger.addTarget(yuvReader.getSurface());
+                        if (yuvReader != null)
+                            trigger.addTarget(yuvReader.getSurface());
                         applyAutomaticControls(trigger, true);
                         configured.capture(trigger.build(), captureCallback(token), handler);
                     }
@@ -439,6 +468,14 @@ public final class CameraProbeActivity extends Activity {
         try {
             if (!isCurrent(token) || yuvAccepted)
                 return;
+            if (!needsFullValidation()) {
+                if (++frameCount < SETTLE_FRAMES)
+                    return;
+                yuvResult = analyzeYuv(image);
+                yuvAccepted = true;
+                maybeCompleteCamera(token);
+                return;
+            }
             if (!exposureWarm) {
                 warmupFrames++;
                 if ((warmupFrames >= MIN_WARMUP_FRAMES
@@ -618,9 +655,11 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private void maybeCompleteCamera(int token) {
-        if (!isCurrent(token) || !yuvAccepted || !jpegAccepted || !privateAccepted)
+        if (!isCurrent(token) || !privateAccepted
+                || (needsYuv() && !yuvAccepted)
+                || (needsJpeg() && !jpegAccepted))
             return;
-        if (privateFrames < MIN_PRIVATE_TIMING_FRAMES)
+        if (privateTimedFrames < MIN_PRIVATE_TIMING_FRAMES)
             return;
 
         boolean autofocusRequired =
@@ -632,20 +671,35 @@ public final class CameraProbeActivity extends Activity {
             return;
 
         String id = cameraIds[cameraIndex];
-        boolean valid = yuvResult.contains("valid=true")
-                && jpegResult.contains("valid=true") && privateFrames > 0
-                && autofocusTerminal && exposureResult.contains("evValid=true")
-                && exposureMetadata.contains(exposureRequests[0])
-                && exposureMetadata.contains(exposureRequests[1])
-                && exposureMetadata.contains(exposureRequests[3]);
-        String result = String.format(Locale.US,
-                "CAMERA id=%s valid=%s %s %s privateFrames=%d afMode=%d "
-                        + "privateSize=%s %s afStates=%s afRegion=%s "
-                        + "aeMetadata=%s %s",
-                id, valid, yuvResult, jpegResult, privateFrames, selectedAfMode,
-                privateStreamSize, privateTiming(),
-                afStates, focusRegions == null ? "none" : focusRegions[0].toString(),
-                exposureMetadata, exposureResult);
+        boolean valid;
+        String result;
+        if (needsFullValidation()) {
+            valid = yuvResult.contains("valid=true")
+                    && jpegResult.contains("valid=true") && privateFrames > 0
+                    && autofocusTerminal && exposureResult.contains("evValid=true")
+                    && exposureMetadata.contains(exposureRequests[0])
+                    && exposureMetadata.contains(exposureRequests[1])
+                    && exposureMetadata.contains(exposureRequests[3]);
+            result = String.format(Locale.US,
+                    "CAMERA id=%s valid=%s %s %s privateFrames=%d afMode=%d "
+                            + "privateSize=%s %s afStates=%s afRegion=%s "
+                            + "aeMetadata=%s %s",
+                    id, valid, yuvResult, jpegResult, privateFrames, selectedAfMode,
+                    privateStreamSize, privateTiming(),
+                    afStates, focusRegions == null ? "none" : focusRegions[0].toString(),
+                    exposureMetadata, exposureResult);
+        } else {
+            valid = privateAccepted && (!needsYuv() || yuvResult.contains("valid=true"))
+                    && autofocusTerminal;
+            result = String.format(Locale.US,
+                    "CAMERA id=%s valid=%s profile=%s privateFrames=%d afMode=%d "
+                            + "privateSize=%s %s afStates=%s afRegion=%s "
+                            + "yuv=%s",
+                    id, valid, profile, privateFrames, selectedAfMode,
+                    privateStreamSize, privateTiming(), afStates,
+                    focusRegions == null ? "none" : focusRegions[0].toString(),
+                    needsYuv() ? yuvResult : "not-requested");
+        }
         results.add(result);
         Log.i(TAG, result);
         completeCamera(token);
@@ -772,11 +826,13 @@ public final class CameraProbeActivity extends Activity {
 
         int valid = 0;
         for (String result : results) {
-            if (result.startsWith("CAMERA ")
-                    && result.contains(" valid=true yuvSize="))
+            if (result.startsWith("CAMERA ") && result.contains(" valid=true "))
                 valid++;
         }
-        String summary = "PROBE_DONE valid=" + valid + " total=" + cameraIds.length;
+        String summary = needsFullValidation()
+                ? "PROBE_DONE valid=" + valid + " total=" + cameraIds.length
+                : "PROBE_DONE profile=" + profile + " valid=" + valid
+                        + " total=" + cameraIds.length;
         results.add(summary);
         Log.i(TAG, summary);
 
@@ -882,6 +938,24 @@ public final class CameraProbeActivity extends Activity {
                         size -> (long) size.getWidth() * size.getHeight()))
                 .orElse(null);
         return best == null ? fallback : best;
+    }
+
+    private static String normalizeProfile(String requested) {
+        if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested))
+            return requested;
+        return PROFILE_FULL;
+    }
+
+    private boolean needsFullValidation() {
+        return PROFILE_FULL.equals(profile);
+    }
+
+    private boolean needsYuv() {
+        return needsFullValidation() || PROFILE_PREVIEW_YUV.equals(profile);
+    }
+
+    private boolean needsJpeg() {
+        return needsFullValidation();
     }
 
     private static boolean sameAspect(Size size, int width, int height) {
