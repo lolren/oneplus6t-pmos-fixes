@@ -1,0 +1,38 @@
+From a29a791bb13e7634fd9de8daa0f6bcaafdfc08de Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 23:37:32 +0100
+Subject: [PATCH] android: skip redundant fullscreen GPU clears
+
+Both Android GPU ISP draw calls use a full-screen quad over the complete
+target at the active viewport. Clearing those targets immediately beforehand
+duplicates full-frame writes on every preview frame without changing pixels.
+
+This is an Android-only performance candidate. It leaves the shaders,
+intermediate/output buffers, error checking and fallback paths unchanged.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 89df7b1..fed24f8 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -722,7 +722,7 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	setShaderVariableValues(*eglImageIn, params);
+ 
+ 	glViewport(0, 0, width_, height_);
+-	glClear(GL_COLOR_BUFFER_BIT);
++	/* The Bayer pass covers the complete intermediate target. */
+ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+ 	egl_.activateBindTexture(*intermediateImage_);
+ 	if (scaleUsesMipmaps_) {
+@@ -737,7 +737,7 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const Debaye
+ 	egl_.attachTextureToFBO(*eglImageOut);
+ 	setScaleShaderVariableValues(*intermediateImage_, params);
+ 	glViewport(0, 0, outputSize_.width, outputSize_.height);
+-	glClear(GL_COLOR_BUFFER_BIT);
++	/* The scaler pass covers the complete output target. */
+ 	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+ 
+ 	GLenum err = glGetError();
+-- 
+2.49.0

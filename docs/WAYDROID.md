@@ -27,6 +27,7 @@ separately; see [CAMERA.md](CAMERA.md).
 | Variable 15–30 fps preview | In low light, applications may allow a frame to grow to about 66.7 ms for more exposure; a fixed 30 fps video request stays fixed. |
 | Reduced large preview source | For aspect-preserving 1600-wide private/YUV previews, the software ISP can debayer a supported 1280-wide source and scale into Android's requested buffer; JPEG capture remains full-size. |
 | Conditional preview mipmaps | The EGL scaler generates mipmaps only when it is actually downscaling; equal-size and upscaled previews avoid a full mipmap chain on every frame. |
+| Redundant full-frame clear removal | The Android GPU ISP avoids two clear operations whose full-screen Bayer and scaler draws overwrite every pixel; phone acceptance is pending. |
 | Exposure compensation | Camera2 -1 to +1 EV requests reach libcamera and the applied value returns in capture results. |
 | Exposure result metadata | Exposure time, sensor sensitivity and frame duration let applications understand what automatic exposure actually selected. |
 | Rear autofocus bridge | Camera2 auto/continuous modes, triggers, states and one metering region reach both physical rear actuators. |
@@ -45,8 +46,8 @@ camera UI by themselves; an Android camera application consumes them.
   transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
-  software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source and
-  conditional-mipmap patches (`0002`–`0007`).
+  software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
+  conditional-mipmap and redundant-clear patches (`0002`–`0008`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -125,6 +126,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0004-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0005-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0006-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0007-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0008-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -133,11 +135,13 @@ autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion,
 robust buffer/JPEG handling, SIGPIPE-safe IPA socket teardown and the
 aspect-preserving reduced preview source. The seventh patch avoids mipmap
 generation for equal-size and upscaled previews while retaining it for true
-downscales. The fifth patch is deliberately
-small: it changes only the two libcamera IPC send calls that can otherwise
-deliver SIGPIPE after an IPA peer closes. The sixth patch is a performance
-candidate, and the seventh patch is a second performance candidate; both must
-be accepted on the phone before they are treated as a runtime baseline.
+downscales. The eighth patch removes two redundant full-frame clears from the
+Android EGL path while leaving the shaders, buffers and fallback paths
+unchanged. The fifth patch is deliberately small: it changes only the two
+libcamera IPC send calls that can otherwise deliver SIGPIPE after an IPA peer
+closes. The sixth, seventh and eighth patches are performance candidates; all
+three must be accepted on the phone before they are treated as a runtime
+baseline.
 
 ## Build a runtime bundle
 

@@ -1013,3 +1013,37 @@ rebuild a fresh matched bundle with `0007`, run the isolated `preview` and
 if frame delivery and image output remain healthy. The synchronous RGBA
 readback and NV12 conversion are unchanged, so this is an incremental GPU
 optimization rather than a complete Android-camera performance fix.
+
+## Waydroid redundant-clear candidate
+
+Date: 2026-08-25. A second static pass over the Android EGL software-ISP path
+found two `glClear(GL_COLOR_BUFFER_BIT)` calls immediately before full-screen
+Bayer and RGB-scaler draws. Both draws cover the complete active framebuffer,
+so the clears duplicate full-frame writes on every preview frame. Patch `0008`
+removes only those clears; shaders, mipmap policy, buffer formats, error
+checking and fallback paths are unchanged.
+
+The patch was generated from the reviewed tree after `0007`, passed
+`git diff --check`, and builds cleanly with the checked-in ARMv7/API-33 GPU
+helper. The patch and exact package hashes are:
+
+```text
+0008-android-skip-redundant-fullscreen-gpu-clears.patch: 1be009b40d0952932920acb54dd4b498962b378e794c0ed2a0248141414c8382
+waydroid-camera-clears-r35-gpu.tar.gz: 3d964ba9c305c0cb232dd743510b3882a11a443fb1ddc2d59f38225001cf8650
+waydroid-camera-clears-r35-gpu.sha256: e295a32607f02133767e391eaa3abc3d2f9ed71ccb842ec17f6add8f6ea47f0b
+camera.libcamera.so: 2b3e46a1ca3863e26afff20e483138eb7e0f8089a87d91ceaf83cc043faa9210
+libcamera.so: 11842c16f8cd2a8e996f3cb5f3cd81f83e982f802c59ec0390f4164ed8f6be23
+libcamera-base.so: ad72054e6f672ca9af7a952672d8d0d2fca119517523dd5114953e132c76d222
+libc++_shared.so: 7ce65fd0fdd49236bc2ee618f6968dbb3fca46434845f563f2bb4c994878853e
+ipa_soft_simple.so: 14fe5f02fbcb4fc85a555063c6d3c33ea63ddd5b90dff6651a126d576d0581c0
+soft_ipa_proxy: 34843d6ad7bf859045d40dbc7c06956320d894390a48ea6d40ed5a5843d4654a
+```
+
+The build compiled all 197 targets and completed staging, signing and
+manifest generation. No runtime installation was attempted: the phone's
+Waydroid rootfs/I/O deadlock still fails the overlay health gate. After a
+physical recovery, install this bundle only after
+`rootfs_mounts=0` and `overlay_precondition=pass`, then compare the isolated
+`preview` and `preview-yuv` profiles with the accepted r35 baseline. Keep the
+candidate only if frame delivery, JPEG output and provider lifecycle remain
+healthy.
