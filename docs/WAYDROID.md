@@ -62,6 +62,8 @@ camera UI by themselves; an Android camera application consumes them.
   refuses to access the overlay if a `/var/lib/waydroid/rootfs` mount remains;
   this prevents a stale lowerdir mount from turning a copy into an
   uninterruptible I/O wait.
+- `scripts/run-waydroid-camera-probe` installs the probe APK, starts one of its
+  validation/performance profiles and waits for a saved `PROBE_DONE` result.
 - `tests/waydroid-camera-probe/` builds the validation APK.
 
 The Android series depends on the generic frame-duration and autofocus work. It

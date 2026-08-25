@@ -1,0 +1,88 @@
+#!/bin/sh
+set -eu
+
+program=${0##*/}
+timeout_seconds=${PMOS_WAYDROID_PROBE_TIMEOUT:-300}
+
+usage() {
+	printf '%s\n' \
+		"usage: $program APK [full|preview|preview-yuv] [OUTPUT_FILE]" \
+		'' \
+		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
+		'An output file is optional and must not already exist.'
+}
+
+die() {
+	printf '%s: %s\n' "$program" "$1" >&2
+	exit 1
+}
+
+if [ "$#" -eq 1 ]; then
+	case "$1" in
+	-h|--help)
+		usage
+		exit 0
+		;;
+	esac
+fi
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage >&2
+	exit 2
+fi
+
+apk=$1
+profile=${2:-full}
+output=${3:-}
+
+[ -f "$apk" ] || die "APK does not exist: $apk"
+case "$profile" in
+full|preview|preview-yuv)
+	;;
+*)
+	die "unsupported profile: $profile"
+	;;
+esac
+case "$timeout_seconds" in
+''|*[!0-9]*)
+	die 'PMOS_WAYDROID_PROBE_TIMEOUT must be a non-negative integer'
+	;;
+esac
+[ -z "$output" ] || [ ! -e "$output" ] || die "refusing to overwrite: $output"
+
+command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
+
+waydroid app install "$apk"
+waydroid shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
+	2>/dev/null || :
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -W -n \
+	dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+	--es profile "$profile"
+
+result=''
+elapsed=0
+while [ "$elapsed" -le "$timeout_seconds" ]; do
+	result=$(waydroid shell cat \
+		/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
+		2>/dev/null || :)
+	case "$result" in
+	*PROBE_DONE*)
+		if [ -n "$output" ]; then
+			mkdir -p "$(dirname -- "$output")"
+			printf '%s\n' "$result" > "$output"
+			printf 'result: %s\n' "$output"
+		else
+			printf '%s\n' "$result"
+		fi
+		exit 0
+		;;
+	esac
+	if [ "$elapsed" -eq "$timeout_seconds" ]; then
+		break
+	fi
+	sleep 1
+	elapsed=$((elapsed + 1))
+done
+
+die "probe did not finish within ${timeout_seconds}s"
