@@ -14,6 +14,8 @@ The current scripts may:
 - build kernel or userspace packages on the host without installing them;
 - simulate or explicitly apply the exact manifest-verified native r7/r2,
   r7/r1 and r6/r0 camera generations through `manage-camera-generation`;
+- run `pmos-safe-upgrade`, which simulates an ordinary `apk upgrade` and blocks
+  camera-critical package changes before activation; and
 - stop and start the Waydroid container/session; and
 - install a matched Android userspace camera bundle into the Waydroid overlay
   after preserving replaced files and recording newly created paths.
@@ -39,10 +41,16 @@ Snapshot r1 state, retained r6/r0 and r20/r6/r2 APKs, and exact rollback
 commands have been recorded.
 
 Do not use `apk upgrade --available` with a partial local rollback repository.
-On apk-tools 3 it can reconcile the whole installed system against that partial
-index and remove unrelated packages. The immediate userspace-camera rollback
-uses exact version constraints and must list only the two documented r24-to-r23
-downgrades in simulation.
+For ordinary updates use `pmos-safe-upgrade`; it blocks transactions touching
+the camera-critical package set and directs those changes through the signed
+generation manager. The safe wrapper does not claim that an arbitrary kernel
+or userspace update is camera-compatible.
+
+On apk-tools 3, `apk upgrade --available` can reconcile the whole installed
+system against a partial local rollback repository and remove unrelated
+packages. The immediate userspace-camera rollback uses exact version
+constraints and must list only the two documented r24-to-r23 downgrades in
+simulation.
 
 The separate Advanced Snapshot/PipeWire rollback must list exactly the three
 r7/r1-to-r6/r0 downgrades. Supplying the local PipeWire APK temporarily adds a

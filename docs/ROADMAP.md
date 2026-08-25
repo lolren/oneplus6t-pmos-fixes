@@ -20,8 +20,9 @@ location and Android-container failures cannot obscure one another.
    postmarketOS updates may be staged, but camera-critical replacements must
    not activate until the manifest rebases/builds/tests successfully. The first
    immutable r7/r1 manifest, simulation-first generation manager and native
-   health gate now pass; repository signing, update interception and retained
-   published generations remain.
+   health gate now pass. The `pmos-safe-upgrade` wrapper now intercepts ordinary
+   critical-package upgrades; repository signing, compatibility-gated published
+   generations and retained public rollback generations remain.
 4. Broaden Android acceptance: the Waydroid r35 Camera3 lower layer now passes
    the clean all-camera YUV/JPEG/private, AF and EV probe, and its GPU path
    produces a clean full-size JPEG. Test real camera applications and lifecycle

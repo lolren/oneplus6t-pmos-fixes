@@ -29,7 +29,9 @@ helper package; their separately reviewed pmaports integration is in
 
 The package also installs `pmos-manage-camera-generation`, the current r7/r4
 and legacy r7/r1 through r7/r3 immutable manifests, the public verification
-key and the non-image all-sensor runner. The
+key and the non-image all-sensor runner. It also installs
+`pmos-safe-upgrade`, whose simulation-first gate blocks ordinary `apk upgrade`
+transactions that touch camera-critical packages. The
 manager does not contain APKs or a private key and does nothing without an
 explicit operation. Install/rollback are simulation-only unless the graphical
 login user passes `--apply`; see `docs/CAMERA_GENERATIONS.md`.

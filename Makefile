@@ -13,6 +13,7 @@ SCRIPTS = \
 	scripts/configure-time-sync \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
+	scripts/pmos-safe-upgrade \
 	scripts/audio-route-policy \
 	scripts/check-audio-routing
 
@@ -41,13 +42,15 @@ test:
 	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
 		 tests/fixtures/camera-generation-smoke \
-		tests/test-apn-selection.sh tests/test-messages-check.sh \
+		 tests/test-apn-selection.sh tests/test-messages-check.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
+		tests/test-update-guard.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
+	./tests/test-update-guard.sh
 	python3 tests/test-ppm-metrics.py
 	python3 -m py_compile $(PYTHON_SCRIPTS) $(CAMERA_TEST_PYTHON)
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
@@ -101,5 +104,7 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/check-messages" "$(DESTDIR)$(SBINDIR)/pmos-check-messages"
 	ln -sfn "$(LIBEXECDIR)/scripts/manage-camera-generation" \
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"
+	ln -sfn "$(LIBEXECDIR)/scripts/pmos-safe-upgrade" \
+		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
 	ln -sfn "$(LIBEXECDIR)/scripts/v4l2-focus-control.py" "$(DESTDIR)$(SBINDIR)/pmos-v4l2-focus-control"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-audio-routing" "$(DESTDIR)$(SBINDIR)/pmos-check-audio-routing"

@@ -271,6 +271,21 @@ The sliders affect both preview and saved output. HDR is intentionally shown as
 unavailable because the open pipeline has no valid multi-frame merge and tone
 mapping stage.
 
+### Safe postmarketOS updates
+
+Use the installed guard for ordinary system upgrades:
+
+```sh
+pmos-safe-upgrade --simulate
+pmos-safe-upgrade --apply
+```
+
+Simulation is the default. The guard refuses any transaction that touches
+libcamera, PipeWire, WirePlumber, Snapshot, Advanced Snapshot or the OnePlus 6T
+kernel, then points to the signed generation manager. Safe non-camera updates
+use the cached package index after the gate; `apk upgrade --available` remains
+outside this workflow.
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
@@ -284,9 +299,10 @@ mapping stage.
   all three Camera2 stream/AF/EV probes and the GPU/JPEG acceptance capture.
 - Next priorities: complete Advanced Snapshot visual photo/video acceptance
   and UI work. The first immutable camera manifest and guarded generation
-  manager now pass host and real-phone simulation; next add the VibeMarketOS
-  signed downstream repository, compatibility-gated updates and published
-  rollback generations, then broaden Waydroid app testing and Play Store setup.
+  manager plus the ordinary-update safety gate now pass host and real-phone
+  simulation; next add the VibeMarketOS signed downstream repository,
+  compatibility-gated published generations, then broaden Waydroid app testing
+  and Play Store setup.
   See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.

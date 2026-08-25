@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+command=${1:?missing apk command}
+shift
+[ "$command" = upgrade ] || {
+	printf 'unsupported mock apk command: %s\n' "$command" >&2
+	exit 1
+}
+
+simulate=no
+for argument in "$@"; do
+	[ "$argument" != --simulate ] || simulate=yes
+done
+
+if [ "${PMOS_MOCK_UPDATE_CRITICAL:-no}" = yes ]; then
+	printf '%s\n' '(1/1) Upgrading libcamera (99990.7.2-r24 -> 99990.7.2-r25)'
+else
+	printf '%s\n' '(1/1) Upgrading busybox (1.36.1-r0 -> 1.36.1-r1)'
+fi
+printf '%s\n' 'OK: mock upgrade'
+
+if [ "$simulate" = no ] && [ -n "${PMOS_MOCK_UPDATE_APPLIED:-}" ]; then
+	: >"$PMOS_MOCK_UPDATE_APPLIED"
+fi

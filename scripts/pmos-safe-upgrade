@@ -1,0 +1,182 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+sudo_command=${PMOS_UPDATE_SUDO:-sudo}
+apk_command=${PMOS_UPDATE_APK:-apk}
+world_file=${PMOS_UPDATE_WORLD:-/etc/apk/world}
+evidence_root=${PMOS_UPDATE_EVIDENCE_DIR:-}
+mode=simulate
+
+# These packages are coupled to the reviewed OnePlus 6T camera generations.
+# A normal distro upgrade must not replace one member without rebuilding and
+# accepting the complete matching generation.
+critical_packages='advanced-snapshot
+advanced-snapshot-lang
+libcamera
+libcamera-ipa
+linux-postmarketos-qcom-sdm845
+pipewire
+pipewire-spa-libcamera
+snapshot
+wireplumber'
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--simulate|--apply]
+
+Run the ordinary apk upgrade only when its simulation does not touch a
+camera-critical package. Simulation is the default. A transaction touching
+libcamera, PipeWire, WirePlumber, Snapshot, Advanced Snapshot or the OnePlus
+6T kernel is refused and must be handled by the manifest-verified camera
+generation manager instead.
+
+--simulate  inspect the transaction and exit without changing the system
+--apply     re-run the gate, then apply a safe upgrade using the cached index
+-h, --help  show this help
+
+The wrapper intentionally does not accept arbitrary apk arguments. In
+particular, use of apk upgrade --available remains outside the safe workflow.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+usage_error() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	usage >&2
+	exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--simulate)
+		mode=simulate
+		shift
+		;;
+	--apply)
+		mode=apply
+		shift
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		usage_error "unknown argument: $1"
+		;;
+	esac
+done
+
+for required_command in awk date grep id mkdir mktemp sed sha256sum sort tr; do
+	command -v "$required_command" >/dev/null 2>&1 || \
+		die "missing required command: $required_command"
+done
+[ -x "$apk_command" ] || command -v "$apk_command" >/dev/null 2>&1 || \
+	die "apk command not found: $apk_command"
+
+if [ -n "$evidence_root" ]; then
+	[ ! -e "$evidence_root" ] || [ -d "$evidence_root" ] || \
+		die "evidence path is not a directory: $evidence_root"
+	mkdir -p "$evidence_root"
+	evidence_dir=$evidence_root/upgrade-$(date -u +%Y%m%dT%H%M%SZ)-$$
+	mkdir "$evidence_dir"
+else
+	evidence_dir=$(mktemp -d "${TMPDIR:-/tmp}/pmos-safe-upgrade.XXXXXX")
+fi
+
+simulation_log=$evidence_dir/simulation.log
+actual_log=$evidence_dir/actual.log
+
+root_run() {
+	if [ "$(id -u)" -eq 0 ]; then
+		"$@"
+	else
+		"$sudo_command" "$@"
+	fi
+}
+
+run_simulation() {
+	# The index is allowed to refresh for the simulation. The actual
+	# transaction below uses network=no, preventing a simulation/apply race.
+	root_run "$apk_command" upgrade --simulate --no-progress --no-interactive
+}
+
+operation_lines() {
+	grep -E '(^|[[:space:]:])(Installing|Upgrading|Downgrading|Removing|Purging)(:|[[:space:]])' \
+		"$simulation_log" || true
+}
+
+critical_changes() {
+	lines=$(operation_lines)
+	[ -n "$lines" ] || return 0
+	for package in $critical_packages; do
+		if printf '%s\n' "$lines" | grep -Eq \
+			"(^|[[:space:]:])${package}([-<>=~:]|[[:space:]]|$)"; then
+			printf '%s\n' "$package"
+		fi
+	done
+}
+
+printf 'mode=%s\n' "$mode"
+printf 'evidence=%s\n' "$evidence_dir"
+if ! run_simulation >"$simulation_log" 2>&1; then
+	cat "$simulation_log" >&2
+	die 'apk upgrade simulation failed'
+fi
+
+critical=$(critical_changes | sort -u)
+if [ -n "$critical" ]; then
+	printf 'blocked-critical-packages=%s\n' "$(printf '%s\n' "$critical" | tr '\n' ',' | sed 's/,$//')"
+	cat "$simulation_log" >&2
+	cat >&2 <<EOF
+$PROGRAM: refusing this upgrade because it changes the reviewed camera stack.
+Use pmos-manage-camera-generation with a signed, compatible manifest and run
+its simulation and camera health gate before applying that generation.
+EOF
+	exit 3
+fi
+
+printf '%s\n' 'critical=none'
+if [ "$mode" = simulate ]; then
+	printf '%s\n' 'result=simulation-only'
+	exit 0
+fi
+
+if [ -r "$world_file" ]; then
+	world_before=$(sha256sum "$world_file" | awk '{ print $1 }')
+else
+	world_before=unavailable
+fi
+
+# Do not fetch a different repository index between the successful gate and
+# the real transaction. If the cached plan cannot be applied, apk fails rather
+# than silently selecting a new camera stack.
+if ! root_run "$apk_command" upgrade --no-progress --no-interactive \
+	--network=no >"$actual_log" 2>&1; then
+	cat "$actual_log" >&2
+	die 'apk upgrade failed; no automatic rollback was attempted'
+fi
+
+actual_operation_lines=$(grep -E \
+	'(^|[[:space:]:])(Installing|Upgrading|Downgrading|Removing|Purging)(:|[[:space:]])' \
+	"$actual_log" || true)
+for package in $critical_packages; do
+	if printf '%s\n' "$actual_operation_lines" | grep -Eq \
+		"(^|[[:space:]:])${package}([-<>=~:]|[[:space:]]|$)"; then
+		cat "$actual_log" >&2
+		die "apk changed camera-critical package after the gate: $package"
+	fi
+done
+
+if [ -r "$world_file" ]; then
+	world_after=$(sha256sum "$world_file" | awk '{ print $1 }')
+else
+	world_after=unavailable
+fi
+printf 'world_before_sha256=%s\n' "$world_before"
+printf 'world_after_sha256=%s\n' "$world_after"
+printf '%s\n' 'result=applied'

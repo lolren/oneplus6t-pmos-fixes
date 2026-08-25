@@ -124,9 +124,12 @@ rejects an unrelated world-file change, a missing service, wrong final version
 or failed camera smoke test and preserves the complete evidence directory for
 manual diagnosis and the verified rollback.
 
-This manager does not yet replace the future VibeMarketOS signed repository or
-block arbitrary distro upgrades. That updater will use the same manifest and
-health gate before activating camera-critical postmarketOS updates.
+This manager is still not a replacement for the future VibeMarketOS signed
+repository. The installed `pmos-safe-upgrade` wrapper now blocks ordinary
+distro upgrades that mention camera-critical packages; those packages must
+come through this manager. A future signed repository will add compatibility-
+gated published generations and retained public rollback artifacts rather than
+relying on the wrapper's transaction-text gate alone.
 
 ## Validation
 
