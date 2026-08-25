@@ -104,6 +104,28 @@ privacy-safe diagnostic or request a fallback activation as the login user:
 See [docs/MESSAGES.md](docs/MESSAGES.md) for the measured result, display-driver
 evidence and the completed touchscreen confirmation.
 
+## Audio and microphone pairing
+
+The audio layer now re-enables WirePlumber's ALSA hardware monitor and exposes
+the real OnePlus card to `wpctl`, Phosh and PipeWire clients. An optional user
+service pairs the default built-in microphone with the selected built-in
+output: top mic for speaker, bottom mic for earpiece/voice call, and headset
+mic for connected headphones. It leaves USB and Bluetooth routes untouched.
+
+Install and enable it with:
+
+```sh
+make test
+sudo make install PREFIX=/usr/local
+systemctl --user daemon-reload
+systemctl --user enable --now oneplus6t-audio-route.service
+pmos-check-audio-routing
+```
+
+The route policy and the current q6voice/callaudiod boundary are documented in
+[docs/AUDIO.md](docs/AUDIO.md). A real modem-call speakerphone test remains
+required before claiming a complete speakerphone output route.
+
 ## Cameras
 
 The reproducible camera stack covers all three sensors in native postmarketOS

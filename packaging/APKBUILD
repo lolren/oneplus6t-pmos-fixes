@@ -2,7 +2,7 @@
 maintainer="Lolren <loren.bufanu@gmail.com>"
 pkgname=oneplus6t-pmos-fixes
 pkgver=0.1.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Safe postmarketOS connectivity and camera helpers for OnePlus 6T"
 url="https://github.com/lolren/oneplus6t-pmos-fixes"
 arch="noarch"
@@ -12,7 +12,9 @@ depends="
 	mobile-broadband-provider-info
 	modemmanager
 	networkmanager-cli
+	pulseaudio-utils
 	python3
+	wireplumber
 	"
 options="!strip"
 builddir="$startdir/.."

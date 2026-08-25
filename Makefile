@@ -2,6 +2,8 @@ PREFIX ?= /usr/local
 LIBEXECDIR ?= $(PREFIX)/libexec/oneplus6t-pmos-fixes
 SBINDIR ?= $(PREFIX)/sbin
 DOCDIR ?= $(PREFIX)/share/doc/oneplus6t-pmos-fixes
+WIREPLUMBER_DIR ?= $(PREFIX)/share/wireplumber/wireplumber.conf.d
+SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 INSTALL ?= install
 
 SCRIPTS = \
@@ -10,7 +12,9 @@ SCRIPTS = \
 	scripts/check-mobile-data \
 	scripts/configure-time-sync \
 	scripts/check-messages \
-	scripts/manage-camera-generation
+	scripts/manage-camera-generation \
+	scripts/audio-route-policy \
+	scripts/check-audio-routing
 
 PYTHON_SCRIPTS = scripts/v4l2-focus-control.py
 
@@ -56,6 +60,8 @@ install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/waydroid"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/keys"
+	$(INSTALL) -d "$(DESTDIR)$(WIREPLUMBER_DIR)"
+	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_USER_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SBINDIR)"
 	$(INSTALL) -d "$(DESTDIR)$(DOCDIR)"
 	$(INSTALL) -m 0755 $(SCRIPTS) "$(DESTDIR)$(LIBEXECDIR)/scripts/"
@@ -69,6 +75,11 @@ install:
 		config/libcamera/simple/imx376.yaml \
 		config/libcamera/simple/imx519.yaml \
 		"$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple/"
+	$(INSTALL) -m 0644 config/wireplumber/90-oneplus6t-audio.conf \
+		"$(DESTDIR)$(WIREPLUMBER_DIR)/"
+	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
+		config/systemd/user/oneplus6t-audio-route.service \
+		> "$(DESTDIR)$(SYSTEMD_USER_DIR)/oneplus6t-audio-route.service"
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"
@@ -89,3 +100,4 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/manage-camera-generation" \
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"
 	ln -sfn "$(LIBEXECDIR)/scripts/v4l2-focus-control.py" "$(DESTDIR)$(SBINDIR)/pmos-v4l2-focus-control"
+	ln -sfn "$(LIBEXECDIR)/scripts/check-audio-routing" "$(DESTDIR)$(SBINDIR)/pmos-check-audio-routing"

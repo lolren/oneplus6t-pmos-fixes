@@ -1,0 +1,59 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Keep the OnePlus 6T's default built-in microphone paired with the selected
+# built-in output. This is deliberately a default-node policy, not a mixer
+# rewrite: USB and Bluetooth devices are never changed.
+
+set -u
+
+internal_source_for_sink() {
+	sink=$1
+	case "$sink" in
+		*Speaker*)
+			pactl list short sources 2>/dev/null |
+				awk '$2 ~ /^alsa_input\.platform-sound\..*Mic2.*source$/ { print $2; exit }'
+			;;
+		*Headphones*)
+			headset=$(pactl list short sources 2>/dev/null |
+				awk '$2 ~ /^alsa_input\.platform-sound\..*Headset.*source$/ { print $2; exit }')
+			if [ -n "$headset" ]; then
+				printf '%s\n' "$headset"
+			else
+				pactl list short sources 2>/dev/null |
+					awk '$2 ~ /^alsa_input\.platform-sound\..*(Mic1|Voice_Call__Mic).*source$/ { print $2; exit }'
+			fi
+			;;
+		*Earpiece*|*Voice_Call__*)
+			pactl list short sources 2>/dev/null |
+				awk '$2 ~ /^alsa_input\.platform-sound\..*(Mic1|Voice_Call__Mic).*source$/ { print $2; exit }'
+			;;
+		*)
+			return 0
+			;;
+	esac
+}
+
+reconcile() {
+	sink=$(pactl get-default-sink 2>/dev/null) || return 0
+	case "$sink" in
+		alsa_output.platform-sound.*) ;;
+		*) return 0 ;;
+	esac
+
+	target=$(internal_source_for_sink "$sink")
+	[ -n "$target" ] || return 0
+	current=$(pactl get-default-source 2>/dev/null || true)
+	[ "$current" = "$target" ] && return 0
+	pactl set-default-source "$target" 2>/dev/null || true
+}
+
+while :; do
+	if pactl info >/dev/null 2>&1; then
+		reconcile
+	fi
+	# A short poll is intentional here. It avoids a process storm when a
+	# profile change creates several Pulse compatibility objects at once, while
+	# still making a route change visible within two seconds.
+	sleep 2
+done

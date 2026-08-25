@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+
+set -u
+
+if ! pactl info >/dev/null 2>&1; then
+	echo "PipeWire's PulseAudio compatibility server is unavailable" >&2
+	exit 1
+fi
+
+echo "Audio services:"
+systemctl --user is-active pipewire.service 2>/dev/null || true
+systemctl --user is-active wireplumber.service 2>/dev/null || true
+
+echo
+echo "Card profiles:"
+pactl list cards 2>/dev/null |
+	awk '/^Card #[0-9]+/{card=$0} /Name: alsa_card\.platform-sound/{show=1} show && (/Voice Call:|HiFi:|Active Profile:/){print} show && /^Card #[0-9]+/ && card != $0{show=0}'
+
+echo
+echo "Defaults:"
+printf 'sink:   %s\n' "$(pactl get-default-sink)"
+printf 'source: %s\n' "$(pactl get-default-source)"
+
+echo
+echo "OnePlus built-in nodes:"
+pactl list short sinks 2>/dev/null | awk '$2 ~ /^alsa_output\.platform-sound\./{print}'
+pactl list short sources 2>/dev/null | awk '$2 ~ /^alsa_input\.platform-sound\./{print}'
+
+echo
+echo "Call-audio daemon (if installed):"
+if command -v callaudiocli >/dev/null 2>&1; then
+	callaudiocli -S
+else
+	echo "not installed"
+fi

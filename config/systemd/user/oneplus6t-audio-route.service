@@ -1,0 +1,12 @@
+[Unit]
+Description=OnePlus 6T built-in microphone/output pairing
+After=pipewire.service wireplumber.service
+Wants=wireplumber.service
+
+[Service]
+ExecStart=@LIBEXEC@/scripts/audio-route-policy
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
