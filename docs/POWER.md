@@ -27,11 +27,31 @@ power profile or suspends the phone. It prints a suggestion to use
 `performance`; apply that manually and measure battery drain before making it
 the default.
 
+## Timed sampling
+
+Use the sampler when a single report is not enough to compare idle, camera,
+modem or screen-off drain:
+
+```sh
+pmos-measure-power --duration 600 --interval 10 \
+  --output /private/path/oneplus6t-power-samples.txt
+```
+
+It reads the battery power-supply files once per interval and prints the
+capacity, current, voltage, temperature and status for every sample, followed
+by capacity delta, mean current and maximum temperature. `--duration 0` takes
+one sample, which is useful for a quick check. The command refuses to
+overwrite an existing output file and does not change a power, governor,
+charge-limit or suspend setting. The fixture test covers the no-sleep,
+single-sample path with `./tests/test-power-sampler.sh`.
+
 ## Acceptance sequence
 
 After camera and modem recovery, collect reports at idle, during a 10-minute
-camera preview and during a normal screen-off interval. Record capacity,
-current draw, temperature and wake behavior. Then test, one at a time:
+camera preview and during a normal screen-off interval. Use
+`pmos-measure-power` with the same interval and duration for each run, and
+record capacity, current draw, temperature and wake behavior. Then test, one
+at a time:
 
 1. the existing balanced/default profile;
 2. power-saver with Wi-Fi and mobile data each enabled separately; and

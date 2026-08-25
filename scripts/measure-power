@@ -1,0 +1,159 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+sysfs_root=${PMOS_POWER_SYSFS_ROOT:-/sys}
+supply_name=${PMOS_POWER_SUPPLY:-}
+interval=${PMOS_POWER_SAMPLE_INTERVAL:-10}
+duration=${PMOS_POWER_SAMPLE_DURATION:-60}
+output=${PMOS_POWER_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--duration SECONDS] [--interval SECONDS] [--output FILE]
+
+Collect timed read-only battery samples. No governor, power profile, charge
+limit or suspend setting is changed.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*"
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--duration)
+		[ "$#" -ge 2 ] || die '--duration requires seconds'
+		duration=$2
+		shift 2
+		;;
+	--interval)
+		[ "$#" -ge 2 ] || die '--interval requires seconds'
+		interval=$2
+		shift 2
+		;;
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+case "$duration" in
+	''|*[!0-9]*) die 'duration must be a non-negative integer' ;;
+esac
+case "$interval" in
+	''|*[!0-9]*|0) die 'interval must be a positive integer' ;;
+esac
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+read_file() {
+	path=$1
+	if [ -r "$path" ]; then
+		tr '\n' ' ' <"$path" | sed 's/[[:space:]]*$//'
+	else
+		printf '%s' unavailable
+	fi
+}
+
+if [ -z "$supply_name" ]; then
+	for supply in "$sysfs_root"/class/power_supply/*; do
+		[ -d "$supply" ] || continue
+		type=$(read_file "$supply/type")
+		if [ "$type" = Battery ]; then
+			supply_name=${supply##*/}
+			break
+		fi
+	done
+fi
+[ -n "$supply_name" ] || die 'no battery power-supply was found'
+supply_dir=$sysfs_root/class/power_supply/$supply_name
+[ -d "$supply_dir" ] || die "battery supply does not exist: $supply_name"
+
+printf 'report=oneplus6t-power-samples\n'
+printf 'supply=%s\n' "$supply_name"
+printf 'sample_interval_seconds=%s\n' "$interval"
+printf 'sample_duration_seconds=%s\n' "$duration"
+printf 'note=read-only sampling; no power or suspend setting is changed\n'
+
+elapsed=0
+sample_number=0
+first_capacity=unavailable
+last_capacity=unavailable
+sum_current=0
+current_count=0
+max_temperature=unavailable
+
+while :; do
+	timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	capacity=$(read_file "$supply_dir/capacity")
+	current=$(read_file "$supply_dir/current_now")
+	voltage=$(read_file "$supply_dir/voltage_now")
+	temperature=$(read_file "$supply_dir/temp")
+	status=$(read_file "$supply_dir/status")
+	printf 'sample=%s elapsed_seconds=%s timestamp_utc=%s capacity_percent=%s current_now_ua=%s voltage_now_uv=%s temperature_tenths_c=%s status=%s\n' \
+		"$sample_number" "$elapsed" "$timestamp" "$capacity" "$current" \
+		"$voltage" "$temperature" "$status"
+
+	if [ "$first_capacity" = unavailable ] && [ "$capacity" != unavailable ]; then
+		first_capacity=$capacity
+	fi
+	if [ "$capacity" != unavailable ]; then
+		last_capacity=$capacity
+	fi
+	case "$current" in
+		''|unavailable|*[!0-9-]*) ;;
+		*)
+			sum_current=$((sum_current + current))
+			current_count=$((current_count + 1))
+			;;
+	esac
+	case "$temperature" in
+		''|unavailable|*[!0-9-]*) ;;
+		*)
+			if [ "$max_temperature" = unavailable ] ||
+				[ "$temperature" -gt "$max_temperature" ]; then
+				max_temperature=$temperature
+			fi
+			;;
+	esac
+
+	[ "$elapsed" -ge "$duration" ] && break
+	sleep "$interval"
+	elapsed=$((elapsed + interval))
+	sample_number=$((sample_number + 1))
+done
+
+printf 'capacity_start_percent=%s\n' "$first_capacity"
+printf 'capacity_end_percent=%s\n' "$last_capacity"
+if [ "$first_capacity" != unavailable ] &&
+	[ "$last_capacity" != unavailable ]; then
+	printf 'capacity_delta_percent=%s\n' \
+		"$((last_capacity - first_capacity))"
+else
+	printf 'capacity_delta_percent=unavailable\n'
+fi
+if [ "$current_count" -gt 0 ]; then
+	printf 'current_mean_ua=%s\n' \
+		"$((sum_current / current_count))"
+else
+	printf 'current_mean_ua=unavailable\n'
+fi
+printf 'temperature_max_tenths_c=%s\n' "$max_temperature"

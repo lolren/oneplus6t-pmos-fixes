@@ -15,6 +15,7 @@ SCRIPTS = \
 	scripts/manage-camera-generation \
 	scripts/pmos-safe-upgrade \
 	scripts/check-power \
+	scripts/measure-power \
 	scripts/check-nfc \
 	scripts/check-location \
 	scripts/check-waydroid-health \
@@ -56,6 +57,7 @@ test:
 	./tests/test-messages-check.sh
 	./tests/test-audio-route-policy.sh
 	./tests/test-power-report.sh
+	./tests/test-power-sampler.sh
 	./tests/test-nfc-report.sh
 	./tests/test-location-report.sh
 	./tests/test-waydroid-health.sh
@@ -120,6 +122,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-power" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-power"
+	ln -sfn "$(LIBEXECDIR)/scripts/measure-power" \
+		"$(DESTDIR)$(SBINDIR)/pmos-measure-power"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-nfc" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-nfc"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-location" \

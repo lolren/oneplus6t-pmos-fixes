@@ -332,9 +332,10 @@ tag. See [docs/NFC.md](docs/NFC.md).
 - Location: the read-only native report and dry-run Android bridge are
   documented; GNSS and Android map acceptance are pending device recovery, and
   no static Reading/Stroud coordinate has been hard-coded.
-- Battery/power: the read-only `pmos-check-power` report and acceptance
-  sequence are documented in [docs/POWER.md](docs/POWER.md); no unverified
-  governor or suspend tweak has been forced.
+- Battery/power: the read-only `pmos-check-power` report, timed
+  `pmos-measure-power` sampler and acceptance sequence are documented in
+  [docs/POWER.md](docs/POWER.md); no unverified governor or suspend tweak has
+  been forced.
 - NFC: the read-only `pmos-check-nfc` report and explicit polling procedure are
   documented; physical controller and tag acceptance are pending device
   recovery.
