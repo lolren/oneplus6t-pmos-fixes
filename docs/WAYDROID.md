@@ -56,7 +56,10 @@ camera UI by themselves; an Android camera application consumes them.
 - `scripts/package-waydroid-camera` creates a tarball and matching file
   manifest from a staging tree.
 - `scripts/install-waydroid-camera` performs a target-scoped backup, install
-  and rollback without touching partitions or firmware.
+  and rollback without touching partitions or firmware. Before any backup it
+  refuses to access the overlay if a `/var/lib/waydroid/rootfs` mount remains;
+  this prevents a stale lowerdir mount from turning a copy into an
+  uninterruptible I/O wait.
 - `tests/waydroid-camera-probe/` builds the validation APK.
 
 The Android series depends on the generic frame-duration and autofocus work. It
@@ -217,6 +220,14 @@ waydroid session start
 This operation does not alter a partition, boot slot, kernel or firmware and
 does not require a phone reboot. The installer does not start or stop services;
 that is kept explicit so it cannot unexpectedly interrupt a camera session.
+
+The installer reads `/proc/self/mountinfo` before both installation and
+rollback. If Waydroid's rootfs or one of its child mounts is still present, it
+fails immediately with the mount path. `WAYDROID_ROOTFS_DIR` and
+`WAYDROID_CAMERA_MOUNTINFO` are available for a nonstandard layout or test
+fixture. Do not bypass this check while the rootfs is mounted: the overlay is a
+lower directory of that rootfs, and copying its files can deadlock the storage
+path.
 
 ## Verify
 

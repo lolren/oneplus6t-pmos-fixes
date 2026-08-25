@@ -17,6 +17,8 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 config_dir=${WAYDROID_CAMERA_CONFIG_DIR:-$project_dir/config/waydroid}
 default_overlay=/var/lib/waydroid/overlay
 backup_root=${WAYDROID_CAMERA_BACKUP_ROOT:-/var/lib/waydroid/backups}
+waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
+mountinfo_file=${WAYDROID_CAMERA_MOUNTINFO:-/proc/self/mountinfo}
 dry_run=0
 
 runtime_files() {
@@ -93,6 +95,16 @@ validate_overlay() {
 	fail_if_broad_path "$1"
 	if [ ! -d "$1" ]; then
 		printf 'Overlay directory does not exist: %s\n' "$1" >&2
+		exit 1
+	fi
+	if [ -r "$mountinfo_file" ] && awk -v root="$waydroid_rootfs" '
+		$5 == root || index($5, root "/") == 1 { found = 1; exit }
+		END { exit found ? 0 : 1 }
+	' "$mountinfo_file"; then
+		printf 'Refusing to access the overlay while Waydroid rootfs is mounted: %s\n' \
+			"$waydroid_rootfs" >&2
+		printf '%s\n' \
+			'Stop the Waydroid session and container, then clear the stale rootfs mount before retrying.' >&2
 		exit 1
 	fi
 }

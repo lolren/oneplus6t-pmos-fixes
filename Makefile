@@ -40,12 +40,14 @@ all: test
 test:
 	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
-		tests/fixtures/camera-generation-smoke \
+		 tests/fixtures/camera-generation-smoke \
 		tests/test-apn-selection.sh tests/test-messages-check.sh \
-		tests/test-camera-generation.sh packaging/APKBUILD
+		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
+		packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
 	./tests/test-camera-generation.sh
+	sh tests/test-waydroid-installer.sh
 	python3 tests/test-ppm-metrics.py
 	python3 -m py_compile $(PYTHON_SCRIPTS) $(CAMERA_TEST_PYTHON)
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
