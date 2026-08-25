@@ -78,6 +78,7 @@ printf 'rootfs=%s\n' "$rootfs"
 printf '\n[proc]\n'
 print_file load_average "$proc_root/loadavg"
 io_avg10=unavailable
+io_full_avg10=unavailable
 if [ -r "$proc_root/pressure/io" ]; then
 	printf 'io_pressure_begin\n'
 	cat "$proc_root/pressure/io"
@@ -91,10 +92,20 @@ if [ -r "$proc_root/pressure/io" ]; then
 			}
 	}' "$proc_root/pressure/io")
 	[ -n "$io_avg10" ] || io_avg10=unavailable
+	io_full_avg10=$(awk '$1 == "full" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) {
+				sub(/^avg10=/, "", $i)
+				print $i
+				exit
+			}
+	}' "$proc_root/pressure/io")
+	[ -n "$io_full_avg10" ] || io_full_avg10=unavailable
 else
 	printf 'io_pressure=unavailable\n'
 fi
 printf 'io_some_avg10=%s\n' "$io_avg10"
+printf 'io_full_avg10=%s\n' "$io_full_avg10"
 
 printf '\n[mounts]\n'
 rootfs_mounts=unavailable
@@ -112,9 +123,10 @@ if [ "$rootfs_mounts" = unavailable ]; then
 	printf '%s\n' 'overlay_precondition=unknown-mountinfo-unavailable'
 elif [ "$rootfs_mounts" != 0 ]; then
 	printf '%s\n' 'overlay_precondition=blocked-rootfs-mounted'
-elif [ "$io_avg10" = unavailable ]; then
+elif [ "$io_avg10" = unavailable ] || [ "$io_full_avg10" = unavailable ]; then
 	printf '%s\n' 'overlay_precondition=unknown-i/o-unavailable'
-elif awk -v value="$io_avg10" 'BEGIN { exit !(value + 0 == 0) }'; then
+elif awk -v some="$io_avg10" -v full="$io_full_avg10" \
+	'BEGIN { exit !((some + 0 == 0) && (full + 0 == 0)) }'; then
 	printf '%s\n' 'overlay_precondition=pass'
 else
 	printf '%s\n' 'overlay_precondition=blocked-i/o-pressure'

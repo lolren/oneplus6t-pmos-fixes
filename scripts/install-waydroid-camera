@@ -19,6 +19,7 @@ default_overlay=/var/lib/waydroid/overlay
 backup_root=${WAYDROID_CAMERA_BACKUP_ROOT:-/var/lib/waydroid/backups}
 waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
 mountinfo_file=${WAYDROID_CAMERA_MOUNTINFO:-/proc/self/mountinfo}
+proc_root=${WAYDROID_CAMERA_PROC_ROOT:-/proc}
 dry_run=0
 
 runtime_files() {
@@ -105,6 +106,41 @@ validate_overlay() {
 			"$waydroid_rootfs" >&2
 		printf '%s\n' \
 			'Stop the Waydroid session and container, then clear the stale rootfs mount before retrying.' >&2
+		exit 1
+	fi
+	if [ ! -r "$proc_root/pressure/io" ]; then
+		printf 'Refusing overlay access: I/O pressure data is unavailable: %s\n' \
+			"$proc_root/pressure/io" >&2
+		printf '%s\n' \
+			'Run the health check on a kernel exposing /proc/pressure/io before retrying.' >&2
+		exit 1
+	fi
+	io_some_avg10=$(awk '$1 == "some" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) {
+				sub(/^avg10=/, "", $i)
+				print $i
+				exit
+			}
+	}' "$proc_root/pressure/io")
+	io_full_avg10=$(awk '$1 == "full" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) {
+				sub(/^avg10=/, "", $i)
+				print $i
+				exit
+			}
+	}' "$proc_root/pressure/io")
+	[ -n "$io_some_avg10" ] && [ -n "$io_full_avg10" ] || {
+		printf 'Refusing overlay access: incomplete I/O pressure data\n' >&2
+		exit 1
+	}
+	if ! awk -v some="$io_some_avg10" -v full="$io_full_avg10" \
+		'BEGIN { exit !((some + 0 == 0) && (full + 0 == 0)) }'; then
+		printf 'Refusing overlay access: I/O pressure is active (some=%s full=%s)\n' \
+			"$io_some_avg10" "$io_full_avg10" >&2
+		printf '%s\n' \
+			'Wait for storage pressure to clear and rerun the read-only health check.' >&2
 		exit 1
 	fi
 }

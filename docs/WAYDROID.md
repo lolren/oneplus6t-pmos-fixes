@@ -211,14 +211,18 @@ rootfs_mounts=0
 overlay_precondition=pass
 ```
 
-The check also records `/proc/loadavg` and `/proc/pressure/io`. It does not
-stop Waydroid, unmount anything, kill a process or write the overlay. If a
-rootfs mount remains or storage I/O is pressured, recover the phone and repeat
-the report before using the installer. With `--processes`, it also reports
-D-state installer, Waydroid-container-start and reboot helper commands for
-recovery auditing; it does not claim that a signal or stop command succeeded.
-The installer independently rechecks `/proc/self/mountinfo` and refuses a
-mounted rootfs.
+The check also records `/proc/loadavg` and `/proc/pressure/io`, including both
+the `some` and `full` `avg10` values. Either non-zero value blocks the
+operation: `full` pressure is especially important because it means all
+non-idle tasks are waiting on I/O even if the `some` line looks clear. The
+check does not stop Waydroid, unmount anything, kill a process or write the
+overlay. If a rootfs mount remains or storage I/O is pressured, recover the
+phone and repeat the report before using the installer. With `--processes`, it
+also reports D-state installer, Waydroid-container-start and reboot helper
+commands for recovery auditing; it does not claim that a signal or stop
+command succeeded. The installer independently rechecks
+`/proc/self/mountinfo` and both PSI lines and refuses a mounted rootfs, active
+I/O pressure or unavailable pressure data.
 
 The package helper produces a tarball and a manifest. Extract the tarball into
 a fresh staging directory, then use the installer so the provider GID is
@@ -263,13 +267,14 @@ This operation does not alter a partition, boot slot, kernel or firmware and
 does not require a phone reboot. The installer does not start or stop services;
 that is kept explicit so it cannot unexpectedly interrupt a camera session.
 
-The installer reads `/proc/self/mountinfo` before both installation and
-rollback. If Waydroid's rootfs or one of its child mounts is still present, it
-fails immediately with the mount path. `WAYDROID_ROOTFS_DIR` and
-`WAYDROID_CAMERA_MOUNTINFO` are available for a nonstandard layout or test
-fixture. Do not bypass this check while the rootfs is mounted: the overlay is a
-lower directory of that rootfs, and copying its files can deadlock the storage
-path.
+The installer reads `/proc/self/mountinfo` and `/proc/pressure/io` before both
+installation and rollback. If Waydroid's rootfs or one of its child mounts is
+still present, either PSI `avg10` value is non-zero, or pressure data is
+incomplete, it fails immediately. `WAYDROID_ROOTFS_DIR`,
+`WAYDROID_CAMERA_MOUNTINFO` and `WAYDROID_CAMERA_PROC_ROOT` are available for a
+nonstandard layout or test fixture. Do not bypass this check while the rootfs
+is mounted or storage is pressured: the overlay is a lower directory of that
+rootfs, and copying its files can deadlock the storage path.
 
 ## Verify
 

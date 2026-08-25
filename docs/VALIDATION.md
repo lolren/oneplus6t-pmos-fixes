@@ -1056,6 +1056,20 @@ physical recovery, install this bundle only after
 candidate only if frame delivery, JPEG output and provider lifecycle remain
 healthy.
 
+## Full I/O-pressure overlay guard
+
+Date: 2026-08-26. The original preflight considered only PSI `some` pressure,
+which could incorrectly pass when the `full` line showed that every non-idle
+task was blocked on storage. The health report now records both
+`io_some_avg10` and `io_full_avg10` and requires both to be exactly zero. The
+installer repeats the same fail-closed check, including refusal when the PSI
+file or either line is unavailable.
+
+The host regression suite covers a clear fixture, a mounted-rootfs fixture and
+a clear-rootfs fixture with `some=0.00` but `full=100.00`. `make test` passed;
+the latter is classified as `overlay_precondition=blocked-i/o-pressure` and
+the installer refuses it before reading or writing any overlay target.
+
 ## Fresh USB/userspace recheck
 
 Date: 2026-08-26. A new read-only check reproduced the same boundary after

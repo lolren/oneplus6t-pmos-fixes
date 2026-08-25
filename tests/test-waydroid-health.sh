@@ -22,6 +22,7 @@ PMOS_WAYDROID_PROC_ROOT="$TEST_DIR/proc" \
 	"$REPORT" --status --output "$safe_output"
 grep -Fqx 'rootfs_mounts=0' "$safe_output"
 grep -Fqx 'io_some_avg10=0.00' "$safe_output"
+grep -Fqx 'io_full_avg10=0.00' "$safe_output"
 grep -Fqx 'overlay_precondition=pass' "$safe_output"
 grep -Fqx 'Session: STOPPED' "$safe_output"
 
@@ -51,5 +52,20 @@ PMOS_WAYDROID_PROC_ROOT="$TEST_DIR/proc" \
 	"$REPORT" --output "$blocked_output"
 grep -Fqx 'rootfs_mounts=1' "$blocked_output"
 grep -Fqx 'overlay_precondition=blocked-rootfs-mounted' "$blocked_output"
+
+: >"$TEST_DIR/proc/self/mountinfo"
+printf '%s\n' \
+	'some avg10=0.00 avg60=0.00 avg300=0.00 total=1' \
+	'full avg10=100.00 avg60=100.00 avg300=100.00 total=1' \
+	>"$TEST_DIR/proc/pressure/io"
+pressure_output=$TEST_DIR/pressure.txt
+PMOS_WAYDROID_PROC_ROOT="$TEST_DIR/proc" \
+	PMOS_WAYDROID_ROOTFS=/var/lib/waydroid/rootfs \
+	PMOS_WAYDROID_MOUNTINFO="$TEST_DIR/proc/self/mountinfo" \
+	"$REPORT" --output "$pressure_output"
+grep -Fqx 'rootfs_mounts=0' "$pressure_output"
+grep -Fqx 'io_some_avg10=0.00' "$pressure_output"
+grep -Fqx 'io_full_avg10=100.00' "$pressure_output"
+grep -Fqx 'overlay_precondition=blocked-i/o-pressure' "$pressure_output"
 
 printf '%s\n' 'waydroid health tests passed'
