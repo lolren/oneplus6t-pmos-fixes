@@ -1,0 +1,404 @@
+From 0e493f18cac6b7f061dea3bd94d98f794c16ef0e Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Mon, 24 Aug 2026 10:29:44 +0100
+Subject: [PATCH] spa: libcamera: Transport autofocus controls and state
+
+Represent libcamera Rectangle arrays as SPA structs so clients can set
+AfWindows. Publish the sensor crop, effective stream crop and orientation so
+preview taps can be mapped without device-specific geometry.
+
+Publish AfState together with monotonically increasing accepted-trigger and
+metadata-generation properties. Attaching the generation to the queued request
+lets clients distinguish the result of their tap from stale continuous-
+autofocus metadata.
+
+All added node properties are namespaced under api.libcamera and omitted when
+unavailable.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ spa/plugins/libcamera/libcamera-source.cpp | 239 ++++++++++++++++++++-
+ 1 file changed, 231 insertions(+), 8 deletions(-)
+
+diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
+index fba3d8b..e0ae8c5 100644
+--- a/spa/plugins/libcamera/libcamera-source.cpp
++++ b/spa/plugins/libcamera/libcamera-source.cpp
+@@ -6,10 +6,13 @@
+ 
+ #include <array>
+ #include <cstddef>
++#include <cstdint>
+ #include <limits>
+ #include <optional>
++#include <string>
+ #include <type_traits>
+ #include <utility>
++#include <vector>
+ 
+ #include <sys/mman.h>
+ 
+@@ -34,9 +37,11 @@
+ #include <spa/control/control.h>
+ #include <spa/pod/dynamic.h>
+ #include <spa/pod/filter.h>
++#include <spa/pod/iter.h>
+ 
+ #include <libcamera/camera.h>
+ #include <libcamera/control_ids.h>
++#include <libcamera/property_ids.h>
+ #include <libcamera/stream.h>
+ #include <libcamera/formats.h>
+ #include <libcamera/framebuffer.h>
+@@ -54,6 +59,9 @@ namespace {
+ 
+ #define BUFFER_FLAG_OUTSTANDING	(1<<0)
+ 
++struct impl;
++void emit_node_info(struct impl *impl, bool full);
++
+ struct buffer {
+ 	uint32_t id;
+ 	uint32_t flags;
+@@ -160,6 +168,17 @@ struct impl {
+ 
+ 	ControlList ctrls;
+ 	ControlList initial_controls;
++	std::string scaler_crop_maximum;
++	std::string scaler_crop;
++	std::string stream_orientation;
++	std::string af_state;
++	std::string af_trigger_generation_string;
++	std::string af_state_trigger_generation_string;
++	/* Correlate asynchronous request metadata with the trigger that caused it. */
++	uint64_t af_trigger_generation = 0;
++	uint64_t pending_af_trigger_generation = 0;
++	uint64_t active_af_trigger_generation = 0;
++	std::array<uint64_t, MAX_BUFFERS> request_af_trigger_generation = {};
+ 	bool active = false;
+ 	bool acquired = false;
+ 
+@@ -195,6 +214,15 @@ struct impl {
+ 			spa_system_close(system, std::exchange(source.fd, -1));
+ 
+ 		completed_requests_rb = SPA_RINGBUFFER_INIT();
++		pending_af_trigger_generation = 0;
++		active_af_trigger_generation = 0;
++		request_af_trigger_generation.fill(0);
++		if (!af_state.empty() || !af_state_trigger_generation_string.empty()) {
++			af_state.clear();
++			af_state_trigger_generation_string.clear();
++			info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
++			emit_node_info(this, false);
++		}
+ 		active = false;
+ 
+ 		for (auto& p : out_ports)
+@@ -285,6 +313,8 @@ int spa_libcamera_buffer_recycle(struct impl *impl, struct port *port, uint32_t
+ 	}
+ 	Request *request = impl->requestPool[buffer_id].get();
+ 	if (impl->active) {
++		impl->request_af_trigger_generation[buffer_id] =
++			std::exchange(impl->pending_af_trigger_generation, 0);
+ 		request->controls().merge(impl->ctrls);
+ 		impl->ctrls.clear();
+ 		if ((res = impl->camera->queueRequest(request)) < 0) {
+@@ -715,6 +745,51 @@ int spa_libcamera_set_format(struct impl *impl, struct port *port,
+ 	if (res != 0)
+ 		goto error;
+ 
++	if (const auto crop =
++		    impl->camera->properties().get(properties::ScalerCropMaximum)) {
++		impl->scaler_crop_maximum =
++			std::to_string(crop->x) + "," +
++			std::to_string(crop->y) + "," +
++			std::to_string(crop->width) + "," +
++			std::to_string(crop->height);
++
++		/*
++		 * The software ISP centre-crops its input to the configured stream
++		 * aspect ratio. Publish that effective sensor region as well as the
++		 * full control coordinate domain so UI coordinates map to what users
++		 * actually see.
++		 */
++		Rectangle effective = *crop;
++		const Size &output = streamConfig.size;
++		if (output.width && output.height) {
++			if (static_cast<uint64_t>(effective.width) * output.height >
++			    static_cast<uint64_t>(effective.height) * output.width) {
++				unsigned int width = static_cast<unsigned int>(
++					static_cast<uint64_t>(effective.height) *
++					output.width / output.height);
++				effective.x += (effective.width - width) / 2;
++				effective.width = width;
++			} else {
++				unsigned int height = static_cast<unsigned int>(
++					static_cast<uint64_t>(effective.width) *
++					output.height / output.width);
++				effective.y += (effective.height - height) / 2;
++				effective.height = height;
++			}
++		}
++		impl->scaler_crop =
++			std::to_string(effective.x) + "," +
++			std::to_string(effective.y) + "," +
++			std::to_string(effective.width) + "," +
++			std::to_string(effective.height);
++		impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
++	} else {
++		impl->scaler_crop_maximum.clear();
++		impl->scaler_crop.clear();
++	}
++	impl->stream_orientation =
++		std::to_string(static_cast<unsigned int>(impl->config->orientation));
++
+ 	port->streamConfig = impl->config->at(0);
+ 
+ 	if ((res = allocBuffers(impl, port, port->streamConfig.bufferCount)) < 0)
+@@ -772,8 +847,35 @@ uint32_t prop_id_to_control(uint32_t prop_id)
+ [[nodiscard]]
+ ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
+ {
+-	if (cid.isArray())
+-		return {};
++	if (cid.isArray()) {
++		if (cid.type() != libcamera::ControlTypeRectangle ||
++		    !spa_pod_is_struct(value))
++			return {};
++
++		std::vector<int32_t> fields;
++		const struct spa_pod *item;
++		SPA_POD_STRUCT_FOREACH(value, item) {
++			int32_t field;
++			if (spa_pod_get_int(item, &field) < 0)
++				return {};
++			fields.push_back(field);
++		}
++
++		if (fields.empty() || fields.size() % 4)
++			return {};
++
++		std::vector<Rectangle> rectangles;
++		for (std::size_t i = 0; i < fields.size(); i += 4) {
++			if (fields[i + 2] < 0 || fields[i + 3] < 0)
++				return {};
++
++			rectangles.emplace_back(fields[i], fields[i + 1],
++						static_cast<unsigned int>(fields[i + 2]),
++						static_cast<unsigned int>(fields[i + 3]));
++		}
++
++		return ControlValue(Span<const Rectangle>(rectangles));
++	}
+ 
+ 	switch (cid.type()) {
+ 	case libcamera::ControlTypeBool: {
+@@ -829,8 +931,25 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
+ [[nodiscard]]
+ bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
+ {
+-	if (cv.isArray())
+-		return false;
++	if (cv.isArray()) {
++		if (cv.type() != libcamera::ControlTypeRectangle)
++			return false;
++
++		spa_pod_frame f;
++		spa_pod_builder_push_struct(&b, &f);
++		for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
++			if (rectangle.width > std::numeric_limits<int32_t>::max() ||
++			    rectangle.height > std::numeric_limits<int32_t>::max())
++				return false;
++
++			spa_pod_builder_int(&b, rectangle.x);
++			spa_pod_builder_int(&b, rectangle.y);
++			spa_pod_builder_int(&b, rectangle.width);
++			spa_pod_builder_int(&b, rectangle.height);
++		}
++		spa_pod_builder_pop(&b, &f);
++		return true;
++	}
+ 
+ 	switch (cv.type()) {
+ 	case libcamera::ControlTypeBool: {
+@@ -873,7 +992,7 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
+ spa_pod *control_details_to_pod(spa_pod_builder& b,
+ 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
+ {
+-	if (cid.isArray())
++	if (cid.isArray() && cid.type() != libcamera::ControlTypeRectangle)
+ 		return nullptr;
+ 
+ 	auto id = control_to_prop_id(cid.id());
+@@ -885,7 +1004,11 @@ spa_pod *control_details_to_pod(spa_pod_builder& b,
+ 			SPA_PROP_INFO_description, SPA_POD_String(cid.name().c_str()),
+ 			0);
+ 
+-	if (cinfo.values().empty()) {
++	if (cid.isArray()) {
++		spa_pod_builder_prop(&b, SPA_PROP_INFO_type, 0);
++		if (!control_value_to_pod(b, cinfo.def()))
++			return nullptr;
++	} else if (cinfo.values().empty()) {
+ 		switch (cid.type()) {
+ 		case ControlTypeBool: {
+ 			auto min = cinfo.min().get<bool>();
+@@ -1009,10 +1132,16 @@ int spa_libcamera_apply_controls(struct impl *impl, libcamera::ControlList&& con
+ 	if (controls.empty())
+ 		return 0;
+ 
++	const auto af_trigger = controls.get(libcamera::controls::AfTrigger);
++	const bool starts_autofocus =
++		af_trigger && *af_trigger == libcamera::controls::AfTriggerStart;
++
+ 	struct invoke_data {
+ 		ControlList *controls;
++		bool starts_autofocus;
+ 	} d = {
+ 		.controls = &controls,
++		.starts_autofocus = starts_autofocus,
+ 	};
+ 
+ 	return spa_loop_locked(
+@@ -1025,17 +1154,72 @@ int spa_libcamera_apply_controls(struct impl *impl, libcamera::ControlList&& con
+ 			impl->ctrls.merge(std::move(*d->controls),
+ 					  libcamera::ControlList::MergePolicy::OverwriteExisting);
+ 
++			if (d->starts_autofocus) {
++				/*
++				 * Publish acceptance before request metadata. A client can then
++				 * wait for the same generation in af-state-trigger-generation
++				 * instead of mistaking a continuous-AF result for its tap.
++				 */
++				impl->pending_af_trigger_generation =
++					++impl->af_trigger_generation;
++				impl->af_trigger_generation_string =
++					std::to_string(impl->af_trigger_generation);
++				impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
++				emit_node_info(impl, false);
++			}
++
+ 			return 0;
+ 		},
+ 		0, &d, sizeof(d), impl
+ 	);
+ }
+ 
++const char *af_state_name(int32_t state)
++{
++	switch (state) {
++	case libcamera::controls::AfStateIdle:
++		return "idle";
++	case libcamera::controls::AfStateScanning:
++		return "scanning";
++	case libcamera::controls::AfStateFocused:
++		return "focused";
++	case libcamera::controls::AfStateFailed:
++		return "failed";
++	default:
++		return "unknown";
++	}
++}
++
++void update_autofocus_state(struct impl *impl, libcamera::Request *request,
++			    uint64_t trigger_generation)
++{
++	if (trigger_generation != 0)
++		impl->active_af_trigger_generation = trigger_generation;
++
++	const auto state = request->metadata().get(libcamera::controls::AfState);
++	if (!state)
++		return;
++
++	const std::string state_name = af_state_name(*state);
++	const std::string generation =
++		std::to_string(impl->active_af_trigger_generation);
++	if (impl->af_state == state_name &&
++	    impl->af_state_trigger_generation_string == generation)
++		return;
++
++	impl->af_state = state_name;
++	impl->af_state_trigger_generation_string = generation;
++	impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
++	emit_node_info(impl, false);
++}
++
+ void handle_completed_request(struct impl *impl, libcamera::Request *request)
+ {
+ 	const auto request_id = request->cookie();
+ 	struct port *port = &impl->out_ports[0];
+ 	buffer *b = &port->buffers[request_id];
++	const uint64_t trigger_generation =
++		std::exchange(impl->request_af_trigger_generation[request_id], 0);
+ 
+ 	spa_log_trace(impl->log, "%p: request %p[%" PRIu64 "] process status:%u seq:%" PRIu32,
+ 			impl, request, request_id, static_cast<unsigned int>(request->status()),
+@@ -1050,6 +1234,8 @@ void handle_completed_request(struct impl *impl, libcamera::Request *request)
+ 		return;
+ 	}
+ 
++	update_autofocus_state(impl, request, trigger_generation);
++
+ 	const FrameBuffer *buffer = request->findBuffer(port->streamConfig.stream());
+ 	if (buffer == nullptr) {
+ 		spa_log_warn(impl->log, "%p: request %p[%" PRIu64 "] has no buffer for stream %p",
+@@ -1604,17 +1790,54 @@ int impl_node_send_command(void *object, const struct spa_command *command)
+ 
+ void emit_node_info(struct impl *impl, bool full)
+ {
+-	static const struct spa_dict_item info_items[] = {
++	struct spa_dict_item info_items[] = {
+ 		{ SPA_KEY_DEVICE_API, "libcamera" },
+ 		{ SPA_KEY_MEDIA_CLASS, "Video/Source" },
+ 		{ SPA_KEY_MEDIA_ROLE, "Camera" },
+ 		{ SPA_KEY_NODE_DRIVER, "true" },
++		{ "api.libcamera.scaler-crop-maximum", nullptr },
++		{ "api.libcamera.scaler-crop", nullptr },
++		{ "api.libcamera.stream-orientation", nullptr },
++		{ "api.libcamera.af-state", nullptr },
++		{ "api.libcamera.af-trigger-generation", nullptr },
++		{ "api.libcamera.af-state-trigger-generation", nullptr },
+ 	};
++	uint32_t n_items = SPA_N_ELEMENTS(info_items) - 6;
++	if (!impl->scaler_crop_maximum.empty()) {
++		info_items[n_items].value = impl->scaler_crop_maximum.c_str();
++		n_items++;
++	}
++	if (!impl->scaler_crop.empty()) {
++		info_items[n_items].key = "api.libcamera.scaler-crop";
++		info_items[n_items].value = impl->scaler_crop.c_str();
++		n_items++;
++	}
++	if (!impl->stream_orientation.empty()) {
++		info_items[n_items].key = "api.libcamera.stream-orientation";
++		info_items[n_items].value = impl->stream_orientation.c_str();
++		n_items++;
++	}
++	if (!impl->af_state.empty()) {
++		info_items[n_items].key = "api.libcamera.af-state";
++		info_items[n_items].value = impl->af_state.c_str();
++		n_items++;
++	}
++	if (!impl->af_trigger_generation_string.empty()) {
++		info_items[n_items].key = "api.libcamera.af-trigger-generation";
++		info_items[n_items].value = impl->af_trigger_generation_string.c_str();
++		n_items++;
++	}
++	if (!impl->af_state_trigger_generation_string.empty()) {
++		info_items[n_items].key = "api.libcamera.af-state-trigger-generation";
++		info_items[n_items].value =
++			impl->af_state_trigger_generation_string.c_str();
++		n_items++;
++	}
+ 	uint64_t old = full ? impl->info.change_mask : 0;
+ 	if (full)
+ 		impl->info.change_mask = impl->info_all;
+ 	if (impl->info.change_mask) {
+-		struct spa_dict dict = SPA_DICT_INIT_ARRAY(info_items);
++		struct spa_dict dict = SPA_DICT_INIT(info_items, n_items);
+ 		impl->info.props = &dict;
+ 		spa_node_emit_info(&impl->hooks, &impl->info);
+ 		impl->info.change_mask = old;
+-- 
+2.49.0
+

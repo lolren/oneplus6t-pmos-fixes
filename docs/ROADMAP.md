@@ -9,8 +9,9 @@ location and Android-container failures cannot obscure one another.
    baseline while application work proceeds.
 2. Build Advanced Snapshot as a separately named, GPL-compatible Snapshot fork
    with a polished photo/video interface, truthful focus state and only controls
-   implemented by the lower stack. Do not advertise fake HDR, flash behavior or
-   uncalibrated manual values.
+   implemented by the lower stack. The independent package and correlated
+   focus-state source now build; native r7/r1 acceptance is the current gate.
+   Do not advertise fake HDR, flash behavior or uncalibrated manual values.
 3. Create the VibeMarketOS product layer: a small pmaports overlay, signed APK
    repository, versioned Waydroid bundle, known-good manifest, pre-activation
    camera health checks and retained rollback generations. Upstream

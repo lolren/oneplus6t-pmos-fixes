@@ -524,6 +524,59 @@ sanitized result SHA-256 is
 Generated JPEGs remain private. Waydroid was returned to its prior stopped
 state; the complete r23 overlay backup remains available for rollback.
 
+## r7/r1 truthful autofocus package checkpoint
+
+The PipeWire transport was extended without changing libcamera or the kernel.
+Its three read-only node properties are
+`api.libcamera.af-trigger-generation`,
+`api.libcamera.af-state-trigger-generation` and
+`api.libcamera.af-state`. The accepted trigger generation is attached to the
+queued request, then retained while real request metadata moves through
+`Scanning` to `Focused` or `Failed`. This prevents a stale continuous-focus
+result from being attributed to a new tap. Fixed-focus cameras publish no
+autofocus result.
+
+The final PipeWire mail patch has SHA-512
+`698969b493c84f19c28d4f071ec08fce153ad849008fbf181eb2b055921e9b5081f3211002ed21abf5d1647f26dad975ae4ed2a790c798b938c90ab68f5fedd6`.
+It reapplied to the PipeWire 1.6.8 source, compiled as AArch64 and passed all
+52 PipeWire tests. The signed package is:
+
+| Package | SHA-256 |
+| --- | --- |
+| `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
+
+The extracted plugin is a stripped AArch64 ELF and contains all three focus
+properties plus the previously validated crop and orientation properties.
+
+Advanced Snapshot source commit
+`f163794d0bd4b796b4f8555c9af1a1e51f42ebf7` waits for a terminal state with a
+newly accepted generation. It prints only `focused` or `failed` for truthful
+optical outcomes; transport failures remain nonzero. The UI is amber while
+waiting, green only for `focused` and red for `failed` or infrastructure error.
+The immutable GitHub archive SHA-512 is
+`5d1c8197cbe368e6e88313d6fd5e997e5a3cf5aeb442e490ae4be6492c75d0f2721b007e6400c072ac6361445f82fbb216bc258e8dbab19c3c62980d92c0b83d`.
+
+The exact published-source aport passed all six Aperture library tests and its
+complete APK validator, including signature, AArch64 ELF, metadata, namespace
+and zero ownership overlap with Snapshot:
+
+| Package | SHA-256 |
+| --- | --- |
+| `advanced-snapshot-0.1.0-r1.apk` | `1e19e6d3bfa990d9ae4440fcc0364383e7cfc36de835689d2a2d5d1748368795` |
+| `advanced-snapshot-lang-0.1.0-r1.apk` | `7329bc3133cacd288e1f95e9cb93e69f71acc986b0bf1a875e8e4cd0469a47c8` |
+
+The regenerated pmaports integration patch contains the r7 transport and r1
+app aport. It applied and reverse-checked on a fresh detached pmaports
+`875bddba6538818f2c3c9849e184f40688ad5140` worktree, and every resulting file
+matched the audited staging tree byte-for-byte. Its SHA-256 is
+`e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
+
+At this checkpoint the phone still runs r6/r0. Its `/etc/apk/world` SHA-256 is
+`e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`,
+PipeWire and WirePlumber are active, Waydroid is stopped and no camera client
+is active. The three-package simulation and all-sensor result test are the
+remaining gates before replacing this rollback baseline.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

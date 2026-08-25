@@ -413,6 +413,97 @@ index d0a1016..b38ed5a 100644
 +3f7b466fff0febc7a0e467ce5b44de23c7e27f3c32beaaa256aebee8c0cc8b2062f58ec218e0cff4476e247ecffe00e9a322d30fe3a33d11269f666802826765  0004-media-i2c-imx376-correct-analogue-gain-range.patch
 +898faaab8040dbfe40ea20250d9907276376a59d7275b648ce67b5a53a1667fd36ec58d1a17f99b514155f7e8d9cac7942fd5663901f2961ed0207c0da5c8c84  0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
  "
+diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
+new file mode 100644
+index 0000000..95439c5
+--- /dev/null
++++ b/temp/advanced-snapshot/APKBUILD
+@@ -0,0 +1,69 @@
++# Contributor: Lolren <loren.bufanu@gmail.com>
++maintainer="Lolren <loren.bufanu@gmail.com>"
++pkgname=advanced-snapshot
++pkgver=0.1.0
++pkgrel=1
++_commit="f163794d0bd4b796b4f8555c9af1a1e51f42ebf7"
++pkgdesc="Mobile-first camera application with truthful manual controls"
++url="https://github.com/lolren/advanced-snapshot"
++arch="all"
++license="GPL-3.0-or-later"
++makedepends="
++	cargo
++	cargo-auditable
++	desktop-file-utils
++	glib-dev
++	gst-plugins-bad-dev
++	gst-plugins-base-dev
++	gstreamer-dev
++	gtk4.0-dev
++	lcms2-dev
++	libadwaita-dev
++	libglycin-gtk4-dev
++	libseccomp-dev
++	meson
++	pipewire-dev
++	"
++depends="
++	glycin-image-rs
++	gst-plugin-pipewire
++	gst-plugins-bad
++	gst-plugins-good
++	gst-plugins-rs-gtk4
++	gst-plugins-ugly
++	pipewire
++	pipewire-spa-libcamera
++	"
++subpackages="$pkgname-lang"
++source="
++	$pkgname-$pkgver.tar.gz::https://github.com/lolren/advanced-snapshot/archive/$_commit.tar.gz
++	cargo-auditable.patch
++	"
++options="net" # cargo vendor fetches locked Rust dependencies
++builddir="$srcdir/$pkgname-$_commit"
++
++prepare() {
++	default_prepare
++
++	mkdir -p .cargo
++	cargo vendor --locked vendor > .cargo/config.toml
++}
++
++build() {
++	abuild-meson \
++		. output
++	meson compile -C output
++}
++
++check() {
++	cargo test --locked --workspace --lib --bins
++}
++
++package() {
++	DESTDIR="$pkgdir" meson install --no-rebuild -C output
++}
++
++sha512sums="
++5d1c8197cbe368e6e88313d6fd5e997e5a3cf5aeb442e490ae4be6492c75d0f2721b007e6400c072ac6361445f82fbb216bc258e8dbab19c3c62980d92c0b83d  advanced-snapshot-0.1.0.tar.gz
++7f729fa3797bce8f2088d3b6aa72057cd6c3d5cd3cebca2b001d92cb9c0ffd9375a98e16db949717d32a608ccd7d11a31552f8192e8b48df61d482d61fe9f931  cargo-auditable.patch
++"
+diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
+new file mode 100644
+index 0000000..302c85b
+--- /dev/null
++++ b/temp/advanced-snapshot/cargo-auditable.patch
+@@ -0,0 +1,10 @@
++diff --git a/meson.build b/meson.build
++--- a/meson.build
+++++ b/meson.build
++@@ -35,0 +36 @@
+++cargo_auditable = find_program('cargo-auditable', required: true)
++diff --git a/src/meson.build b/src/meson.build
++--- a/src/meson.build
+++++ b/src/meson.build
++@@ -54,0 +55 @@
+++    'auditable',
 diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 new file mode 100644
 index 0000000..ffbd5a9
@@ -4960,26 +5051,36 @@ index e903d96..4523120 100644
 +      highlightQuantile: 0.98
 +      highlightTarget: 0.95
  ...
-diff --git a/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
+diff --git a/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
 new file mode 100644
-index 0000000..36a0ca8
+index 0000000..4f7b152
 --- /dev/null
-+++ b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-window-controls.patch
-@@ -0,0 +1,233 @@
-+From 2537ebc28ba6f05b710d018d107d03672001dee0 Mon Sep 17 00:00:00 2001
++++ b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
+@@ -0,0 +1,404 @@
++From 0e493f18cac6b7f061dea3bd94d98f794c16ef0e Mon Sep 17 00:00:00 2001
 +From: Lolren <loren.bufanu@gmail.com>
 +Date: Mon, 24 Aug 2026 10:29:44 +0100
-+Subject: [PATCH] spa: libcamera: Transport autofocus window controls
++Subject: [PATCH] spa: libcamera: Transport autofocus controls and state
 +
-+Represent libcamera Rectangle arrays as SPA structs so clients can set AfWindows. Publish the configured sensor crop, effective stream crop and orientation on the camera node, allowing a UI tap to be mapped from displayed coordinates into the correct sensor region without device-specific geometry.
++Represent libcamera Rectangle arrays as SPA structs so clients can set
++AfWindows. Publish the sensor crop, effective stream crop and orientation so
++preview taps can be mapped without device-specific geometry.
++
++Publish AfState together with monotonically increasing accepted-trigger and
++metadata-generation properties. Attaching the generation to the queued request
++lets clients distinguish the result of their tap from stale continuous-
++autofocus metadata.
++
++All added node properties are namespaced under api.libcamera and omitted when
++unavailable.
 +
 +Signed-off-by: Lolren <loren.bufanu@gmail.com>
 +---
-+ spa/plugins/libcamera/libcamera-source.cpp | 135 +++++++++++++++++++--
-+ 1 file changed, 127 insertions(+), 8 deletions(-)
++ spa/plugins/libcamera/libcamera-source.cpp | 239 ++++++++++++++++++++-
++ 1 file changed, 231 insertions(+), 8 deletions(-)
 +
 +diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
-+index fba3d8b..47470aa 100644
++index fba3d8b..e0ae8c5 100644
 +--- a/spa/plugins/libcamera/libcamera-source.cpp
 ++++ b/spa/plugins/libcamera/libcamera-source.cpp
 +@@ -6,10 +6,13 @@
@@ -5008,17 +5109,60 @@ index 0000000..36a0ca8
 + #include <libcamera/stream.h>
 + #include <libcamera/formats.h>
 + #include <libcamera/framebuffer.h>
-+@@ -160,6 +165,9 @@ struct impl {
++@@ -54,6 +59,9 @@ namespace {
++ 
++ #define BUFFER_FLAG_OUTSTANDING	(1<<0)
++ 
+++struct impl;
+++void emit_node_info(struct impl *impl, bool full);
+++
++ struct buffer {
++ 	uint32_t id;
++ 	uint32_t flags;
++@@ -160,6 +168,17 @@ struct impl {
 + 
 + 	ControlList ctrls;
 + 	ControlList initial_controls;
 ++	std::string scaler_crop_maximum;
 ++	std::string scaler_crop;
 ++	std::string stream_orientation;
+++	std::string af_state;
+++	std::string af_trigger_generation_string;
+++	std::string af_state_trigger_generation_string;
+++	/* Correlate asynchronous request metadata with the trigger that caused it. */
+++	uint64_t af_trigger_generation = 0;
+++	uint64_t pending_af_trigger_generation = 0;
+++	uint64_t active_af_trigger_generation = 0;
+++	std::array<uint64_t, MAX_BUFFERS> request_af_trigger_generation = {};
 + 	bool active = false;
 + 	bool acquired = false;
 + 
-+@@ -715,6 +723,51 @@ int spa_libcamera_set_format(struct impl *impl, struct port *port,
++@@ -195,6 +214,15 @@ struct impl {
++ 			spa_system_close(system, std::exchange(source.fd, -1));
++ 
++ 		completed_requests_rb = SPA_RINGBUFFER_INIT();
+++		pending_af_trigger_generation = 0;
+++		active_af_trigger_generation = 0;
+++		request_af_trigger_generation.fill(0);
+++		if (!af_state.empty() || !af_state_trigger_generation_string.empty()) {
+++			af_state.clear();
+++			af_state_trigger_generation_string.clear();
+++			info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
+++			emit_node_info(this, false);
+++		}
++ 		active = false;
++ 
++ 		for (auto& p : out_ports)
++@@ -285,6 +313,8 @@ int spa_libcamera_buffer_recycle(struct impl *impl, struct port *port, uint32_t
++ 	}
++ 	Request *request = impl->requestPool[buffer_id].get();
++ 	if (impl->active) {
+++		impl->request_af_trigger_generation[buffer_id] =
+++			std::exchange(impl->pending_af_trigger_generation, 0);
++ 		request->controls().merge(impl->ctrls);
++ 		impl->ctrls.clear();
++ 		if ((res = impl->camera->queueRequest(request)) < 0) {
++@@ -715,6 +745,51 @@ int spa_libcamera_set_format(struct impl *impl, struct port *port,
 + 	if (res != 0)
 + 		goto error;
 + 
@@ -5070,7 +5214,7 @@ index 0000000..36a0ca8
 + 	port->streamConfig = impl->config->at(0);
 + 
 + 	if ((res = allocBuffers(impl, port, port->streamConfig.bufferCount)) < 0)
-+@@ -772,8 +825,35 @@ uint32_t prop_id_to_control(uint32_t prop_id)
++@@ -772,8 +847,35 @@ uint32_t prop_id_to_control(uint32_t prop_id)
 + [[nodiscard]]
 + ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
 + {
@@ -5108,7 +5252,7 @@ index 0000000..36a0ca8
 + 
 + 	switch (cid.type()) {
 + 	case libcamera::ControlTypeBool: {
-+@@ -829,8 +909,25 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
++@@ -829,8 +931,25 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
 + [[nodiscard]]
 + bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
 + {
@@ -5136,7 +5280,7 @@ index 0000000..36a0ca8
 + 
 + 	switch (cv.type()) {
 + 	case libcamera::ControlTypeBool: {
-+@@ -873,7 +970,7 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
++@@ -873,7 +992,7 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
 + spa_pod *control_details_to_pod(spa_pod_builder& b,
 + 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
 + {
@@ -5145,7 +5289,7 @@ index 0000000..36a0ca8
 + 		return nullptr;
 + 
 + 	auto id = control_to_prop_id(cid.id());
-+@@ -885,7 +982,11 @@ spa_pod *control_details_to_pod(spa_pod_builder& b,
++@@ -885,7 +1004,11 @@ spa_pod *control_details_to_pod(spa_pod_builder& b,
 + 			SPA_PROP_INFO_description, SPA_POD_String(cid.name().c_str()),
 + 			0);
 + 
@@ -5158,7 +5302,106 @@ index 0000000..36a0ca8
 + 		switch (cid.type()) {
 + 		case ControlTypeBool: {
 + 			auto min = cinfo.min().get<bool>();
-+@@ -1604,17 +1705,35 @@ int impl_node_send_command(void *object, const struct spa_command *command)
++@@ -1009,10 +1132,16 @@ int spa_libcamera_apply_controls(struct impl *impl, libcamera::ControlList&& con
++ 	if (controls.empty())
++ 		return 0;
++ 
+++	const auto af_trigger = controls.get(libcamera::controls::AfTrigger);
+++	const bool starts_autofocus =
+++		af_trigger && *af_trigger == libcamera::controls::AfTriggerStart;
+++
++ 	struct invoke_data {
++ 		ControlList *controls;
+++		bool starts_autofocus;
++ 	} d = {
++ 		.controls = &controls,
+++		.starts_autofocus = starts_autofocus,
++ 	};
++ 
++ 	return spa_loop_locked(
++@@ -1025,17 +1154,72 @@ int spa_libcamera_apply_controls(struct impl *impl, libcamera::ControlList&& con
++ 			impl->ctrls.merge(std::move(*d->controls),
++ 					  libcamera::ControlList::MergePolicy::OverwriteExisting);
++ 
+++			if (d->starts_autofocus) {
+++				/*
+++				 * Publish acceptance before request metadata. A client can then
+++				 * wait for the same generation in af-state-trigger-generation
+++				 * instead of mistaking a continuous-AF result for its tap.
+++				 */
+++				impl->pending_af_trigger_generation =
+++					++impl->af_trigger_generation;
+++				impl->af_trigger_generation_string =
+++					std::to_string(impl->af_trigger_generation);
+++				impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
+++				emit_node_info(impl, false);
+++			}
+++
++ 			return 0;
++ 		},
++ 		0, &d, sizeof(d), impl
++ 	);
++ }
++ 
+++const char *af_state_name(int32_t state)
+++{
+++	switch (state) {
+++	case libcamera::controls::AfStateIdle:
+++		return "idle";
+++	case libcamera::controls::AfStateScanning:
+++		return "scanning";
+++	case libcamera::controls::AfStateFocused:
+++		return "focused";
+++	case libcamera::controls::AfStateFailed:
+++		return "failed";
+++	default:
+++		return "unknown";
+++	}
+++}
+++
+++void update_autofocus_state(struct impl *impl, libcamera::Request *request,
+++			    uint64_t trigger_generation)
+++{
+++	if (trigger_generation != 0)
+++		impl->active_af_trigger_generation = trigger_generation;
+++
+++	const auto state = request->metadata().get(libcamera::controls::AfState);
+++	if (!state)
+++		return;
+++
+++	const std::string state_name = af_state_name(*state);
+++	const std::string generation =
+++		std::to_string(impl->active_af_trigger_generation);
+++	if (impl->af_state == state_name &&
+++	    impl->af_state_trigger_generation_string == generation)
+++		return;
+++
+++	impl->af_state = state_name;
+++	impl->af_state_trigger_generation_string = generation;
+++	impl->info.change_mask |= SPA_NODE_CHANGE_MASK_PROPS;
+++	emit_node_info(impl, false);
+++}
+++
++ void handle_completed_request(struct impl *impl, libcamera::Request *request)
++ {
++ 	const auto request_id = request->cookie();
++ 	struct port *port = &impl->out_ports[0];
++ 	buffer *b = &port->buffers[request_id];
+++	const uint64_t trigger_generation =
+++		std::exchange(impl->request_af_trigger_generation[request_id], 0);
++ 
++ 	spa_log_trace(impl->log, "%p: request %p[%" PRIu64 "] process status:%u seq:%" PRIu32,
++ 			impl, request, request_id, static_cast<unsigned int>(request->status()),
++@@ -1050,6 +1234,8 @@ void handle_completed_request(struct impl *impl, libcamera::Request *request)
++ 		return;
++ 	}
++ 
+++	update_autofocus_state(impl, request, trigger_generation);
+++
++ 	const FrameBuffer *buffer = request->findBuffer(port->streamConfig.stream());
++ 	if (buffer == nullptr) {
++ 		spa_log_warn(impl->log, "%p: request %p[%" PRIu64 "] has no buffer for stream %p",
++@@ -1604,17 +1790,54 @@ int impl_node_send_command(void *object, const struct spa_command *command)
 + 
 + void emit_node_info(struct impl *impl, bool full)
 + {
@@ -5171,8 +5414,11 @@ index 0000000..36a0ca8
 ++		{ "api.libcamera.scaler-crop-maximum", nullptr },
 ++		{ "api.libcamera.scaler-crop", nullptr },
 ++		{ "api.libcamera.stream-orientation", nullptr },
+++		{ "api.libcamera.af-state", nullptr },
+++		{ "api.libcamera.af-trigger-generation", nullptr },
+++		{ "api.libcamera.af-state-trigger-generation", nullptr },
 + 	};
-++	uint32_t n_items = SPA_N_ELEMENTS(info_items) - 3;
+++	uint32_t n_items = SPA_N_ELEMENTS(info_items) - 6;
 ++	if (!impl->scaler_crop_maximum.empty()) {
 ++		info_items[n_items].value = impl->scaler_crop_maximum.c_str();
 ++		n_items++;
@@ -5185,6 +5431,22 @@ index 0000000..36a0ca8
 ++	if (!impl->stream_orientation.empty()) {
 ++		info_items[n_items].key = "api.libcamera.stream-orientation";
 ++		info_items[n_items].value = impl->stream_orientation.c_str();
+++		n_items++;
+++	}
+++	if (!impl->af_state.empty()) {
+++		info_items[n_items].key = "api.libcamera.af-state";
+++		info_items[n_items].value = impl->af_state.c_str();
+++		n_items++;
+++	}
+++	if (!impl->af_trigger_generation_string.empty()) {
+++		info_items[n_items].key = "api.libcamera.af-trigger-generation";
+++		info_items[n_items].value = impl->af_trigger_generation_string.c_str();
+++		n_items++;
+++	}
+++	if (!impl->af_state_trigger_generation_string.empty()) {
+++		info_items[n_items].key = "api.libcamera.af-state-trigger-generation";
+++		info_items[n_items].value =
+++			impl->af_state_trigger_generation_string.c_str();
 ++		n_items++;
 ++	}
 + 	uint64_t old = full ? impl->info.change_mask : 0;
@@ -5201,7 +5463,7 @@ index 0000000..36a0ca8
 +
 diff --git a/temp/pipewire/APKBUILD b/temp/pipewire/APKBUILD
 new file mode 100644
-index 0000000..f2f96b9
+index 0000000..0e21d52
 --- /dev/null
 +++ b/temp/pipewire/APKBUILD
 @@ -0,0 +1,339 @@
@@ -5209,7 +5471,7 @@ index 0000000..f2f96b9
 +maintainer="team/alpine-desktop <bribbers@disroot.org>"
 +pkgname=pipewire
 +pkgver=1.6.8
-+pkgrel=6
++pkgrel=7
 +pkgdesc="Multimedia processing graphs"
 +url="https://pipewire.org/"
 +arch="all"
@@ -5294,7 +5556,7 @@ index 0000000..f2f96b9
 +	pipewire-pulse.initd
 +
 +	systemd-units-wo-libsystemd.patch
-+	0001-spa-libcamera-Transport-autofocus-window-controls.patch
++	0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
 +	"
 +
 +case "$CARCH" in
@@ -5542,7 +5804,7 @@ index 0000000..f2f96b9
 +ece0bb72b0f82943db8d188adad323b9b202f6d3e745f0fe93906415b365f12ff4df0d7a4d274d09755abf1269a1f546908e148a4bf7d8d2740b48a0e5e3526d  pipewire.initd
 +dd7e74534275386ccf23c5c3dc3184948bd2115ed1944ea1e52695ceeef9d764949839d8875d0e4187aa2edef01cec662a56c75b01ec06a0bc45098f4825f9cb  pipewire-pulse.initd
 +181f07b6da72b486a1e9754854320e7c9ab839409b23c397bfd50d2b706625d247b9ed94913862f790712e7bba49bf34601f7f109c82a852225a00b9f00a1c98  systemd-units-wo-libsystemd.patch
-+ed47a86e89d8d9f0c3212f491187d0eff5510dbd0ad1b522de5cff0de3fb576c06993dec56bc31e72f02048c3b2a38f6f1e65f2fbb3c454fd736fcdee0b0b654  0001-spa-libcamera-Transport-autofocus-window-controls.patch
++698969b493c84f19c28d4f071ec08fce153ad849008fbf181eb2b055921e9b5081f3211002ed21abf5d1647f26dad975ae4ed2a790c798b938c90ab68f5fedd6  0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
 +"
 diff --git a/temp/pipewire/pipewire-launcher.sh b/temp/pipewire/pipewire-launcher.sh
 new file mode 100644

@@ -116,7 +116,7 @@ and through an open Camera3 HAL in Waydroid.
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
 | Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
-| Tap-to-focus and reticle | Maps a preview tap through crop/orientation into a real sensor metering region and shows immediate feedback. |
+| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; the r7/r1 candidate correlates the result and uses amber/green/red state. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
@@ -129,6 +129,12 @@ r20/r6/r2 complete userspace set is also retained. The native r24 stack passed
 bounded captures on all three stable camera paths, rear tap/reset tests and
 70/95-second continuous-focus stability runs. The Waydroid r24 overlay passed
 all three Camera2 YUV/JPEG/private, autofocus and exposure tests.
+
+Advanced Snapshot r0 is installed beside Snapshot. Its signed r1 candidate and
+the matching PipeWire SPA r7 package build reproducibly. r7 carries
+generation-correlated `AfState`; r1 keeps the focus marker amber while waiting,
+turns it green only for metadata-confirmed focus and red for failure. They are
+one coherent update and retain r6/r0 as the immediate rollback.
 
 The current native UI exposes a visible tap reticle plus Exposure, Colour,
 Contrast, Detail, Zoom and Reset. The lower-layer focus instability is fixed:
@@ -151,7 +157,7 @@ Snapshot 50.0 sources documented here. Building requires a current
 buildroots. Installing requires root, but building does not.
 
 Apply the reviewed integration patch to the documented pmaports base, then
-build the four package recipes:
+build the five package recipes:
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -162,6 +168,7 @@ git apply --whitespace=nowarn \
 pmbootstrap -p "$PWD" build --arch aarch64 libcamera
 pmbootstrap -p "$PWD" build --arch aarch64 pipewire
 pmbootstrap -p "$PWD" build --arch aarch64 snapshot
+pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
@@ -172,23 +179,24 @@ Keep the prior exact-version APKs before changing the phone, close camera apps,
 and require the simulation to show only the documented upgrades with no
 removals. This userspace update does not require a reboot.
 
-For the current r23-to-r24 native update, stage only the matching libcamera and
-IPA APKs in an isolated repository and simulate before installing:
+For the current r6/r0-to-r7/r1 native update, stage only the matching PipeWire
+SPA, Advanced Snapshot and language APKs in an isolated repository and
+simulate before installing:
 
 ```sh
-mkdir -p patched/aarch64
+mkdir -p patched/aarch64 patched/noarch
 apk index --allow-untrusted -o patched/aarch64/APKINDEX.tar.gz \
-  patched/aarch64/*.apk
+  patched/aarch64/*.apk patched/noarch/*.apk
 apk upgrade --simulate --interactive=no --allow-untrusted --network=no \
   --repository "$PWD/patched" \
-  libcamera libcamera-ipa
+  pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang
 ```
 
 Use `--allow-untrusted` only for locally built APKs whose source, version and
 hashes you verified. If and only if the simulation lists the expected camera
 upgrades and no removal, rerun the same command without `--simulate`.
 
-On the installed controls revision:
+On installed Snapshot r3:
 
 1. open **Camera**;
 2. tap an object in either rear preview to request focus—the yellow square
@@ -196,6 +204,11 @@ On the installed controls revision:
 3. open the main menu and choose **Image Controls**;
 4. adjust Exposure, Colour, Contrast, Detail or Zoom; and
 5. use **Reset** to restore the tuned defaults for the active sensor.
+
+After coherent r7/r1 acceptance, open **Advanced Snapshot** for the truthful
+reticle: amber means scanning, green means libcamera reported `Focused`, and
+red means `Failed` or a transport error. The fixed-focus front camera has no
+focus gesture.
 
 The sliders affect both preview and saved output. HDR is intentionally shown as
 unavailable because the open pipeline has no valid multi-frame merge and tone
@@ -208,12 +221,14 @@ mapping stage.
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Cameras: installed native r8/r24/r6/r3 stack passes three-camera capture,
-  controls, frame-duration enumeration, rear tap/reset and sustained AF tests;
-  the Waydroid r24 lower layer passes all three Camera2 stream/AF/EV probes.
-- Next priorities: build Advanced Snapshot, then add the VibeMarketOS signed
-  downstream repository, compatibility-gated updates and rollback generations;
-  broaden Waydroid app testing and Play Store setup afterward. See
+- Cameras: installed native r8/r24/r6/r3 plus Advanced Snapshot r0 remains the
+  rollback baseline. The signed r7/r1 candidate and verified pmaports overlay
+  are ready for coherent all-sensor acceptance; the Waydroid r24 lower layer
+  passes all three Camera2 stream/AF/EV probes.
+- Next priorities: complete native r7/r1 acceptance and the Advanced Snapshot
+  UI, then add the VibeMarketOS signed downstream repository,
+  compatibility-gated updates and rollback generations; broaden Waydroid app
+  testing and Play Store setup afterward. See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements are not included in this

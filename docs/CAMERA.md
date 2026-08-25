@@ -6,10 +6,12 @@ focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
 Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r6 and Snapshot r3 are
-installed on the reference phone. The complete userspace set was built for
-aarch64, hash-verified, simulated offline and installed without a reboot. Exact
-r23 libcamera packages are the immediate rollback, and the complete r20/r6/r2
-set is also retained. The r21
+installed on the reference phone, with Advanced Snapshot r0 beside Snapshot.
+The complete baseline was built for aarch64, hash-verified, simulated offline
+and installed without a reboot. Exact r23 libcamera packages are the immediate
+r24 rollback, and the complete r20/r6/r2 set is also retained. The matching
+PipeWire r7 and Advanced Snapshot r1 candidate is built and retains r6/r0 for
+coherent rollback. The r21
 libcamera build is also retained as diagnostic evidence but is superseded
 because its fixed highlight ceiling weakened positive EV compensation. Nothing
 in this work flashes a partition, changes a boot slot or reboots the phone.
@@ -169,6 +171,13 @@ schedules the eight-second return to continuous autofocus. Camera changes and
 stale async callbacks clear the marker safely. The fixed-focus front camera has
 no AF controls and is rejected without claiming focus success.
 
+Advanced Snapshot's stricter result path is packaged separately. PipeWire r7
+publishes an accepted-trigger generation and correlates it with real
+`AfState` request metadata. The app keeps its reticle amber while waiting,
+turns it green only for a metadata-confirmed `Focused` state and red for
+`Failed` or a transport error. It refuses to invent success when used with the
+older r6 transport.
+
 Snapshot preview remains inexpensive. For a still, it separately selects the
 largest 4:3 mode not exceeding 2048x1536, avoiding the previous behavior where
 the preview-sized stream also limited the saved picture.
@@ -246,9 +255,9 @@ The sixteen-patch libcamera 0.7.2 series is in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
 50.0 three-patch application series have their own versioned directories under
 `patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
-all patches, tuning, checksums and package revision bumps. The Android-only
-Camera3 patch, build helper and provider configuration are documented in
-[WAYDROID.md](WAYDROID.md).
+all patches, tuning, checksums, package revision bumps and the pinned Advanced
+Snapshot aport. The Android-only Camera3 patch, build helper and provider
+configuration are documented in [WAYDROID.md](WAYDROID.md).
 
 No APK, private photograph, raw capture, device identifier, Android camera
 library or vendor tuning blob is committed.
@@ -266,13 +275,14 @@ git apply --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0
 pmbootstrap -p "$PWD" build --arch aarch64 libcamera
 pmbootstrap -p "$PWD" build --arch aarch64 pipewire
 pmbootstrap -p "$PWD" build --arch aarch64 snapshot
+pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The reference build produced `libcamera`/`libcamera-ipa` r24,
-`pipewire-spa-libcamera` r6, Snapshot r3 and the existing SDM845 kernel r8.
-See `packaging/pmaports/README.md` for hashes and rollback rules. These commands
-build packages only.
+The current reference build produced `libcamera`/`libcamera-ipa` r24,
+`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r1 and the existing
+SDM845 kernel r8. See `packaging/pmaports/README.md` for hashes and rollback
+rules. These commands build packages only.
 
 ## Validation
 
@@ -340,19 +350,28 @@ lenses were parked at DAC 0 after tests.
   frames and rejected focus with the expected status 3.
 - The full native libcamera test run had 48 passes, one expected failure, 31
   hardware skips and no failures. PipeWire passed 52 of 52 tests. Clean
-  aarch64 package builds completed for libcamera r24, PipeWire r6 and Snapshot
-  r3.
+  aarch64 package builds completed for libcamera r24, PipeWire r7, Snapshot r3
+  and Advanced Snapshot r1. All six Advanced Snapshot Aperture unit tests
+  passed, including truthful focus-result parsing.
+- The regenerated integration patch applied and reverse-checked on a fresh
+  detached pmaports `875bddba6538818f2c3c9849e184f40688ad5140` worktree.
+  Every resulting file matched the audited staging tree byte-for-byte; its
+  SHA-256 is
+  `e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
 
-The retained r23 libcamera APKs are the immediate rollback. The r8 plus
+The retained r23 libcamera APKs remain the immediate r24 rollback. The r8 plus
 r20/r6/r2 package set remains the complete older baseline. The reference phone
-now runs kernel r8 with the validated r24/r6/r3 userspace packages.
+currently runs kernel r8 with validated r24/r6/r3 userspace and Advanced
+Snapshot r0; the r7/r1 pair remains a device-acceptance candidate at this
+checkpoint.
 
 ## Installation boundary
 
 Do not unload camera modules on a running phone. A kernel package replaces
 modules under the current release path, so after any approved kernel upgrade
 do not open the camera or load modules before the approved reboot. The current
-revision is userspace-only and did not require a kernel upgrade or reboot.
+r7/r1 candidate is userspace-only and does not require a kernel upgrade or
+reboot.
 
 To reproduce the completed installation safely:
 

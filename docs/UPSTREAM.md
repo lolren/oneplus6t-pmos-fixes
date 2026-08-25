@@ -79,17 +79,19 @@ and endpoint tests included in its submission. Before submission, add focused
 upstream unit coverage for histogram quantiles and tuning validation, and
 document the two-key backward-compatible AGC schema.
 
-The PipeWire rectangle-array transport is versioned under
+The PipeWire rectangle-array and autofocus-state transport is versioned under
 `patches/pipewire/1.6.8/`. It should be proposed only after libcamera's
-`AfWindows` semantics are accepted, and its published crop/orientation property
-names should first be discussed with PipeWire maintainers rather than treated
-as a stable private API.
+`AfWindows` semantics are accepted. The `api.libcamera.*` crop, orientation,
+state and trigger-generation names are deliberately downstream interfaces,
+not a claimed stable PipeWire API. Upstream discussion should decide whether
+node properties, control metadata or a typed camera-control/status API is the
+right long-term transport before applications depend on unnamespaced keys.
 
 The Snapshot full-frame still patch is independently useful. Tap-to-focus in
 `patches/snapshot/50.0/` depends on both lower layers; upstream discussion
 should cover whether a small helper process is preferred to native PipeWire
-control handling in Aperture. Submit measured UI behavior only after the
-unlocked touchscreen acceptance test is complete.
+control and status handling in Aperture. Submit measured UI behavior only
+after the unlocked touchscreen acceptance test is complete.
 
 The EGL two-pass/mipmap patch should not be proposed unchanged while libcamera's
 official multipass GPU-ISP redesign is active; its measured OnePlus result is

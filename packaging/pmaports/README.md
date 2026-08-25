@@ -2,16 +2,17 @@
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
 pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
-files, one PipeWire control-transport patch, three Snapshot patches, checksums
-and package revision bumps. It contains no APK, boot image, firmware, vendor
-library, photograph or device-specific identifier.
+files, one PipeWire control/state-transport patch, three Snapshot patches, the
+separately named Advanced Snapshot aport, checksums and package revision bumps.
+It contains no APK, boot image, firmware, vendor library, photograph or
+device-specific identifier.
 
 ## Reviewed base and build
 
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`68a419b8f01a90f9b7816eb10a4fe1767f9b75d635be950d1a1b392d77aadb6e`.
+`e469b067e84a034708a87a667503dee638774f7b2de394e8af623affb6c48b23`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -21,6 +22,7 @@ git apply --whitespace=nowarn /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0
 pmbootstrap -p "$PWD" build --arch aarch64 libcamera
 pmbootstrap -p "$PWD" build --arch aarch64 pipewire
 pmbootstrap -p "$PWD" build --arch aarch64 snapshot
+pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
@@ -34,8 +36,10 @@ Applying the integration patch to the reviewed base produces:
 
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r8`;
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
-- `pipewire-spa-libcamera-1.6.8-r6`; and
-- `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`.
+- `pipewire-spa-libcamera-1.6.8-r7`;
+- `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
+- `advanced-snapshot-0.1.0-r1` plus
+  `advanced-snapshot-lang-0.1.0-r1`.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -47,9 +51,11 @@ during live diagnosis. They do not imply that many public releases.
 | `linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk` | `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e` |
 | `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
 | `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
-| `pipewire-spa-libcamera-1.6.8-r6.apk` | `658658c3b9df142a6462e3a73457b44a378d6820dba0c6b05a14d18f865635d4` |
+| `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
+| `advanced-snapshot-0.1.0-r1.apk` | `1e19e6d3bfa990d9ae4440fcc0364383e7cfc36de835689d2a2d5d1748368795` |
+| `advanced-snapshot-lang-0.1.0-r1.apk` | `7329bc3133cacd288e1f95e9cb93e69f71acc986b0bf1a875e8e4cd0469a47c8` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -64,7 +70,13 @@ The reference phone currently runs:
 - kernel package `7.1_rc1-r8`;
 - `libcamera` and `libcamera-ipa` `99990.7.2-r24`;
 - `pipewire-spa-libcamera` `1.6.8-r6`; and
-- Snapshot and Snapshot language data `50.0-r3`.
+- Snapshot and Snapshot language data `50.0-r3`; and
+- Advanced Snapshot and its language data `0.1.0-r0`.
+
+The r7/r1 packages above are one coherent candidate: r7 transports
+generation-correlated `AfState`, while r1 waits for that result and never
+reports control acceptance as optical success. Keep all three r6/r0 APKs as
+the immediate rollback and install or roll them back together.
 
 The exact r23 libcamera packages are the preferred rollback for the r24
 autofocus-transition update. The older complete r20/r6/r2 set remains useful when rolling
@@ -85,22 +97,28 @@ that an online repository will continue to carry old versions.
 | `snapshot-50.0-r2.apk` | `f096f4a566fe5801fce8b784759f83222eeeba15a36829bf10f129ab764d4cc6` |
 | `snapshot-lang-50.0-r2.apk` | `a86902e92caee59ca42113ccda42b08813e9975185012389f17826f114dbdaec` |
 
+| Immediate r7/r1 rollback package | SHA-256 |
+| --- | --- |
+| `pipewire-spa-libcamera-1.6.8-r6.apk` | `658658c3b9df142a6462e3a73457b44a378d6820dba0c6b05a14d18f865635d4` |
+| `advanced-snapshot-0.1.0-r0.apk` | `f76372802060de0722cddec238da63ec97dfeae7faf6dc29058bd061fed63bad` |
+| `advanced-snapshot-lang-0.1.0-r0.apk` | `13c9078e499a22ea292f9024b443dbd37d9c9181fb4cc18dbb810665cfd1cd43` |
+
 ## Installation boundary
 
 The build commands above do not copy or install anything, update boot files or
-reboot. The completed camera update was userspace-only and did not require a
-reboot. Installing on another phone still requires root, a reviewed simulation
-and an explicit decision by its owner.
+reboot. The r7/r1 candidate is userspace-only and needs no reboot. Installing
+on another phone still requires root, a reviewed simulation and an explicit
+decision by its owner.
 
-For the r23-to-r24 update, stage the two r24 APKs and the two r23 rollback APKs
-in separate offline repositories. apk-tools 3 reads `APKINDEX.tar.gz` from the
-native `aarch64/` directory. Pass the repository root to apk, not its
-`aarch64/` subdirectory.
+For the current r6/r0-to-r7/r1 update, stage the three candidate APKs and three
+rollback APKs in separate offline repositories. apk-tools 3 reads
+`APKINDEX.tar.gz` from the native `aarch64/` directory. Pass the repository
+root to apk, not its `aarch64/` subdirectory.
 
-For a fresh installation that also builds Snapshot, put `snapshot-lang` in
-`noarch/` and include it while generating the native index. This mixed layout
-was tested with apk-tools 3.0.7; placing the noarch APK beside the native index
-causes a late lookup failure and can split a larger transaction.
+Put `advanced-snapshot-lang` in `noarch/` and include it while generating the
+native index. This mixed layout was tested with apk-tools 3.0.7; placing the
+noarch APK beside the native index causes a late lookup failure and can split
+a larger transaction.
 
 ```sh
 mkdir -p patched/aarch64 patched/noarch rollback/aarch64 rollback/noarch
@@ -115,22 +133,25 @@ From the directory containing `patched/`, simulate first:
 ```sh
 apk upgrade --simulate --allow-untrusted --network=no \
   --interactive=no --repository "$PWD/patched" \
-  libcamera libcamera-ipa
+  pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang
 ```
 
 Starting from the documented baseline, it must list exactly these
 transitions and no removal:
 
 ```text
-libcamera-ipa           99990.7.2-r23 -> 99990.7.2-r24
-libcamera               99990.7.2-r23 -> 99990.7.2-r24
+pipewire-spa-libcamera  1.6.8-r6 -> 1.6.8-r7
+advanced-snapshot       0.1.0-r0 -> 0.1.0-r1
+advanced-snapshot-lang  0.1.0-r0 -> 0.1.0-r1
 ```
 
 Only after reviewing that output and receiving approval may the same command
 be run as root without `--simulate`. Record a SHA-256 of `/etc/apk/world`
-before and after; the reference transaction left it unchanged. `--allow-untrusted`
-is appropriate only for locally built packages whose source, version and hash
-were independently verified.
+before and after; the current baseline is
+`e91dd5dc4a85594da5e28d11c014f6fefaf3b16adc6329f7e1000685de84b32e`
+and the upgrade must leave it unchanged. `--allow-untrusted` is appropriate
+only for locally built packages whose source, version and hash were
+independently verified.
 
 Close all camera applications before the userspace transaction and reopen them
 afterward. On a fresh installation that also needs kernel r8, handle the kernel
@@ -140,20 +161,21 @@ be opened between that transaction and the approved reboot.
 
 ## Rollback
 
-Simulate exact-version r24 rollback against the isolated rollback repository:
+Simulate exact-version r7/r1 rollback against the isolated rollback repository:
 
 ```sh
 apk add --simulate --allow-untrusted --network=no \
   --interactive=no --repository "$PWD/rollback" \
-  'libcamera=99990.7.2-r23' \
-  'libcamera-ipa=99990.7.2-r23'
+  'pipewire-spa-libcamera=1.6.8-r6' \
+  'advanced-snapshot=0.1.0-r0' \
+  'advanced-snapshot-lang=0.1.0-r0'
 ```
 
-Require exactly two downgrades, no PipeWire or Snapshot change and no removals.
-Exact-version `apk add`
-temporarily pins those versions in `/etc/apk/world`; preserve a pre-test copy
-and hash, then remove only the pins added by this command after verifying the
-installed versions. Never replace the whole file with an unverified copy.
+Require exactly three downgrades, no libcamera or Snapshot change and no
+removals. Exact-version `apk add` temporarily pins those versions in
+`/etc/apk/world`; preserve a pre-test copy and hash, then remove only the pins
+added by this command after verifying the installed versions. Never replace
+the whole file with an unverified copy.
 
 Never use `apk upgrade --available` with either partial repository. apk-tools
 3 may reconcile the whole installation against that partial index and remove
