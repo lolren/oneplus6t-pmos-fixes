@@ -18,7 +18,10 @@ location and Android-container failures cannot obscure one another.
    repository, versioned Waydroid bundle, known-good manifest, pre-activation
    camera health checks and retained rollback generations. Upstream
    postmarketOS updates may be staged, but camera-critical replacements must
-   not activate until the manifest rebases/builds/tests successfully.
+   not activate until the manifest rebases/builds/tests successfully. The first
+   immutable r7/r1 manifest, simulation-first generation manager and native
+   health gate now pass; repository signing, update interception and retained
+   published generations remain.
 4. Broaden Android acceptance: the Waydroid r24 Camera3 lower layer is installed
    and its all-camera YUV/JPEG/private, AF and EV probe passes. Test real camera
    applications and lifecycle transitions, resolve the remaining JPEG-footer

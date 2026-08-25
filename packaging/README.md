@@ -27,6 +27,12 @@ libcamera and tuning changes are deliberately not installed by this noarch
 helper package; their separately reviewed pmaports integration is in
 `packaging/pmaports/`.
 
+The package also installs `pmos-manage-camera-generation`, its immutable r7/r1
+manifest, the public verification key and the non-image all-sensor runner. The
+manager does not contain APKs or a private key and does nothing without an
+explicit operation. Install/rollback are simulation-only unless the graphical
+login user passes `--apply`; see `docs/CAMERA_GENERATIONS.md`.
+
 Before upstreaming this recipe:
 
 1. replace the local-checkout `builddir` with an immutable release or commit

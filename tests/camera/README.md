@@ -22,9 +22,11 @@ validation.
 - `run-light-step.sh` performs a bounded, low-power rear-camera flash step with
   unconditional LED-off and lens-park cleanup.
 - `validate-pipewire-af.sh` discovers the current PipeWire serials, verifies a
-  real local tap-focus and scan-free Reset on both rear modules, holds each in
-  continuous mode to detect hunting, and confirms that the fixed-focus front
-  rejects autofocus while still streaming.
+  real central-target tap-focus and scan-free Reset on both rear modules, holds
+  each in continuous mode to detect hunting, and confirms that the fixed-focus
+  front rejects autofocus while still streaming. Its default `required` mode
+  demands generation-correlated `focused` results from r7/r1; `accepted` mode
+  is reserved for validating an intentional r6/r0 rollback.
 - `analyze-light-step.py` summarizes exposure metadata from that test.
 
 Example with a separately staged libcamera runtime:
@@ -64,14 +66,16 @@ timeout 20 gst-launch-1.0 -q \
 ```
 
 ```sh
-/usr/libexec/snapshot-focus-control focus "$camera_serial" 0.50 0.50 0.18
-/usr/libexec/snapshot-focus-control reset "$camera_serial"
+/usr/libexec/advanced-snapshot-focus-control focus \
+  "$camera_serial" 0.50 0.50 0.18
+/usr/libexec/advanced-snapshot-focus-control reset "$camera_serial"
 ```
 
-The helper must return success for either rear node and an unsupported result
-for fixed-focus IMX371. Stop the stream before parking the dynamically matched
-actuator. The serial is ephemeral and must never be copied into a patch or
-script.
+With r7/r1 the helper must print exactly `focused` for either rear node and an
+unsupported result for fixed-focus IMX371. A low-detail target may truthfully
+return `failed`; use a detailed central target for acceptance. Stop the stream
+before parking the dynamically matched actuator. The serial is ephemeral and
+must never be copied into a patch or script.
 
 The complete r24 transition/stability check runs unattended as the graphical
 login user. Close camera applications first, or explicitly allow the runner to
@@ -81,11 +85,15 @@ close Snapshot:
 tests/camera/validate-pipewire-af.sh \
   --output /private/path/af-validation \
   --stability-seconds 60 \
-  --close-snapshot
+  --focus-result required \
+  --close-camera-apps
 ```
 
 It temporarily enables selective `IPASoftAf` logging and restarts only the
-user's PipeWire/WirePlumber services. A trap restores any prior libcamera log
+user's PipeWire/WirePlumber services. If the desktop portal was active, the
+runner stops both it and its wlroots backend before each PipeWire cycle and
+restores both afterward, avoiding a stale camera-portal connection. A trap
+restores any prior libcamera log
 environment and active services on success, error or interruption. The test
 does not need root, capture an image, alter a kernel module or reboot.
 

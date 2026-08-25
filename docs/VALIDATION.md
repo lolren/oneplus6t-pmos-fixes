@@ -650,6 +650,29 @@ The Waydroid container service has been continuously active since before this
 transaction while its Android session remains stopped; no Waydroid state was
 changed by the native camera update.
 
+The first acceptance run also exposed a service-lifecycle issue in the test
+runner: stopping PipeWire while the main portal and its wlroots backend remained
+connected caused transient portal failures. The runner and generation manager
+now stop both portal units before every PipeWire cycle and restore both
+afterward. A hardware regression then repeated all three sensor checks with
+10-second rear stability windows:
+
+```text
+main|serial=61|tap_result=focused|post_reset_metrics=41|restarts=0|lens_requests=0
+secondary|serial=65|tap_result=focused|post_reset_metrics=54|restarts=0|lens_requests=0
+front|serial=63|frames=120|focus_status=unsupported
+RESULT|pass|rear_stability_seconds=10
+```
+
+The summary SHA-256 is
+`aa5d5dedf5834e90ac15bd121a3711b4a7c004df0b5f41a59f155e6013fb9260`.
+The bounded portal journal has SHA-256
+`9447840432b47360053b37dd960f988994808428223dcd2a25127773a595b201`
+and contains only orderly stop/start events: no fatal error, failed result or
+coredump. PipeWire, WirePlumber and both portal units ended active; failed user
+units, stale camera processes and `LIBCAMERA_LOG_*` environment entries were
+all zero. `/etc/apk/world` remained at the accepted r7/r1 hash.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

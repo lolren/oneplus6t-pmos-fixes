@@ -1,0 +1,598 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PACKAGES='pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang'
+
+operation=
+apply=no
+stage=
+evidence=
+manifest=
+keys_dir=
+smoke_test=
+stability_seconds=60
+world_file=${PMOS_CAMERA_WORLD:-/etc/apk/world}
+compatible_file=${PMOS_CAMERA_COMPATIBLE_FILE:-/proc/device-tree/compatible}
+sudo_command=${PMOS_CAMERA_SUDO:-sudo}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options] status|install|rollback
+
+Manage the reviewed OnePlus 6T PipeWire/Advanced Snapshot generation.
+
+Options:
+  --stage DIR          offline repository root containing candidate/rollback
+  --manifest FILE      generation manifest (defaults to the bundled manifest)
+  --keys-dir DIR       directory containing the manifest's public signing key
+  --evidence DIR       empty directory for simulation and transaction evidence
+  --smoke-test FILE    all-sensor validation runner used after --apply
+  --stability-seconds N
+                       rear-camera stability window (default: 60)
+  --apply              perform the already validated transaction
+  -h, --help           show this help
+
+Without --apply, install and rollback verify every candidate and rollback APK,
+verify signatures, run apk's exact simulation and prove that package/world
+state did not change. --apply must run as the graphical login user; root is
+used only for apk through sudo. The script never reboots or touches firmware,
+partitions, boot slots, kernel modules or Waydroid.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+usage_error() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	usage >&2
+	exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--stage)
+		[ "$#" -ge 2 ] || usage_error '--stage requires a directory'
+		stage=$2
+		shift 2
+		;;
+	--manifest)
+		[ "$#" -ge 2 ] || usage_error '--manifest requires a file'
+		manifest=$2
+		shift 2
+		;;
+	--keys-dir)
+		[ "$#" -ge 2 ] || usage_error '--keys-dir requires a directory'
+		keys_dir=$2
+		shift 2
+		;;
+	--evidence)
+		[ "$#" -ge 2 ] || usage_error '--evidence requires a directory'
+		evidence=$2
+		shift 2
+		;;
+	--smoke-test)
+		[ "$#" -ge 2 ] || usage_error '--smoke-test requires a file'
+		smoke_test=$2
+		shift 2
+		;;
+	--stability-seconds)
+		[ "$#" -ge 2 ] || usage_error '--stability-seconds requires a value'
+		stability_seconds=$2
+		shift 2
+		;;
+	--apply)
+		apply=yes
+		shift
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	status|install|rollback)
+		[ -z "$operation" ] || usage_error 'only one operation may be selected'
+		operation=$1
+		shift
+		;;
+	*)
+		usage_error "unknown argument: $1"
+		;;
+	esac
+done
+
+[ -n "$operation" ] || usage_error 'select status, install or rollback'
+case "$stability_seconds" in
+''|*[!0-9]*) usage_error '--stability-seconds must be an integer' ;;
+esac
+[ "$stability_seconds" -ge 10 ] && [ "$stability_seconds" -le 300 ] || \
+	usage_error '--stability-seconds must be between 10 and 300'
+[ "$operation" != status ] || [ "$apply" = no ] || \
+	usage_error '--apply is not valid with status'
+
+if [ -z "$manifest" ]; then
+	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r1.psv
+fi
+[ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
+manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
+
+for required_command in apk awk cmp cp date find grep id mkdir pgrep sed \
+	sha256sum sort systemctl tr wc; do
+	command -v "$required_command" >/dev/null 2>&1 || \
+		die "missing required command: $required_command"
+done
+
+manifest_header() {
+	awk -F '|' -v wanted="$1" '
+		$1 == wanted { value=$2; count++ }
+		END { if (count == 1) print value; else exit 1 }
+	' "$manifest"
+}
+
+manifest_package() {
+	awk -F '|' -v channel="$1" -v package="$2" -v field="$3" '
+		$1 == channel && $2 == package { value=$field; count++ }
+		END { if (count == 1) print value; else exit 1 }
+	' "$manifest"
+}
+
+[ "$(manifest_header schema)" = 1 ] || die 'unsupported manifest schema'
+manifest_generation=$(manifest_header generation)
+manifest_compatible=$(manifest_header compatible)
+manifest_rows=$(awk -F '|' '$1 == "candidate" || $1 == "rollback" { count++ } END { print count + 0 }' "$manifest")
+[ "$manifest_rows" -eq 6 ] || die 'manifest must contain exactly six package rows'
+
+for manifest_channel in candidate rollback; do
+	for manifest_name in $PACKAGES; do
+		manifest_count=$(awk -F '|' -v channel="$manifest_channel" \
+			-v package="$manifest_name" \
+			'$1 == channel && $2 == package { count++ } END { print count + 0 }' \
+			"$manifest")
+		[ "$manifest_count" -eq 1 ] || \
+			die "manifest needs one $manifest_channel row for $manifest_name"
+		manifest_version=$(manifest_package "$manifest_channel" "$manifest_name" 3)
+		manifest_arch=$(manifest_package "$manifest_channel" "$manifest_name" 4)
+		manifest_filename=$(manifest_package "$manifest_channel" "$manifest_name" 5)
+		manifest_hash=$(manifest_package "$manifest_channel" "$manifest_name" 6)
+		[ -n "$manifest_version" ] || die 'manifest contains an empty version'
+		case "$manifest_arch" in aarch64|noarch) ;; *) die "invalid architecture: $manifest_arch" ;; esac
+		case "$manifest_filename" in ''|*/*|*' '*|*'|'*) die "invalid package filename: $manifest_filename" ;; esac
+		printf '%s\n' "$manifest_hash" | grep -Eq '^[0-9a-f]{64}$' || \
+			die "invalid SHA-256 for $manifest_filename"
+	done
+done
+
+signing_key_name=$(awk -F '|' '$1 == "signing-key" { print $2; count++ } END { if (count != 1) exit 1 }' "$manifest")
+signing_key_hash=$(awk -F '|' '$1 == "signing-key" { print $3; count++ } END { if (count != 1) exit 1 }' "$manifest")
+case "$signing_key_name" in ''|*/*|*' '*|*'|'*) die 'invalid signing-key filename' ;; esac
+printf '%s\n' "$signing_key_hash" | grep -Eq '^[0-9a-f]{64}$' || \
+	die 'invalid signing-key SHA-256'
+
+[ -r "$compatible_file" ] || die "device compatibility data is not readable: $compatible_file"
+tr '\000' '\n' <"$compatible_file" | grep -Fxq "$manifest_compatible" || \
+	die "this generation targets $manifest_compatible only"
+
+candidate_pipewire_version=$(manifest_package candidate pipewire-spa-libcamera 3)
+candidate_app_version=$(manifest_package candidate advanced-snapshot 3)
+candidate_lang_version=$(manifest_package candidate advanced-snapshot-lang 3)
+rollback_pipewire_version=$(manifest_package rollback pipewire-spa-libcamera 3)
+rollback_app_version=$(manifest_package rollback advanced-snapshot 3)
+rollback_lang_version=$(manifest_package rollback advanced-snapshot-lang 3)
+
+installed_version() {
+	state_package=$1
+	state_token=$(apk list --installed "$state_package" 2>/dev/null | awk 'NR == 1 { print $1 }')
+	[ -n "$state_token" ] || { printf '%s\n' absent; return; }
+	state_prefix=$state_package-
+	case "$state_token" in
+	"$state_prefix"*) printf '%s\n' "${state_token#$state_prefix}" ;;
+	*) printf '%s\n' unknown ;;
+	esac
+}
+
+current_channel() {
+	state_pipewire=$(installed_version pipewire-spa-libcamera)
+	state_app=$(installed_version advanced-snapshot)
+	state_lang=$(installed_version advanced-snapshot-lang)
+	if [ "$state_pipewire" = "$candidate_pipewire_version" ] && \
+		[ "$state_app" = "$candidate_app_version" ] && \
+		[ "$state_lang" = "$candidate_lang_version" ]; then
+		printf '%s\n' candidate
+	elif [ "$state_pipewire" = "$rollback_pipewire_version" ] && \
+		[ "$state_app" = "$rollback_app_version" ] && \
+		[ "$state_lang" = "$rollback_lang_version" ]; then
+		printf '%s\n' rollback
+	else
+		printf '%s\n' mixed
+	fi
+}
+
+print_status() {
+	printf 'generation=%s\n' "$manifest_generation"
+	printf 'device=%s\n' "$manifest_compatible"
+	printf 'state=%s\n' "$(current_channel)"
+	for status_package in $PACKAGES; do
+		printf '%s=%s\n' "$status_package" "$(installed_version "$status_package")"
+	done
+	if [ -r "$world_file" ]; then
+		printf 'world_sha256=%s\n' "$(sha256sum "$world_file" | awk '{ print $1 }')"
+	else
+		printf 'world_sha256=unavailable\n'
+	fi
+}
+
+if [ "$operation" = status ]; then
+	print_status
+	exit 0
+fi
+
+[ -n "$stage" ] || usage_error '--stage is required for install and rollback'
+[ -d "$stage" ] || die "stage directory does not exist: $stage"
+stage=$(CDPATH= cd -- "$stage" && pwd)
+[ -r "$world_file" ] || die "apk world file is not readable: $world_file"
+
+if [ -z "$keys_dir" ]; then
+	for key_candidate in \
+		"$SCRIPT_DIR/../packaging/keys" \
+		"$SCRIPT_DIR/../keys" \
+		/etc/apk/keys; do
+		if [ -r "$key_candidate/$signing_key_name" ]; then
+			keys_dir=$key_candidate
+			break
+		fi
+	done
+fi
+[ -n "$keys_dir" ] && [ -r "$keys_dir/$signing_key_name" ] || \
+	die "signing key not found: $signing_key_name"
+keys_dir=$(CDPATH= cd -- "$keys_dir" && pwd)
+actual_key_hash=$(sha256sum "$keys_dir/$signing_key_name" | awk '{ print $1 }')
+[ "$actual_key_hash" = "$signing_key_hash" ] || die 'signing key hash mismatch'
+
+if [ -z "$evidence" ]; then
+	evidence=$stage/evidence/manage-camera-generation-$operation-$(date -u +%Y%m%dT%H%M%SZ)-$$
+fi
+if [ -d "$evidence" ] && [ -n "$(find "$evidence" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+	die "evidence directory is not empty: $evidence"
+fi
+mkdir -p "$evidence"
+evidence=$(CDPATH= cd -- "$evidence" && pwd)
+
+candidate_root=$stage/candidate
+rollback_root=$stage/rollback
+for repository_root in "$candidate_root" "$rollback_root"; do
+	[ -r "$repository_root/aarch64/APKINDEX.tar.gz" ] || \
+		die "missing repository index: $repository_root/aarch64/APKINDEX.tar.gz"
+	repository_apks=$(find "$repository_root" -type f -name '*.apk' -print | wc -l | tr -d ' ')
+	[ "$repository_apks" -eq 3 ] || \
+		die "$repository_root must contain exactly three APK files"
+done
+
+package_path() {
+	path_channel=$1
+	path_package=$2
+	path_arch=$(manifest_package "$path_channel" "$path_package" 4)
+	path_filename=$(manifest_package "$path_channel" "$path_package" 5)
+	printf '%s/%s/%s/%s\n' "$stage" "$path_channel" "$path_arch" "$path_filename"
+}
+
+candidate_pipewire=$(package_path candidate pipewire-spa-libcamera)
+candidate_app=$(package_path candidate advanced-snapshot)
+candidate_lang=$(package_path candidate advanced-snapshot-lang)
+rollback_pipewire=$(package_path rollback pipewire-spa-libcamera)
+rollback_app=$(package_path rollback advanced-snapshot)
+rollback_lang=$(package_path rollback advanced-snapshot-lang)
+
+package_hash_log=$evidence/package-hashes.sha256
+package_signature_log=$evidence/package-signatures.log
+verify_package() {
+	verify_channel=$1
+	verify_name=$2
+	verify_path=$3
+	verify_hash=$(manifest_package "$verify_channel" "$verify_name" 6)
+	[ -f "$verify_path" ] && [ ! -L "$verify_path" ] || \
+		die "missing regular package file: $verify_path"
+	verify_actual=$(sha256sum "$verify_path" | awk '{ print $1 }')
+	[ "$verify_actual" = "$verify_hash" ] || die "package hash mismatch: $verify_path"
+	printf '%s  %s\n' "$verify_actual" "$verify_path" >>"$package_hash_log"
+	printf '[%s]\n' "$verify_path" >>"$package_signature_log"
+	apk --keys-dir "$keys_dir" verify "$verify_path" \
+		>>"$package_signature_log" 2>&1 || \
+		die "package signature verification failed: $verify_path"
+}
+
+verify_all_packages() {
+	: >"$package_hash_log"
+	: >"$package_signature_log"
+	verify_package candidate pipewire-spa-libcamera "$candidate_pipewire"
+	verify_package candidate advanced-snapshot "$candidate_app"
+	verify_package candidate advanced-snapshot-lang "$candidate_lang"
+	verify_package rollback pipewire-spa-libcamera "$rollback_pipewire"
+	verify_package rollback advanced-snapshot "$rollback_app"
+	verify_package rollback advanced-snapshot-lang "$rollback_lang"
+}
+
+verify_all_packages
+sha256sum "$manifest" "$keys_dir/$signing_key_name" >"$evidence/trust.sha256"
+sha256sum "$candidate_root/aarch64/APKINDEX.tar.gz" \
+	"$rollback_root/aarch64/APKINDEX.tar.gz" >"$evidence/repository-indexes.before.sha256"
+
+if [ "$(id -u)" -ne 0 ]; then
+	command -v "$sudo_command" >/dev/null 2>&1 || die "root helper not found: $sudo_command"
+fi
+[ "$apply" = no ] || [ "$(id -u)" -ne 0 ] || \
+	die '--apply must run as the graphical login user, not root'
+
+root_run() {
+	if [ "$(id -u)" -eq 0 ]; then
+		"$@"
+	else
+		"$sudo_command" "$@"
+	fi
+}
+
+record_packages() {
+	record_path=$1
+	: >"$record_path"
+	for record_package in $PACKAGES; do
+		printf '%s|%s\n' "$record_package" "$(installed_version "$record_package")" \
+			>>"$record_path"
+	done
+}
+
+starting_channel=$(current_channel)
+case "$operation:$starting_channel" in
+install:rollback) target_channel=candidate ;;
+rollback:candidate) target_channel=rollback ;;
+install:candidate|rollback:rollback)
+	record_packages "$evidence/packages.current.psv"
+	cp "$world_file" "$evidence/world.current"
+	printf 'result=already-%s\n' "$starting_channel"
+	printf 'evidence=%s\n' "$evidence"
+	exit 0
+	;;
+*)
+	print_status >&2
+	die "refusing mixed or unsupported starting package state: $starting_channel"
+	;;
+esac
+
+cp "$world_file" "$evidence/world.before"
+record_packages "$evidence/packages.before.psv"
+world_before_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
+
+run_transaction() {
+	transaction_mode=$1
+	if [ "$operation" = install ]; then
+		if [ "$transaction_mode" = simulate ]; then
+			root_run apk add --simulate --upgrade --allow-untrusted --network=no \
+				--interactive=no --repository "$candidate_root" \
+				"$candidate_app" "$candidate_lang"
+		else
+			root_run apk add --upgrade --allow-untrusted --network=no \
+				--interactive=no --repository "$candidate_root" \
+				"$candidate_app" "$candidate_lang"
+		fi
+	else
+		if [ "$transaction_mode" = simulate ]; then
+			root_run apk add --simulate --allow-untrusted --network=no \
+				--interactive=no --repository "$rollback_root" \
+				"$rollback_pipewire" "$rollback_app" "$rollback_lang"
+		else
+			root_run apk add --allow-untrusted --network=no \
+				--interactive=no --repository "$rollback_root" \
+				"$rollback_pipewire" "$rollback_app" "$rollback_lang"
+		fi
+	fi
+}
+
+validate_transaction_log() {
+	log_path=$1
+	if [ "$operation" = install ]; then
+		log_action=Upgrading
+		from_pipewire=$rollback_pipewire_version
+		from_app=$rollback_app_version
+		from_lang=$rollback_lang_version
+		to_pipewire=$candidate_pipewire_version
+		to_app=$candidate_app_version
+		to_lang=$candidate_lang_version
+		forbidden_actions='Installing|Downgrading|Removing|Purging'
+	else
+		log_action=Downgrading
+		from_pipewire=$candidate_pipewire_version
+		from_app=$candidate_app_version
+		from_lang=$candidate_lang_version
+		to_pipewire=$rollback_pipewire_version
+		to_app=$rollback_app_version
+		to_lang=$rollback_lang_version
+		forbidden_actions='Installing|Upgrading|Removing|Purging'
+	fi
+	grep -F "$log_action pipewire-spa-libcamera ($from_pipewire -> $to_pipewire)" \
+		"$log_path" >/dev/null || die 'PipeWire transition missing from apk output'
+	grep -F "$log_action advanced-snapshot ($from_app -> $to_app)" \
+		"$log_path" >/dev/null || die 'application transition missing from apk output'
+	grep -F "$log_action advanced-snapshot-lang ($from_lang -> $to_lang)" \
+		"$log_path" >/dev/null || die 'language transition missing from apk output'
+	log_count=$(grep -c " $log_action " "$log_path" || true)
+	[ "$log_count" -eq 3 ] || die "expected exactly three $log_action operations"
+	if grep -Eq " ($forbidden_actions) " "$log_path"; then
+		die 'apk output contains an unexpected package operation'
+	fi
+}
+
+simulation_log=$evidence/$operation.simulation.log
+if ! run_transaction simulate >"$simulation_log" 2>&1; then
+	cat "$simulation_log" >&2
+	die 'apk simulation failed'
+fi
+validate_transaction_log "$simulation_log"
+cmp -s "$evidence/world.before" "$world_file" || \
+	die 'apk simulation changed the world file'
+[ "$(current_channel)" = "$starting_channel" ] || \
+	die 'apk simulation changed installed-package state'
+sha256sum "$candidate_root/aarch64/APKINDEX.tar.gz" \
+	"$rollback_root/aarch64/APKINDEX.tar.gz" >"$evidence/repository-indexes.after-simulation.sha256"
+cmp -s "$evidence/repository-indexes.before.sha256" \
+	"$evidence/repository-indexes.after-simulation.sha256" || \
+	die 'an offline repository index changed during simulation'
+
+if [ "$apply" = no ]; then
+	cp "$world_file" "$evidence/world.after-simulation"
+	record_packages "$evidence/packages.after-simulation.psv"
+	printf 'mode=simulation\n'
+	printf 'operation=%s\n' "$operation"
+	printf 'transitions=3\n'
+	printf 'world_sha256=%s\n' "$world_before_hash"
+	printf 'evidence=%s\n' "$evidence"
+	exit 0
+fi
+
+[ -x "$smoke_test" ] || {
+	if [ -x "$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh" ]; then
+		smoke_test=$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh
+	elif [ -x "$SCRIPT_DIR/validate-pipewire-af.sh" ]; then
+		smoke_test=$SCRIPT_DIR/validate-pipewire-af.sh
+	else
+		die 'an executable --smoke-test is required with --apply'
+	fi
+}
+
+if pgrep -x snapshot >/dev/null 2>&1 || \
+	pgrep -f '(^|/)advanced-snapshot( |$)' >/dev/null 2>&1 || \
+	pgrep -x gst-launch-1.0 >/dev/null 2>&1; then
+	die 'close all camera applications and GStreamer camera probes before --apply'
+fi
+
+pipewire_was_active=$(systemctl --user is-active pipewire.service 2>/dev/null || true)
+wireplumber_was_active=$(systemctl --user is-active wireplumber.service 2>/dev/null || true)
+portal_was_active=$(systemctl --user is-active xdg-desktop-portal.service 2>/dev/null || true)
+wlr_portal_was_active=$(systemctl --user is-active xdg-desktop-portal-wlr.service 2>/dev/null || true)
+[ "$pipewire_was_active" = active ] && [ "$wireplumber_was_active" = active ] || \
+	die 'PipeWire and WirePlumber must be active before --apply'
+
+services_stopped=no
+restore_user_services() {
+	[ "$services_stopped" = yes ] || return 0
+	systemctl --user start pipewire.socket pipewire.service wireplumber.service \
+		>/dev/null 2>&1 || true
+	if [ "$portal_was_active" = active ] || [ "$wlr_portal_was_active" = active ]; then
+		systemctl --user reset-failed xdg-desktop-portal.service \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+		[ "$wlr_portal_was_active" != active ] || systemctl --user start \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+		[ "$portal_was_active" != active ] || systemctl --user start \
+			xdg-desktop-portal.service >/dev/null 2>&1 || true
+	fi
+	services_stopped=no
+}
+trap restore_user_services EXIT
+trap 'restore_user_services; exit 130' HUP INT TERM
+
+services_stopped=yes
+if [ "$portal_was_active" = active ] || [ "$wlr_portal_was_active" = active ]; then
+	systemctl --user stop xdg-desktop-portal.service \
+		xdg-desktop-portal-wlr.service
+fi
+systemctl --user stop wireplumber.service pipewire.service pipewire.socket
+
+cmp -s "$evidence/world.before" "$world_file" || \
+	die 'apk world changed between simulation and apply'
+[ "$(current_channel)" = "$starting_channel" ] || \
+	die 'installed packages changed between simulation and apply'
+[ "$(sha256sum "$keys_dir/$signing_key_name" | awk '{ print $1 }')" = \
+	"$signing_key_hash" ] || die 'signing key changed before apply'
+package_hash_log=$evidence/package-hashes.pre-apply.sha256
+package_signature_log=$evidence/package-signatures.pre-apply.log
+verify_all_packages
+sha256sum "$candidate_root/aarch64/APKINDEX.tar.gz" \
+	"$rollback_root/aarch64/APKINDEX.tar.gz" >"$evidence/repository-indexes.pre-apply.sha256"
+cmp -s "$evidence/repository-indexes.before.sha256" \
+	"$evidence/repository-indexes.pre-apply.sha256" || \
+	die 'an offline repository index changed before apply'
+
+actual_log=$evidence/$operation.actual.log
+if ! run_transaction apply >"$actual_log" 2>&1; then
+	cat "$actual_log" >&2
+	die 'apk transaction failed'
+fi
+validate_transaction_log "$actual_log"
+
+if [ "$operation" = rollback ]; then
+	apk info -r pipewire-spa-libcamera >"$evidence/rollback.reverse-dependencies.log"
+	if ! root_run apk del --simulate --network=no --interactive=no \
+		pipewire-spa-libcamera >"$evidence/rollback.unpin.simulation.log" 2>&1; then
+		die 'PipeWire world-unpin simulation failed'
+	fi
+	grep -q 'not removed due to' "$evidence/rollback.unpin.simulation.log" || \
+		die 'rollback would not retain the dependency-owned PipeWire plugin'
+	if grep -Eq ' Removing pipewire-spa-libcamera ' \
+		"$evidence/rollback.unpin.simulation.log"; then
+		die 'rollback unpin unexpectedly removes the PipeWire plugin'
+	fi
+	root_run apk del --network=no --interactive=no pipewire-spa-libcamera \
+		>"$evidence/rollback.unpin.actual.log" 2>&1 || \
+		die 'failed to remove the temporary PipeWire world constraint'
+fi
+
+restore_user_services
+trap - EXIT HUP INT TERM
+
+[ "$(current_channel)" = "$target_channel" ] || \
+	die "installed packages did not reach $target_channel state"
+cp "$world_file" "$evidence/world.after"
+record_packages "$evidence/packages.after.psv"
+
+for world_snapshot in "$evidence/world.before" "$evidence/world.after"; do
+	world_app_count=$(grep -Ec '^advanced-snapshot(-lang)?($|[<>=~])' \
+		"$world_snapshot" || true)
+	[ "$world_app_count" -eq 2 ] || \
+		die "expected exactly two Advanced Snapshot world entries in $world_snapshot"
+	if grep -Eq '^pipewire-spa-libcamera($|[<>=~])' "$world_snapshot"; then
+		die 'PipeWire must remain dependency-owned, not a world entry'
+	fi
+	awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/' "$world_snapshot" \
+		>"$world_snapshot.unrelated"
+	grep -E '^advanced-snapshot(-lang)?($|[<>=~])' "$world_snapshot" | sort \
+		>"$world_snapshot.app"
+done
+cmp -s "$evidence/world.before.unrelated" "$evidence/world.after.unrelated" || \
+	die 'transaction changed an unrelated apk world entry'
+if cmp -s "$evidence/world.before.app" "$evidence/world.after.app"; then
+	die 'Advanced Snapshot world identities did not change with the generation'
+fi
+
+if [ "$(systemctl --user is-active pipewire.service 2>/dev/null || true)" != active ] || \
+	[ "$(systemctl --user is-active wireplumber.service 2>/dev/null || true)" != active ]; then
+	die 'media services did not recover after the package transaction'
+fi
+if [ "$portal_was_active" = active ] && \
+	[ "$(systemctl --user is-active xdg-desktop-portal.service 2>/dev/null || true)" != active ]; then
+	die 'desktop portal did not recover after the package transaction'
+fi
+if [ "$wlr_portal_was_active" = active ] && \
+	[ "$(systemctl --user is-active xdg-desktop-portal-wlr.service 2>/dev/null || true)" != active ]; then
+	die 'wlroots portal did not recover after the package transaction'
+fi
+
+if [ "$operation" = install ]; then
+	focus_result_mode=required
+else
+	focus_result_mode=accepted
+fi
+if ! "$smoke_test" --output "$evidence/af-smoke" \
+	--stability-seconds "$stability_seconds" \
+	--focus-result "$focus_result_mode" --close-camera-apps \
+	>"$evidence/smoke.stdout" 2>"$evidence/smoke.stderr"; then
+	die "all-sensor smoke test failed; inspect $evidence and use the verified rollback"
+fi
+
+systemctl --user --failed --no-legend --plain >"$evidence/user-units.failed" || true
+world_after_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
+printf 'mode=applied\n'
+printf 'operation=%s\n' "$operation"
+printf 'state=%s\n' "$target_channel"
+printf 'world_before_sha256=%s\n' "$world_before_hash"
+printf 'world_after_sha256=%s\n' "$world_after_hash"
+printf 'evidence=%s\n' "$evidence"

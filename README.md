@@ -188,6 +188,21 @@ identity constraints must be replaced by supplying the r1 file paths
 explicitly:
 
 ```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r7-r1 \
+  install
+```
+
+That command is simulation-only by default. It verifies the device, immutable
+six-APK manifest, pinned public key, hashes, signatures, installed baseline and
+exact three-package solver result. After reviewing its evidence, repeat it with
+`--apply` to use the guarded service/world-file checks and all-sensor health
+test. Use the `rollback` operation for the exact reverse transition. See
+[docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md).
+
+The equivalent low-level simulation is:
+
+```sh
 stage=/absolute/path/to/camera-r7-r1
 sudo apk add --simulate --upgrade --allow-untrusted --network=no \
   --interactive=no --repository "$stage/candidate" \
@@ -230,9 +245,11 @@ mapping stage.
   r6/r0 APKs remain the immediate rollback; the Waydroid r24 lower layer passes
   all three Camera2 stream/AF/EV probes.
 - Next priorities: complete Advanced Snapshot visual photo/video acceptance
-  and UI work, then add the VibeMarketOS signed downstream repository,
-  compatibility-gated updates and rollback generations; broaden Waydroid app
-  testing and Play Store setup afterward. See
+  and UI work. The first immutable camera manifest and guarded generation
+  manager now pass host and real-phone simulation; next add the VibeMarketOS
+  signed downstream repository, compatibility-gated updates and published
+  rollback generations, then broaden Waydroid app testing and Play Store setup.
+  See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
 - Audio routing, display and power improvements are not included in this

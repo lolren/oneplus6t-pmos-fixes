@@ -113,6 +113,20 @@ reboot. The r7/r1 generation is userspace-only and needs no reboot. Installing
 on another phone still requires root, a reviewed simulation and an explicit
 decision by its owner.
 
+The preferred interface is the simulation-first generation manager:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r7-r1 \
+  install
+```
+
+It consumes the immutable manifest in `data/camera-generation-r7-r1.psv`,
+checks the bundled public-key hash and all six package hashes/signatures, then
+requires exactly the transition documented below. Add `--apply` only after
+reviewing the evidence. `rollback` selects the guarded reverse transition. See
+`docs/CAMERA_GENERATIONS.md` for its complete refusal and health-check policy.
+
 To reproduce the completed r6/r0-to-r7/r1 update, stage the three candidate
 APKs and three rollback APKs in separate offline repositories. apk-tools 3 reads
 `APKINDEX.tar.gz` from the native `aarch64/` directory. Pass the repository
@@ -161,12 +175,15 @@ afterward. On the reference phone the portal had retained a dead PipeWire
 connection and recovered cleanly when restarted:
 
 ```sh
+systemctl --user stop xdg-desktop-portal.service \
+  xdg-desktop-portal-wlr.service
 systemctl --user stop wireplumber.service pipewire.service pipewire.socket
 # Run the accepted apk command above without --simulate.
 systemctl --user start pipewire.socket pipewire.service wireplumber.service
 systemctl --user reset-failed xdg-desktop-portal.service \
   xdg-desktop-portal-wlr.service
-systemctl --user restart xdg-desktop-portal.service
+systemctl --user start xdg-desktop-portal-wlr.service \
+  xdg-desktop-portal.service
 ```
 
 Record `/etc/apk/world` before and after. The reference hash changed from

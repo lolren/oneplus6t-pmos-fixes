@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+output=
+focus_result=
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--output) output=$2; shift 2 ;;
+	--focus-result) focus_result=$2; shift 2 ;;
+	--stability-seconds) shift 2 ;;
+	--close-camera-apps) shift ;;
+	*) printf 'unexpected smoke argument: %s\n' "$1" >&2; exit 2 ;;
+	esac
+done
+[ -n "$output" ] && [ -n "$focus_result" ]
+[ "${PMOS_MOCK_SMOKE_FAILURE:-no}" = no ] || exit 1
+mkdir -p "$output"
+printf 'RESULT|pass|focus_result=%s\n' "$focus_result" >"$output/summary.psv"
+printf '%s\n' "$focus_result" >>"$PMOS_MOCK_SMOKE_LOG"

@@ -1,0 +1,127 @@
+#!/bin/sh
+set -eu
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--keys-dir)
+		shift 2
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+command_name=${1:?missing apk command}
+shift
+
+case "$command_name" in
+verify)
+	[ "${PMOS_MOCK_SIGNATURE_FAILURE:-no}" = no ] || exit 1
+	printf '%s: OK\n' "$1"
+	;;
+list)
+	[ "$1" = --installed ]
+	package=$2
+	version=$(awk -F '|' -v wanted="$package" \
+		'$1 == wanted { print $2; exit }' "$PMOS_MOCK_PACKAGE_STATE")
+	[ -n "$version" ] || exit 0
+	printf '%s-%s aarch64 {mock} (MIT) [installed]\n' "$package" "$version"
+	;;
+add)
+	simulate=no
+	target=
+	for argument in "$@"; do
+		case "$argument" in
+		--simulate) simulate=yes ;;
+		*advanced-snapshot-0.1.0-r1.apk) target=candidate ;;
+		*advanced-snapshot-0.1.0-r0.apk) target=rollback ;;
+		esac
+	done
+	[ -n "$target" ] || { printf '%s\n' 'mock could not select target' >&2; exit 1; }
+	if [ "$target" = candidate ]; then
+		action=Upgrading
+		from_pipewire=1.6.8-r6
+		to_pipewire=1.6.8-r7
+		from_app=0.1.0-r0
+		to_app=0.1.0-r1
+	else
+		action=Downgrading
+		from_pipewire=1.6.8-r7
+		to_pipewire=1.6.8-r6
+		from_app=0.1.0-r1
+		to_app=0.1.0-r0
+	fi
+	printf '(1/3) %s pipewire-spa-libcamera (%s -> %s)\n' \
+		"$action" "$from_pipewire" "$to_pipewire"
+	printf '(2/3) %s advanced-snapshot (%s -> %s)\n' \
+		"$action" "$from_app" "$to_app"
+	printf '(3/3) %s advanced-snapshot-lang (%s -> %s)\n' \
+		"$action" "$from_app" "$to_app"
+	if [ "${PMOS_MOCK_UNEXPECTED_OPERATION:-no}" = yes ]; then
+		printf '(4/4) Removing unrelated-package (1-r0)\n'
+	fi
+	printf '%s\n' 'OK: mock transaction'
+	if [ "$simulate" = yes ] && [ "${PMOS_MOCK_MUTATE_INDEX:-no}" = yes ]; then
+		printf '%s\n' changed >>"$PMOS_MOCK_INDEX"
+	fi
+	[ "$simulate" = no ] || exit 0
+	state_tmp=$PMOS_MOCK_PACKAGE_STATE.tmp
+	world_tmp=$PMOS_MOCK_WORLD.tmp
+	if [ "$target" = candidate ]; then
+		printf '%s\n' \
+			'pipewire-spa-libcamera|1.6.8-r7' \
+			'advanced-snapshot|0.1.0-r1' \
+			'advanced-snapshot-lang|0.1.0-r1' >"$state_tmp"
+		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
+			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/' \
+			"$PMOS_MOCK_WORLD" >"$world_tmp"
+		printf '%s\n' \
+			'advanced-snapshot><mock-r1' \
+			'advanced-snapshot-lang><mock-r1-lang' >>"$world_tmp"
+	else
+		printf '%s\n' \
+			'pipewire-spa-libcamera|1.6.8-r6' \
+			'advanced-snapshot|0.1.0-r0' \
+			'advanced-snapshot-lang|0.1.0-r0' >"$state_tmp"
+		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
+			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/' \
+			"$PMOS_MOCK_WORLD" >"$world_tmp"
+		printf '%s\n' \
+			'advanced-snapshot><mock-r0' \
+			'advanced-snapshot-lang><mock-r0-lang' \
+			'pipewire-spa-libcamera><mock-r6' >>"$world_tmp"
+	fi
+	sort -o "$world_tmp" "$world_tmp"
+	mv "$state_tmp" "$PMOS_MOCK_PACKAGE_STATE"
+	mv "$world_tmp" "$PMOS_MOCK_WORLD"
+	;;
+info)
+	[ "$1" = -r ] && [ "$2" = pipewire-spa-libcamera ]
+	printf '%s\n' \
+		'pipewire-spa-libcamera is required by:' \
+		'postmarketos-ui-phosh' \
+		'advanced-snapshot' \
+		'snapshot'
+	;;
+del)
+	simulate=no
+	for argument in "$@"; do
+		[ "$argument" != --simulate ] || simulate=yes
+	done
+	printf '%s\n' \
+		'World updated, but the following packages are not removed due to:' \
+		'  pipewire-spa-libcamera: postmarketos-ui-phosh advanced-snapshot snapshot' \
+		'' \
+		'OK: mock transaction'
+	[ "$simulate" = yes ] && exit 0
+	world_tmp=$PMOS_MOCK_WORLD.tmp
+	awk '$0 !~ /^pipewire-spa-libcamera($|[<>=~])/' \
+		"$PMOS_MOCK_WORLD" >"$world_tmp"
+	mv "$world_tmp" "$PMOS_MOCK_WORLD"
+	;;
+*)
+	printf 'unsupported mock apk command: %s\n' "$command_name" >&2
+	exit 1
+	;;
+esac

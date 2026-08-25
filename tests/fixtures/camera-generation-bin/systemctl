@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+printf '%s\n' "$*" >>"$PMOS_MOCK_SYSTEMCTL_LOG"
+case " $* " in
+*' is-active '*)
+	printf '%s\n' active
+	;;
+*' --failed '*)
+	;;
+*)
+	;;
+esac

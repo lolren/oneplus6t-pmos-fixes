@@ -1,0 +1,6 @@
+#!/bin/sh
+if [ "${1:-}" = -u ]; then
+	printf '%s\n' 10000
+	exit 0
+fi
+exec /usr/bin/id "$@"

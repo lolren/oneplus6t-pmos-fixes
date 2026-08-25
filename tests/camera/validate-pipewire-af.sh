@@ -1,15 +1,20 @@
 #!/bin/sh
 set -eu
 
+# Keep the sensor expectations aligned with the r24 reference stack and the
+# generation selected by --focus-result.
+
 usage() {
 	cat <<'EOF'
 Usage: validate-pipewire-af.sh --output DIR [options]
 
 Options:
   --focus-helper FILE      installed helper path
-                           (default: /usr/libexec/snapshot-focus-control)
+                           (default: /usr/libexec/advanced-snapshot-focus-control)
+  --focus-result MODE      required for r7/r1, accepted for r6/r0
+                           (default: required)
   --stability-seconds N    post-reset rear-camera window (default: 60)
-  --close-snapshot         terminate a running Snapshot process before testing
+  --close-camera-apps      terminate Snapshot/Advanced Snapshot before testing
   --help                   show this help
 
 Run this as the graphical login user on the OnePlus 6T. The test restarts only
@@ -24,9 +29,10 @@ EOF
 }
 
 output=
-focus_helper=/usr/libexec/snapshot-focus-control
+focus_helper=/usr/libexec/advanced-snapshot-focus-control
+focus_result_mode=required
 stability_seconds=60
-close_snapshot=false
+close_camera_apps=false
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
@@ -38,12 +44,16 @@ while [ "$#" -gt 0 ]; do
 		focus_helper=${2:?missing helper path}
 		shift 2
 		;;
+	--focus-result)
+		focus_result_mode=${2:?missing focus-result mode}
+		shift 2
+		;;
 	--stability-seconds)
 		stability_seconds=${2:?missing stability duration}
 		shift 2
 		;;
-	--close-snapshot)
-		close_snapshot=true
+	--close-camera-apps)
+		close_camera_apps=true
 		shift
 		;;
 	--help|-h)
@@ -57,6 +67,14 @@ while [ "$#" -gt 0 ]; do
 		;;
 	esac
 done
+
+case "$focus_result_mode" in
+required|accepted) ;;
+*)
+	printf '%s\n' '--focus-result must be required or accepted' >&2
+	exit 2
+	;;
+esac
 
 [ -n "$output" ] || { printf '%s\n' 'Missing --output' >&2; exit 2; }
 case "$stability_seconds" in
@@ -92,6 +110,8 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/oneplus6t-af.XXXXXX")
 
 pipewire_active=$(systemctl --user is-active pipewire.service 2>/dev/null || true)
 wireplumber_active=$(systemctl --user is-active wireplumber.service 2>/dev/null || true)
+portal_active=$(systemctl --user is-active xdg-desktop-portal.service 2>/dev/null || true)
+wlr_portal_active=$(systemctl --user is-active xdg-desktop-portal-wlr.service 2>/dev/null || true)
 [ "$pipewire_active" = active ] && [ "$wireplumber_active" = active ] || {
 	printf '%s\n' 'PipeWire and WirePlumber must both be active before the test' >&2
 	rmdir "$scratch"
@@ -122,6 +142,10 @@ restore_services() {
 	cleanup_started=true
 	trap - EXIT HUP INT TERM
 	stop_stream
+	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
+		systemctl --user stop xdg-desktop-portal.service \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+	fi
 	systemctl --user stop wireplumber.service pipewire.service pipewire.socket \
 		>/dev/null 2>&1 || true
 	systemctl --user unset-environment LIBCAMERA_LOG_FILE LIBCAMERA_LOG_LEVELS \
@@ -132,21 +156,40 @@ restore_services() {
 		"LIBCAMERA_LOG_LEVELS=$old_log_levels"
 	systemctl --user start pipewire.socket pipewire.service wireplumber.service \
 		>/dev/null 2>&1 || true
+	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
+		systemctl --user reset-failed xdg-desktop-portal.service \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+		[ "$wlr_portal_active" != active ] || systemctl --user start \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+		[ "$portal_active" != active ] || systemctl --user start \
+			xdg-desktop-portal.service >/dev/null 2>&1 || true
+	fi
 	rm -f "$scratch/devices"
 	rmdir "$scratch" 2>/dev/null || true
 }
 trap restore_services EXIT
 trap 'restore_services; exit 130' HUP INT TERM
 
-if pgrep -x snapshot >/dev/null 2>&1; then
-	if $close_snapshot; then
-		pkill -TERM -x snapshot
+camera_app_active() {
+	pgrep -x snapshot >/dev/null 2>&1 || \
+		pgrep -f '(^|/)advanced-snapshot( |$)' >/dev/null 2>&1
+}
+
+if camera_app_active; then
+	if $close_camera_apps; then
+		pkill -TERM -x snapshot 2>/dev/null || true
+		pkill -TERM -f '(^|/)advanced-snapshot( |$)' 2>/dev/null || true
 		for _wait in 1 2 3 4 5; do
-			pgrep -x snapshot >/dev/null 2>&1 || break
+			camera_app_active || break
 			sleep 1
 		done
+		if camera_app_active; then
+			printf '%s\n' 'A camera app did not stop within five seconds' >&2
+			exit 1
+		fi
 	else
-		printf '%s\n' 'Snapshot is active; close it or pass --close-snapshot' >&2
+		printf '%s\n' \
+			'A camera app is active; close it or pass --close-camera-apps' >&2
 		exit 1
 	fi
 fi
@@ -157,12 +200,24 @@ fi
 
 restart_camera_services() {
 	log_file=$1
+	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
+		systemctl --user stop xdg-desktop-portal.service \
+			xdg-desktop-portal-wlr.service
+	fi
 	systemctl --user stop wireplumber.service pipewire.service pipewire.socket
 	: >"$log_file"
 	systemctl --user set-environment \
 		"LIBCAMERA_LOG_FILE=$log_file" \
 		'LIBCAMERA_LOG_LEVELS=*:ERROR,IPASoftAf:DEBUG'
 	systemctl --user start pipewire.socket pipewire.service wireplumber.service
+	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
+		systemctl --user reset-failed xdg-desktop-portal.service \
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
+		[ "$wlr_portal_active" != active ] || \
+			systemctl --user start xdg-desktop-portal-wlr.service
+		[ "$portal_active" != active ] || \
+			systemctl --user start xdg-desktop-portal.service
+	fi
 	sleep 3
 }
 
@@ -235,7 +290,27 @@ validate_rear() {
 	wait_for_new_settle "$log_file" 0
 
 	before=$(settle_count "$log_file")
-	timeout 20 "$focus_helper" focus "$serial" 0.70 0.38 0.18
+	focus_result_file="$output/$name-focus-result.txt"
+	focus_error_file="$output/$name-focus-helper.log"
+	helper_status=0
+	# Use the centre of the deliberately staged target. An arbitrary low-detail
+	# off-centre window may truthfully return Failed and is not a transport bug.
+	timeout 20 "$focus_helper" focus "$serial" 0.50 0.50 0.18 \
+		>"$focus_result_file" 2>"$focus_error_file" || helper_status=$?
+	[ "$helper_status" -eq 0 ] || {
+		printf '%s: focus helper returned %s\n' "$name" "$helper_status" >&2
+		return 1
+	}
+	if [ "$focus_result_mode" = required ]; then
+		grep -qx 'focused' "$focus_result_file" || {
+			printf '%s: autofocus did not report metadata-confirmed focus\n' \
+				"$name" >&2
+			return 1
+		}
+		tap_result=focused
+	else
+		tap_result=accepted
+	fi
 	wait_for_new_settle "$log_file" "$before"
 
 	reset_start=$(wc -l <"$log_file")
@@ -272,8 +347,8 @@ validate_rear() {
 		return 1
 	}
 	stop_stream
-	printf '%s|serial=%s|post_reset_metrics=%s|restarts=0|lens_requests=0\n' \
-		"$name" "$serial" "$metrics" >>"$output/summary.psv"
+	printf '%s|serial=%s|tap_result=%s|post_reset_metrics=%s|restarts=0|lens_requests=0\n' \
+		"$name" "$serial" "$tap_result" "$metrics" >>"$output/summary.psv"
 }
 
 validate_front() {
