@@ -1055,3 +1055,13 @@ physical recovery, install this bundle only after
 `preview` and `preview-yuv` profiles with the accepted r35 baseline. Keep the
 candidate only if frame delivery, JPEG output and provider lifecycle remain
 healthy.
+
+## Fresh USB/userspace recheck
+
+Date: 2026-08-26. A new read-only check reproduced the same boundary after
+the repositories were synchronized: `172.16.42.1` answered ping, TCP port 22
+accepted a connection but did not send an SSH banner within eight seconds,
+`fastboot devices` remained empty, and the USB configuration still exposed
+only CDC-NCM control/data interfaces. No reboot, USB reset, overlay access or
+flash operation was attempted. The phone therefore still requires a physical
+power recovery before the health report or any runtime acceptance can resume.
