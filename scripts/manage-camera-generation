@@ -114,7 +114,7 @@ esac
 	usage_error '--apply is not valid with status'
 
 if [ -z "$manifest" ]; then
-	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r3.psv
+	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r4.psv
 fi
 [ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
 manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
