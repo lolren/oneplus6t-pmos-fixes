@@ -862,7 +862,7 @@ broader third-party camera-app, Play Store and lifecycle testing.
 ## Host diagnostics and current device gate
 
 Date: 2026-08-25. The reproducible host-side diagnostics in
-`oneplus6t-pmos-fixes` are now committed and pushed through `0f81faa`:
+`oneplus6t-pmos-fixes` are now committed and pushed through `9faaed0`:
 
 - `pmos-check-location` reports the discovered ModemManager modem,
   `--location-status`, `--location-get`, GeoClue service state and
@@ -880,10 +880,22 @@ all four reports. Their fixture tests do not require a phone, modem, NFC tag or
 Waydroid container.
 
 The reference phone was checked read-only over SSH on this date and reported
-approximately `io some avg10=99.93`, load averages above 57 and five mounts
-under `/var/lib/waydroid/rootfs`. A remote execution of the new health report
-then stalled during the same storage pressure. No overlay install, rollback,
-service stop or reboot was attempted. Runtime acceptance therefore still
-requires a physical recovery, `rootfs_mounts=0`,
-`overlay_precondition=pass`, the guarded preview candidate install, and the
-camera/location/NFC/power/audio acceptance sequences above.
+`io some avg10=100.00`, `full avg10=98.81`, load averages above 57 and five
+mounts under `/var/lib/waydroid/rootfs`. After the report was reordered to emit
+proc/mount evidence first, it completed remotely and recorded
+`overlay_precondition=blocked-rootfs-mounted`.
+
+A read-only process audit found the container service still `active` while the
+Android session was `inactive`. The five mounts were the system image, rootfs
+overlay, vendor image, vendor overlay and `waydroid.prop` loop mount. Several
+historical helper commands remained in uninterruptible `D` state, including two
+`install-waydroid-camera` invocations, a `waydroid container start`, and four
+old reboot attempts. A bounded `sudo systemctl stop waydroid-container.service`
+attempt itself blocked in the same storage wait; it was interrupted, and the
+service/mount count remained unchanged. A second attempt to signal only those
+stale helper PIDs could not pass through the blocked sudo path, so no process
+or overlay state was assumed to have changed.
+
+Runtime acceptance therefore still requires physical recovery,
+`rootfs_mounts=0`, `overlay_precondition=pass`, the guarded preview candidate
+install, and the camera/location/NFC/power/audio acceptance sequences above.
