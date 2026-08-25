@@ -286,6 +286,14 @@ kernel, then points to the signed generation manager. Safe non-camera updates
 use the cached package index after the gate; `apk upgrade --available` remains
 outside this workflow.
 
+### Location
+
+Native GeoClue/ModemManager GNSS checks and the dry-run-first Waydroid location
+bridge are documented in [docs/LOCATION.md](docs/LOCATION.md). The bridge is
+explicitly a mock-provider diagnostic until the phone's native GNSS and an
+Android map application have been tested; it does not pretend to provide a
+vendor GNSS HAL.
+
 ## Project status
 
 - Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
@@ -306,6 +314,8 @@ outside this workflow.
   See
   [docs/ROADMAP.md](docs/ROADMAP.md).
 - Reboot persistence: still to be recorded in the validation log.
+- Location: native GNSS and Android bridge acceptance are pending device
+  recovery; no static Reading/Stroud coordinate has been hard-coded.
 - Audio routing, display and power improvements are not included in this
   camera revision.
 

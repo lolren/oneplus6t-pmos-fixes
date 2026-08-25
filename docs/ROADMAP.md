@@ -29,7 +29,8 @@ location and Android-container failures cannot obscure one another.
    transitions, then add Play Store support; Android computational HDR and
    vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
-   location to Waydroid. Validate native coordinates and Android applications
+   location to Waydroid. The reproducible dry-run-first NMEA/test-provider
+   bridge now exists; validate native coordinates and Android applications
    separately so a network-derived fallback cannot be mistaken for GPS.
 6. Investigate read-only NFC tag support, audio-route/microphone policy,
    suspend/resume and power use as separate bounded workstreams after camera

@@ -17,7 +17,9 @@ SCRIPTS = \
 	scripts/audio-route-policy \
 	scripts/check-audio-routing
 
-PYTHON_SCRIPTS = scripts/v4l2-focus-control.py
+PYTHON_SCRIPTS = \
+	scripts/v4l2-focus-control.py \
+	scripts/waydroid-location-bridge.py
 
 HOST_BUILD_SCRIPTS = \
 	scripts/build-waydroid-camera \
@@ -51,6 +53,7 @@ test:
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
 	./tests/test-update-guard.sh
+	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py
 	python3 -m py_compile $(PYTHON_SCRIPTS) $(CAMERA_TEST_PYTHON)
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
@@ -107,4 +110,6 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/pmos-safe-upgrade" \
 		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
 	ln -sfn "$(LIBEXECDIR)/scripts/v4l2-focus-control.py" "$(DESTDIR)$(SBINDIR)/pmos-v4l2-focus-control"
+	ln -sfn "$(LIBEXECDIR)/scripts/waydroid-location-bridge.py" \
+		"$(DESTDIR)$(SBINDIR)/pmos-waydroid-location-bridge"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-audio-routing" "$(DESTDIR)$(SBINDIR)/pmos-check-audio-routing"
