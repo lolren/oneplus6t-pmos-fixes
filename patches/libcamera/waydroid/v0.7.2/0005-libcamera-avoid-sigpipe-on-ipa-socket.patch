@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Tue, 25 Aug 2026 19:00:00 +0100
+Subject: [PATCH 5/5] libcamera: avoid SIGPIPE when the IPA socket closes
+
+The Android Camera3 provider must survive a transient software-IPA worker
+disconnect long enough to report the IPC error and tear the camera down. The
+default send() and sendmsg() dispositions deliver SIGPIPE when the peer has
+already gone away, which kills the provider before libcamera can handle the
+negative return value. Suppress SIGPIPE for both datagram sends and let the
+existing error path return EPIPE instead.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+---
+ src/libcamera/ipc_unixsocket.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/libcamera/ipc_unixsocket.cpp b/src/libcamera/ipc_unixsocket.cpp
+index 6ec5a5c..f8b02b0 100644
+--- a/src/libcamera/ipc_unixsocket.cpp
++++ b/src/libcamera/ipc_unixsocket.cpp
+@@ -185,7 +185,7 @@ int IPCUnixSocket::send(const Payload &payload)
+ 	if (!hdr.data && !hdr.fds)
+ 		return -EINVAL;
+ 
+-	ret = ::send(fd_.get(), &hdr, sizeof(hdr), 0);
++	ret = ::send(fd_.get(), &hdr, sizeof(hdr), MSG_NOSIGNAL);
+ 	if (ret < 0) {
+ 		ret = -errno;
+ 		LOG(IPCUnixSocket, Error)
+@@ -265,7 +265,7 @@ int IPCUnixSocket::sendData(const void *buffer, size_t length,
+ 	if (fds)
+ 		memcpy(CMSG_DATA(cmsg), fds, num * sizeof(uint32_t));
+ 
+-	if (sendmsg(fd_.get(), &msg, 0) < 0) {
++	if (sendmsg(fd_.get(), &msg, MSG_NOSIGNAL) < 0) {
+ 		int ret = -errno;
+ 		LOG(IPCUnixSocket, Error)
+ 			<< "Failed to sendmsg: " << strerror(-ret);
+-- 
+2.39.5
+

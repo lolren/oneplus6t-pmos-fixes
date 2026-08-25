@@ -762,6 +762,34 @@ not a claim of Android vendor-camera image-quality parity. Running the probe
 while Aperture owns CAMSS can still produce a transient media-link-busy result;
 the accepted probe was rerun with camera clients stopped.
 
+## Waydroid SIGPIPE-safe provider build
+
+Date: 2026-08-25. Android log and host `dmesg` evidence showed
+`vendor.camera-provider-2-4` repeatedly receiving signal 13 when the
+libcamera software-IPA Unix socket peer closed. The new patch changes the
+header `send()` and payload `sendmsg()` calls to use `MSG_NOSIGNAL`, allowing
+libcamera's existing `EPIPE` error path to tear down the affected request
+without terminating the provider process.
+
+The patch applies cleanly to the reviewed libcamera 0.7.2 source and the
+ARMv7 GPU bundle compiled all 197 targets plus the final install/signature
+steps with `WAYDROID_SOFTISP_GPU=enabled`. Reproducible artifacts from this
+build are:
+
+```text
+patch 0005: cde362b958fac2d7570af4037971788e90b68d7dd8a5e22566c463f82adeefda
+waydroid-camera-sigpipe-r35-gpu.tar.gz: bafb6c3f37d4a7d4256985bc5de45e45073b5ad6fa41cc1e9341fd212d835e39
+waydroid-camera-sigpipe-r35-gpu.sha256: d8fc2b25eaa93eb40f7fd4a029416cde18f9fb1dc5e8bae2780e64388ef41319
+```
+
+Phone acceptance is pending. The old r35 container was stopped, but its
+overlay mount entered an uninterruptible I/O wait during the installer backup
+before the installer printed a backup path; no reboot or forced overlay
+replacement was performed in this run. After the phone is responsive again,
+verify the old backup/overlay state, install this matched bundle with the
+guarded installer, and repeat the non-invasive provider lifecycle check
+before calling the patch accepted.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

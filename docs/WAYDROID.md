@@ -30,6 +30,7 @@ separately; see [CAMERA.md](CAMERA.md).
 | Rear autofocus bridge | Camera2 auto/continuous modes, triggers, states and one metering region reach both physical rear actuators. |
 | Bounded explicit focus scan | Tap-focus does not spend hundreds of frames traversing the entire actuator range; it uses a fast bounded scan and local refinement. |
 | Fixed-focus reporting | The front camera honestly advertises no autofocus instead of accepting controls that cannot move hardware. |
+| SIGPIPE-safe IPA teardown | A closed software-IPA Unix socket returns `EPIPE` through libcamera's existing error path instead of killing the Android provider with signal 13. |
 | Automated Camera2 probe | A reproducible APK verifies every stream, AF state and exposure path without depending on a store camera application. |
 
 These are lower-layer camera features. They do not add a polished Android
@@ -42,7 +43,7 @@ camera UI by themselves; an Android camera application consumes them.
   transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
-  software-ISP and robust DMA/JPEG patches (`0002`–`0004`).
+  software-ISP, robust DMA/JPEG and SIGPIPE-safe IPC patches (`0002`–`0005`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -113,12 +114,15 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0001-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0002-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0003-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0004-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0005-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
 mismatch. The reviewed order ends with generic frame duration, generic
-autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion
-and robust buffer/JPEG handling.
+autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion,
+robust buffer/JPEG handling and SIGPIPE-safe IPA socket teardown. The fifth
+patch is deliberately small: it changes only the two libcamera IPC send calls
+that can otherwise deliver SIGPIPE after an IPA peer closes.
 
 ## Build a runtime bundle
 
