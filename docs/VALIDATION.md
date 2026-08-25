@@ -790,6 +790,12 @@ verify the old backup/overlay state, install this matched bundle with the
 guarded installer, and repeat the non-invasive provider lifecycle check
 before calling the patch accepted.
 
+The host-side regression test for this failure mode now passes as part of
+`make test`: it supplies a representative `/proc/self/mountinfo` fixture,
+requires the installer to refuse the mounted-rootfs case, then confirms the
+same dry-run proceeds when the fixture is clear. This guard is committed in
+`fcb930d` and prevents the previous deadlock from being silently repeated.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.
