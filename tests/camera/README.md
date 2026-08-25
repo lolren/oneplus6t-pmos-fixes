@@ -21,6 +21,13 @@ validation.
   only for like-for-like framing, lighting and resolution.
 - `run-light-step.sh` performs a bounded, low-power rear-camera flash step with
   unconditional LED-off and lens-park cleanup.
+- `capture-portal-screenshot.py` asks the desktop screenshot portal for one
+  private PNG, verifies that the response belongs to its request and accepts
+  only a local file URI. It is used to compare visible UI state before and
+  after a gesture; captures remain ignored by Git.
+- `uinput-touch.py` emits exactly one bounded tap or two-finger pinch through a
+  temporary direct-touch uinput device. It tears the device down after normal
+  exit, errors and interruptions, and never opens a physical input device.
 - `validate-pipewire-af.sh` discovers the current PipeWire serials, verifies a
   real central-target tap-focus and scan-free Reset on both rear modules, holds
   each in continuous mode to detect hunting, and confirms that the fixed-focus
@@ -121,3 +128,25 @@ The runner accepts only the two known rear camera IDs, uses LED levels 32/16
 out of 255 for three seconds, and traps normal exit or interruption to turn
 both channels off and park the matched actuator at DAC 0. Captures and full
 logs remain private and are ignored by this repository.
+
+For a bounded graphical pinch acceptance test, install `grim` (used by the
+Phosh portal backend) and `py3-gobject3`, keep Advanced Snapshot focused, and
+run the helper with the phone's virtual input dimensions. Root is required
+only to open `/dev/uinput`:
+
+```sh
+python3 tests/camera/capture-portal-screenshot.py \
+  /private/path/zoom-before.png
+
+sudo python3 tests/camera/uinput-touch.py \
+  --width 1080 --height 2340 \
+  pinch --center-x 0.50 --center-y 0.50 \
+  --start-span 0.18 --end-span 0.55
+
+python3 tests/camera/capture-portal-screenshot.py \
+  /private/path/zoom-after.png
+```
+
+The acceptance condition is a larger zoom chip value and a visibly cropped
+preview in the second image. Restore the display lock after unattended tests.
+Use `--dry-run` to inspect the generated coordinates without opening uinput.

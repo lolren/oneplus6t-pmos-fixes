@@ -20,6 +20,12 @@ CAMERA_TEST_SCRIPTS = \
 	tests/camera/run-light-step.sh \
 	tests/camera/validate-pipewire-af.sh
 
+CAMERA_TEST_PYTHON = \
+	tests/camera/analyze-light-step.py \
+	tests/camera/capture-portal-screenshot.py \
+	tests/camera/ppm-metrics.py \
+	tests/camera/uinput-touch.py
+
 .PHONY: all test install
 
 all: test
@@ -34,7 +40,12 @@ test:
 	./tests/test-messages-check.sh
 	./tests/test-camera-generation.sh
 	python3 tests/test-ppm-metrics.py
+	python3 -m py_compile $(PYTHON_SCRIPTS) $(CAMERA_TEST_PYTHON)
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
+	python3 tests/camera/uinput-touch.py --dry-run \
+		tap --x 0.50 --y 0.50 >/dev/null
+	python3 tests/camera/uinput-touch.py --dry-run \
+		pinch --start-span 0.18 --end-span 0.55 >/dev/null
 
 install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/scripts"
