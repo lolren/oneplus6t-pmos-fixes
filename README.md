@@ -218,10 +218,11 @@ backs up only its managed targets and prints the exact rollback directory.
 Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
 package hashes, clean three-camera probe and rollback command.
 
-Before any overlay operation, run `pmos-check-waydroid-health`. It reports
-stale rootfs mounts and kernel I/O pressure without stopping services or
-writing storage. The installer remains separately guarded and refuses a
-mounted rootfs even when this report is not run.
+Before any overlay operation, run
+`pmos-check-waydroid-health --status --processes`. It reports stale rootfs
+mounts, kernel I/O pressure and D-state helper commands without stopping
+services or writing storage. The installer remains separately guarded and
+refuses a mounted rootfs even when this report is not run.
 
 To reproduce the current r7/r1-to-r7/r2 UI update, stage the unchanged r7
 PipeWire SPA, the r2 app packages and the exact r7/r1 rollback in isolated

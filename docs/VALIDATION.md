@@ -896,6 +896,12 @@ service/mount count remained unchanged. A second attempt to signal only those
 stale helper PIDs could not pass through the blocked sudo path, so no process
 or overlay state was assumed to have changed.
 
+The reproducible `--processes` mode now records the same seven stale helpers
+on the phone: two installer shells, one container-start command and four old
+reboot commands. It emits their command lines as evidence but does not send
+signals. This report is the required recovery baseline before another
+physical reboot or any overlay operation.
+
 Runtime acceptance therefore still requires physical recovery,
 `rootfs_mounts=0`, `overlay_precondition=pass`, the guarded preview candidate
 install, and the camera/location/NFC/power/audio acceptance sequences above.

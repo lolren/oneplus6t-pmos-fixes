@@ -82,12 +82,14 @@ a phone reboot.
 Before an overlay install or rollback, run:
 
 ```sh
-pmos-check-waydroid-health --status
+pmos-check-waydroid-health --status --processes
 ```
 
 Proceed only when `rootfs_mounts=0` and
 `overlay_precondition=pass`. A mounted rootfs or non-zero I/O pressure means
 the storage path is not safe for a copy operation; recover the phone first.
+When `--processes` reports D-state installer, Waydroid or reboot helpers, do
+not assume that sending a signal succeeded; repeat the report after recovery.
 
 The mobile-data rollback script reads the UUID recorded at installation and
 refuses to delete a non-GSM profile. Existing user-created profiles are left

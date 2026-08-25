@@ -25,6 +25,19 @@ grep -Fqx 'io_some_avg10=0.00' "$safe_output"
 grep -Fqx 'overlay_precondition=pass' "$safe_output"
 grep -Fqx 'Session: STOPPED' "$safe_output"
 
+mkdir -p "$TEST_DIR/proc/1234"
+printf '%s\n' '1234 (install-waydroid-camera) D 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0' \
+	>"$TEST_DIR/proc/1234/stat"
+printf '%s\n' '/bin/sh /tmp/install-waydroid-camera /tmp/stage /var/lib/waydroid/overlay' \
+	>"$TEST_DIR/proc/1234/cmdline"
+process_output=$TEST_DIR/processes.txt
+PMOS_WAYDROID_PROC_ROOT="$TEST_DIR/proc" \
+	PMOS_WAYDROID_ROOTFS=/var/lib/waydroid/rootfs \
+	PMOS_WAYDROID_MOUNTINFO="$TEST_DIR/proc/self/mountinfo" \
+	"$REPORT" --processes --output "$process_output"
+grep -Fqx 'stale_helper_pid=1234 state=D command=/bin/sh /tmp/install-waydroid-camera /tmp/stage /var/lib/waydroid/overlay' "$process_output"
+grep -Fqx 'stale_helper_count=1' "$process_output"
+
 printf '%s\n' \
 	'36 25 0:32 / /var/lib/waydroid/rootfs rw,relatime - tmpfs tmpfs rw' \
 	>"$TEST_DIR/proc/self/mountinfo"

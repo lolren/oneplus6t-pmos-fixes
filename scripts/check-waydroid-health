@@ -9,14 +9,16 @@ waydroid_cmd=${PMOS_WAYDROID_STATUS_CMD:-waydroid}
 status_timeout=${PMOS_WAYDROID_STATUS_TIMEOUT:-5}
 output=${PMOS_WAYDROID_OUTPUT:-}
 include_status=no
+include_processes=no
 
 usage() {
 	cat <<EOF
-Usage: $PROGRAM [--status] [--output FILE]
+Usage: $PROGRAM [--status] [--processes] [--output FILE]
 
 Collect a read-only Waydroid overlay preflight report. The default checks
 mounts and kernel load/I/O pressure only. --status additionally runs
-"waydroid status" with a bounded timeout when available.
+"waydroid status" with a bounded timeout when available. --processes scans
+for D-state installer, Waydroid and reboot helper commands.
 EOF
 }
 
@@ -29,6 +31,10 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 	--status)
 		include_status=yes
+		shift
+		;;
+	--processes)
+		include_processes=yes
 		shift
 		;;
 	--output)
@@ -114,6 +120,29 @@ else
 	printf '%s\n' 'overlay_precondition=blocked-i/o-pressure'
 fi
 printf '%s\n' 'note=do not install or roll back a Waydroid overlay until rootfs_mounts=0 and I/O pressure is no longer blocking storage'
+
+# This is opt-in because scanning every /proc entry is more expensive than the
+# mount/I/O preflight. It is still read-only and deliberately reports only
+# command families that can leave an overlay or reboot operation pending.
+if [ "$include_processes" = yes ]; then
+	printf '\n[stale-helpers]\n'
+	stale_helper_count=0
+	for process_dir in "$proc_root"/[0-9]*; do
+		[ -d "$process_dir" ] || continue
+		state=$(awk '{print $3}' "$process_dir/stat" 2>/dev/null || true)
+		[ "$state" = D ] || continue
+		command_line=$(tr '\000' ' ' <"$process_dir/cmdline" 2>/dev/null || true)
+		case "$command_line" in
+		*install-waydroid-camera*|*waydroid\ container\ start*|*reboot*)
+			stale_helper_count=$((stale_helper_count + 1))
+			printf 'stale_helper_pid=%s state=%s command=%s\n' \
+				"${process_dir##*/}" "$state" "$command_line"
+			;;
+		esac
+	done
+	printf 'stale_helper_count=%s\n' "$stale_helper_count"
+	[ "$stale_helper_count" -gt 0 ] || printf '%s\n' 'stale_helpers=none'
+fi
 
 # Keep the critical proc/mount assessment above metadata that may itself block
 # on a damaged or saturated root filesystem. The report remains useful when a

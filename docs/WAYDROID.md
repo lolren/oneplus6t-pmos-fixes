@@ -190,7 +190,7 @@ Before stopping services or opening the overlay, collect the read-only
 preflight report:
 
 ```sh
-pmos-check-waydroid-health --status \
+pmos-check-waydroid-health --status --processes \
   --output /private/path/oneplus6t-waydroid-health.txt
 ```
 
@@ -204,8 +204,11 @@ overlay_precondition=pass
 The check also records `/proc/loadavg` and `/proc/pressure/io`. It does not
 stop Waydroid, unmount anything, kill a process or write the overlay. If a
 rootfs mount remains or storage I/O is pressured, recover the phone and repeat
-the report before using the installer. The installer independently rechecks
-`/proc/self/mountinfo` and refuses a mounted rootfs.
+the report before using the installer. With `--processes`, it also reports
+D-state installer, Waydroid-container-start and reboot helper commands for
+recovery auditing; it does not claim that a signal or stop command succeeded.
+The installer independently rechecks `/proc/self/mountinfo` and refuses a
+mounted rootfs.
 
 The package helper produces a tarball and a manifest. Extract the tarball into
 a fresh staging directory, then use the installer so the provider GID is
