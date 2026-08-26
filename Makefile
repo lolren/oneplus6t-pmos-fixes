@@ -89,6 +89,7 @@ test:
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py
+	python3 tests/test-af-reference.py
 	python3 -m py_compile $(PYTHON_SCRIPTS) $(CAMERA_TEST_PYTHON)
 	python3 scripts/v4l2-focus-control.py --help >/dev/null
 	python3 tests/camera/uinput-touch.py --dry-run \

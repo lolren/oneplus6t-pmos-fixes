@@ -6,17 +6,17 @@ files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r10 Advanced Snapshot
-source recipe; the previously signed r7/r6 candidate generation remains the
-r8 app candidate, and the phone's
-accepted runtime baseline remains Advanced Snapshot r1 until recovery and a
-fresh device check.
+source recipe and the libcamera r25 continuous-AF reference candidate; r24 and
+the previously signed app generations remain available as rollback baselines.
+The phone's accepted runtime baseline remains Advanced Snapshot r1 and
+libcamera r24 until recovery and a fresh device check.
 
 ## Reviewed base and build
 
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`9dd5aeff9619090a36dcf863161d19d2fbe2237cf7f176ba0a937c16af8ce8c3`.
+`e6dfec0857c7d0b74d3b64747ce3ad199b618f0d84b32885c586a602b34ab16b`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -39,7 +39,8 @@ completed for aarch64.
 Applying the integration patch to the reviewed base produces:
 
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r8`;
-- `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
+- `libcamera-99990.7.2-r25` and `libcamera-ipa-99990.7.2-r25` (AF reference
+  candidate; r24 remains the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
 - `advanced-snapshot-0.1.0-r10` plus
@@ -55,6 +56,8 @@ during live diagnosis. They do not imply that many public releases.
 | `linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk` | `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e` |
 | `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
 | `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
+| `libcamera-99990.7.2-r25.apk` (AF reference candidate) | `ccdfaf820ba6362cfbb4dae3ded92eb9e18542afcdde1596eb8bed91e9e7323f` |
+| `libcamera-ipa-99990.7.2-r25.apk` (AF reference candidate) | `11efa3eaa05e00e0921cbf081fb1b1fe8fdd356a4fc1244cbbb13d90fc14608a` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
@@ -120,6 +123,15 @@ The signed `camera-r7-r10` stage keeps PipeWire r7 unchanged and retains the
 r9 app pair for rollback. It is source/package validated but not installed or
 hardware-accepted.
 
+The libcamera r25 candidate is built from the same v0.7.2 source and the
+updated generic AF patch. It requires three consecutive high-contrast monitor
+windows before raising the IMX376/IMX519 continuous-focus reference and moves
+only 20% toward the least extreme candidate window. The clean AArch64 build
+produced the two signed packages above; pmbootstrap also reported pre-existing
+untrusted staged candidate APKs while refreshing its local index, so the
+artifact hashes—not that index warning—are the package evidence. The candidate
+is not installed or hardware-accepted. Keep the r24 APK pair for rollback.
+
 ## Current installation and rollback baseline
 
 The reference phone currently runs:
@@ -138,8 +150,8 @@ fixed-focus front completed 120 frames and rejected focus as unsupported. Keep
 all three r6/r0 APKs as the immediate rollback and install or roll them back
 together.
 
-The exact r23 libcamera packages are the preferred rollback for the r24
-autofocus-transition update. The older complete r20/r6/r2 set remains useful when rolling
+The exact r24 libcamera packages are the preferred rollback for the r25
+autofocus-reference update. The exact r23 pair and older complete r20/r6/r2 set remain useful when rolling
 back the earlier Snapshot and PipeWire work. Keep local APKs, or verified
 version-matched rebuilds, before reproducing either transition. Do not assume
 that an online repository will continue to carry old versions.

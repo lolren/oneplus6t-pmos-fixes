@@ -30,6 +30,8 @@ algorithms:
       finalFocusTolerance: 0.25
       restartRatio: 0.7
       monitorReferenceDecay: 0.98
+      monitorReferenceRise: 0.2
+      monitorReferenceRiseWindows: 3
       monitorWindowMs: 250
       restartHoldMs: 1500
       restartDelayMs: 3000

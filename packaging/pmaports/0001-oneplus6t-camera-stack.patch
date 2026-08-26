@@ -4301,10 +4301,10 @@ index 0000000..ce69384
 +
 diff --git a/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch b/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 new file mode 100644
-index 0000000..e9eecbb
+index 0000000..c7e8bb8
 --- /dev/null
 +++ b/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
-@@ -0,0 +1,533 @@
+@@ -0,0 +1,574 @@
 +From fd0d181356dffecf4256d0c1876f75dfa68b410f Mon Sep 17 00:00:00 2001
 +From: Lolren <loren.bufanu@gmail.com>
 +Date: Mon, 24 Aug 2026 22:44:29 +0100
@@ -4316,7 +4316,7 @@ index 0000000..e9eecbb
 +index 67adb71..a7057d7 100644
 +--- a/src/ipa/simple/algorithms/af.cpp
 ++++ b/src/ipa/simple/algorithms/af.cpp
-+@@ -30,24 +30,42 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
++@@ -30,24 +30,48 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
 + 	configuredMax_ = tuningData["maxPosition"].get<int32_t>(800);
 + 	coarseStep_ = tuningData["coarseStep"].get<int32_t>(100);
 + 	fineStep_ = tuningData["fineStep"].get<int32_t>(25);
@@ -4339,6 +4339,10 @@ index 0000000..e9eecbb
 + 	restartRatio_ = tuningData["restartRatio"].get<double>(0.7);
 ++	monitorReferenceDecay_ =
 ++		tuningData["monitorReferenceDecay"].get<double>(0.98);
+++	monitorReferenceRise_ =
+++		tuningData["monitorReferenceRise"].get<double>(0.2);
+++	monitorReferenceRiseWindows_ =
+++		tuningData["monitorReferenceRiseWindows"].get<unsigned int>(3);
 + 	monitorWindowMs_ = tuningData["monitorWindowMs"].get<unsigned int>(250);
 + 	restartHoldMs_ = tuningData["restartHoldMs"].get<unsigned int>(1000);
 + 	restartDelayMs_ = tuningData["restartDelayMs"].get<unsigned int>(2000);
@@ -4359,11 +4363,13 @@ index 0000000..e9eecbb
 +-	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0) {
 ++	    finalFocusTolerance_ < 0.0 || finalFocusTolerance_ >= 1.0 ||
 ++	    restartRatio_ <= 0.0 || restartRatio_ >= 1.0 ||
-++	    monitorReferenceDecay_ <= 0.0 || monitorReferenceDecay_ > 1.0) {
+++	    monitorReferenceDecay_ <= 0.0 || monitorReferenceDecay_ > 1.0 ||
+++	    monitorReferenceRise_ <= 0.0 || monitorReferenceRise_ > 1.0 ||
+++	    !monitorReferenceRiseWindows_) {
 + 		LOG(IPASoftAf, Error) << "Invalid autofocus tuning data";
 + 		return -EINVAL;
 + 	}
-+@@ -88,31 +106,37 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
++@@ -88,31 +106,39 @@ int Af::configure(IPAContext &context, const IPAConfigInfo &configInfo)
 + 			<< lensMin << "-" << lensMax;
 + 		return -EINVAL;
 + 	}
@@ -4386,6 +4392,8 @@ index 0000000..e9eecbb
 + 	monitorMetricSum_ = 0.0;
 + 	monitorSamples_ = 0;
 ++	monitorReferenceValid_ = false;
+++	monitorReferenceCandidate_ = 0.0;
+++	monitorReferenceRiseSamples_ = 0;
 + 	lowContrast_ = false;
 + 	firstScan_ = true;
 + 
@@ -4571,11 +4579,13 @@ index 0000000..e9eecbb
 + 	bestMetric_ = -std::numeric_limits<double>::infinity();
 + 	positionMetrics_.clear();
 + 	phase_ = ScanPhase::Coarse;
-+@@ -258,9 +338,40 @@ void Af::startScan(IPAContext &context)
++@@ -258,9 +338,44 @@ void Af::startScan(IPAContext &context)
 + 	lowContrast_ = false;
 + 	monitorMetricSum_ = 0.0;
 + 	monitorSamples_ = 0;
 ++	monitorReferenceValid_ = false;
+++	monitorReferenceCandidate_ = 0.0;
+++	monitorReferenceRiseSamples_ = 0;
 + 	scanNotBefore_ = std::chrono::steady_clock::now() +
 + 		std::chrono::milliseconds(firstScan_ ? startupDelayMs_ : 0);
 + 	requestPosition(context, positions_.front());
@@ -4600,6 +4610,8 @@ index 0000000..e9eecbb
 ++	monitorMetricSum_ = 0.0;
 ++	monitorSamples_ = 0;
 ++	monitorReferenceValid_ = false;
+++	monitorReferenceCandidate_ = 0.0;
+++	monitorReferenceRiseSamples_ = 0;
 ++	lowContrast_ = false;
 ++	auto now = std::chrono::steady_clock::now();
 ++	monitorWindowStart_ = now;
@@ -4625,7 +4637,7 @@ index 0000000..e9eecbb
 + 		selectBestPosition();
 + 		buildFinePositions();
 + 		positionIndex_ = 0;
-+@@ -347,24 +464,42 @@ void Af::process(IPAContext &context,
++@@ -347,24 +464,44 @@ void Af::process(IPAContext &context,
 + {
 + 	double metric = focusMetric(stats);
 + 	auto now = std::chrono::steady_clock::now();
@@ -4671,6 +4683,8 @@ index 0000000..e9eecbb
 ++					lastFocusedPosition_ = currentPosition_;
 ++				monitorReferenceValid_ =
 ++					state_ == controls::AfStateFocused;
+++				monitorReferenceCandidate_ = 0.0;
+++				monitorReferenceRiseSamples_ = 0;
 + 				restartNotBefore_ = now +
 + 					std::chrono::milliseconds(restartDelayMs_);
 + 				monitorWindowStart_ = now;
@@ -4702,7 +4716,7 @@ index 0000000..e9eecbb
 + 				finishPosition(context, metricSum_ / samples_);
 + 		}
 + 	} else if (metric >= 0.0 &&
-+@@ -407,28 +548,47 @@ void Af::process(IPAContext &context,
++@@ -407,28 +548,71 @@ void Af::process(IPAContext &context,
 + 			monitorMetricSum_ = 0.0;
 + 			monitorSamples_ = 0;
 + 
@@ -4714,6 +4728,8 @@ index 0000000..e9eecbb
 ++			if (!monitorReferenceValid_) {
 + 				focusedMetric_ = monitorMetric;
 ++				monitorReferenceValid_ = true;
+++				monitorReferenceCandidate_ = 0.0;
+++				monitorReferenceRiseSamples_ = 0;
 ++				lowContrast_ = false;
 ++				LOG(IPASoftAf, Debug)
 ++					<< "Continuous focus reference initialized at "
@@ -4739,13 +4755,35 @@ index 0000000..e9eecbb
 ++					<< "Continuous focus metric " << monitorMetric
 ++					<< ", reference " << previousReference;
 ++
-++				if (monitorMetric >= previousReference)
-++					focusedMetric_ = monitorMetric;
-++				else
+++				if (monitorMetric > previousReference) {
+++					/*
+++					 * Do not let one noisy high window raise the
+++					 * baseline. A later ordinary window must not then
+++					 * look like a defocus event.
+++					 */
+++					if (!monitorReferenceRiseSamples_)
+++						monitorReferenceCandidate_ = monitorMetric;
+++					else
+++						monitorReferenceCandidate_ = std::min(
+++							monitorReferenceCandidate_, monitorMetric);
+++					monitorReferenceRiseSamples_++;
+++					if (monitorReferenceRiseSamples_ >=
+++					    monitorReferenceRiseWindows_) {
+++						focusedMetric_ = previousReference +
+++							(monitorReferenceCandidate_ -
+++							 previousReference) *
+++							monitorReferenceRise_;
+++						monitorReferenceCandidate_ = 0.0;
+++						monitorReferenceRiseSamples_ = 0;
+++					}
+++				} else {
+++					monitorReferenceCandidate_ = 0.0;
+++					monitorReferenceRiseSamples_ = 0;
 ++					focusedMetric_ = std::max(
 ++						monitorMetric,
 ++						previousReference *
 ++							monitorReferenceDecay_);
+++				}
 ++
 ++				if (now >= restartNotBefore_ &&
 ++				    monitorMetric < restartThreshold) {
@@ -4789,7 +4827,7 @@ index 0000000..e9eecbb
 + 	void buildFinePositions();
 + 	static double focusMetric(const SwIspStats *stats);
 + 
-+@@ -54,12 +56,19 @@ private:
++@@ -54,12 +56,21 @@ private:
 + 	int32_t configuredMax_ = 800;
 + 	int32_t coarseStep_ = 100;
 + 	int32_t fineStep_ = 25;
@@ -4806,6 +4844,8 @@ index 0000000..e9eecbb
 ++	double finalFocusTolerance_ = 0.25;
 + 	double restartRatio_ = 0.7;
 ++	double monitorReferenceDecay_ = 0.98;
+++	double monitorReferenceRise_ = 0.2;
+++	unsigned int monitorReferenceRiseWindows_ = 3;
 + 	unsigned int monitorWindowMs_ = 250;
 + 	unsigned int restartHoldMs_ = 1000;
 + 	unsigned int restartDelayMs_ = 2000;
@@ -4818,7 +4858,7 @@ index 0000000..e9eecbb
 + 	int32_t mode_ = 0;
 + 	int32_t metering_ = 0;
 + 	int32_t state_ = 0;
-+@@ -84,13 +95,16 @@ private:
++@@ -84,13 +95,18 @@ private:
 + 	std::chrono::steady_clock::time_point restartNotBefore_;
 + 	std::chrono::steady_clock::time_point lowContrastSince_;
 + 	bool firstScan_ = true;
@@ -4832,14 +4872,15 @@ index 0000000..e9eecbb
 + 	double monitorMetricSum_ = 0.0;
 + 	unsigned int monitorSamples_ = 0;
 ++	bool monitorReferenceValid_ = false;
+++	double monitorReferenceCandidate_ = 0.0;
+++	unsigned int monitorReferenceRiseSamples_ = 0;
 + 	bool lowContrast_ = false;
 + };
 + 
 +-- 
 +2.49.0
-+
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef2..c613db3 100644
+index 3857ef2..9273733 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -4847,7 +4888,7 @@ index 3857ef2..c613db3 100644
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=24
++pkgrel=25
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
@@ -4893,7 +4934,7 @@ index 3857ef2..c613db3 100644
 +2dd891668804b38f5a7404eca08e37a2b72eed38f38bb504f97ecfc6eaf39e785a77a9e9864ccad6824d98d874a3d0ac7fdd74b830fc29fc206d25c0dab1fbbe  0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 +c95fb64c5dea27724bdf8617d96a34273e0e40348080061a012dd1e742163b671e4bf0a4cf0ec99bd40f19d758f6e99c8f4e85b3411d0e41b2e578c764bebbc2  0016-ipa-simple-Add-exposure-compensation-control.patch
 +cd6a28e3c0d8e0e2ee6da560c0d435752bc3ab48b19354e5f1aa2993d38fe52d9b845dc706e7351d6bc58dc17f0c81ca7514852413fe0b30d83e9fe77553329b  0017-ipa-simple-Add-frame-duration-control.patch
-+967279d1631b8d7dee74f26070e2eab71933cb58a06db90bc729f5e422c0cea7ceb48b88b5911bb55ca63fffc1271a6c75425e2808982f5ec70d857873cddb09  0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
++fe165f6c165c4aebc587abe5c704a4a201e444ecaf60bc6d07fe2f1e99c7b88dea3dddee47552f21abfc0a6046f56588f519b0b0862f47485d68b9b600fb9042  0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -4902,8 +4943,8 @@ index 3857ef2..c613db3 100644
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
 +dd02900b32cf922d1edd433c1611ba088ae9428e434130e76ceb25fdb85d6063c168d9eddf2d3013633374189d74ce1ef72922646b821046f252cea0109b1899  imx371.yaml
-+4f9053466c19fc1f85d809f02cd75d61f9c9280a21e545e7ac91e59004807608d059d86341c49e39eb133902c133b7a06637f17b226a38ec9f61020e392ecd18  imx376.yaml
-+01dc7ed4d38ab0e4b309d268f9b279c1fc4108e80201528fa31a344d24a1d3709762cd5988bdf763ae6f6f1829eba5affd3f21430c55917080fe428d9a84feba  imx519.yaml
++9442ab7ffbccdf17283408fe5e9bf7b5829a367ac1b219b7ac4ef3bfcd6e85fca103f71c9ed65f1fd3ba81b070951589c3b0481faf237c556780afffe44e5da7  imx376.yaml
++10e0ab8a1d517ee601684702d44da12a45838a544bf78b954ff9b7496e24950cc060fa4c3cf993474801ec49a0c22bc99dd729e5f0833a887fda5c328ad32e4e  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
@@ -4932,10 +4973,10 @@ index e903d96..f977660 100644
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e..f48f91a 100644
+index 2c5ea9e..9eccfd7 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,40 @@ algorithms:
+@@ -7,36 +7,42 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -4991,6 +5032,8 @@ index 2c5ea9e..f48f91a 100644
 +      finalFocusTolerance: 0.25
 +      restartRatio: 0.7
 +      monitorReferenceDecay: 0.98
++      monitorReferenceRise: 0.2
++      monitorReferenceRiseWindows: 3
 +      monitorWindowMs: 250
 +      restartHoldMs: 1500
 +      restartDelayMs: 3000
@@ -5006,10 +5049,10 @@ index 2c5ea9e..f48f91a 100644
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96..4523120 100644
+index e903d96..bd77248 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,41 @@ algorithms:
+@@ -6,6 +6,43 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -5037,6 +5080,8 @@ index e903d96..4523120 100644
 +      finalFocusTolerance: 0.25
 +      restartRatio: 0.7
 +      monitorReferenceDecay: 0.98
++      monitorReferenceRise: 0.2
++      monitorReferenceRiseWindows: 3
 +      monitorWindowMs: 250
 +      restartHoldMs: 1500
 +      restartDelayMs: 3000

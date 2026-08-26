@@ -132,6 +132,9 @@ The simple IPA gains contrast-detect autofocus for both rear cameras:
   loss;
 - slow downward adaptation of the continuous-focus reference so one noisy
   peak cannot cause recurring false scene changes;
+- a sustained-rise filter that requires three consecutive high-contrast
+  windows before promoting the reference, with only a conservative 20% step
+  toward the lowest candidate window;
 - scan-free return from tap-focus to continuous monitoring at the selected
   physical lens position; and
 - no autofocus controls on fixed-focus IMX371.
@@ -144,6 +147,16 @@ metric form a plateau, and the selected position is its centre. `LensPosition`
 is deliberately not advertised: the
 kernel value is an uncalibrated DAC code, while libcamera defines that control
 in dioptres. Advertising a knowingly false unit would break applications.
+
+The r25 source candidate adds `monitorReferenceRiseWindows: 3` and
+`monitorReferenceRise: 0.2` to the IMX376 and IMX519 tuning. A single bright
+or unusually detailed frame can therefore not raise the long-lived reference;
+three consecutive 250 ms monitor windows are required, and the reference
+moves only 20% toward the least extreme candidate. Downward adaptation and a
+sustained contrast-loss restart remain unchanged. The deterministic
+`tests/test-af-reference.py` model covers the isolated-spike, sustained-rise,
+sustained-loss and transient-loss boundaries. This is a source/package
+candidate until it has been installed and exercised with a real actuator.
 
 On the installed r24 stack, main and secondary tap-focus both completed local
 searches, then Reset preserved the selected DAC position and issued no further

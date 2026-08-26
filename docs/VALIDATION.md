@@ -1430,3 +1430,28 @@ The signed stage keeps PipeWire r7 unchanged and retains the r9 app pair for
 rollback. It is an opt-in, uninstalled candidate: the reference phone still
 has no usable SSH/ADB/fastboot runtime transport, so native preview, saved
 photo, video, display and rollback acceptance remain open.
+
+## Continuous autofocus reference hysteresis candidate
+
+Date: 2026-08-26. The next libcamera candidate is package revision r25. Its
+simple-IPA continuous autofocus monitor no longer promotes the reference on a
+single unusually high-contrast window. IMX376 and IMX519 tuning requires three
+consecutive high windows and promotes only 20% toward the least extreme one;
+contrast-loss decay and the delayed sustained-loss restart remain intact.
+
+`tests/test-af-reference.py` is a deterministic model of this decision
+boundary. It passes the isolated-spike, sustained-rise, sustained-loss and
+transient-loss cases, and the complete `make test` suite passes. The updated
+source patch, tuning hashes and r25 package recipe are embedded in the
+reproducible pmaports integration patch, whose SHA-256 is
+`e6dfec0857c7d0b74d3b64747ce3ad199b618f0d84b32885c586a602b34ab16b`.
+The clean AArch64 build produced these local artifacts:
+
+```text
+libcamera-99990.7.2-r25.apk: ccdfaf820ba6362cfbb4dae3ded92eb9e18542afcdde1596eb8bed91e9e7323f
+libcamera-ipa-99990.7.2-r25.apk: 11efa3eaa05e00e0921cbf081fb1b1fe8fdd356a4fc1244cbbb13d90fc14608a
+```
+
+No physical claim is made: the phone still has no usable SSH/ADB/fastboot
+runtime transport, so r25 remains uninstalled pending recovery and live
+actuator validation.
