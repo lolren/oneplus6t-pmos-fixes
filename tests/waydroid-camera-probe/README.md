@@ -18,6 +18,10 @@ For every camera reported by Android, the probe checks:
   viewfinder, separating presentation/compositor throughput from provider
   delivery, and takes one asynchronous RGB pixel sample for channel-order
   evidence; and
+- a Camera2 `TEMPLATE_RECORD` run uses the Android recording request template
+  on the displayed `TextureView`, so video-template/compositor throughput can
+  be compared with the ordinary preview template without creating a video
+  file; and
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
@@ -115,6 +119,12 @@ waydroid shell am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile surface
+
+# Camera2 recording template plus the real Android TextureView path
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile record
 ```
 
 After installing this repository, the same operation can be run and saved
@@ -126,7 +136,11 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
 ```
 
 Use `preview-yuv` or `full` as the second argument for the other profiles.
-Use `surface` to measure updates reaching a real Android `TextureView`.
+Use `surface` to measure updates reaching a real Android `TextureView`, or
+`record` to use Camera2's `TEMPLATE_RECORD` while measuring that same
+displayed surface. The `record` profile is still a diagnostic: it does not
+invoke an Android video encoder or save a file, so a separate native recording
+test is required for encoder and muxer acceptance.
 The runner installs the APK, grants its camera permission, stops any previous
 probe instance, clears only the probe's old generated result, waits for
 `PROBE_DONE`, and refuses to overwrite an existing host result file. Set
@@ -142,11 +156,13 @@ PROBE_DONE profile=preview valid=3 total=3
 Compare `privateFps` and `privateIntervalMs` between `preview` and
 `preview-yuv`, then compare both with `full`. If `preview` is fast but `full`
 is slow, the extra stream/conversion load is the limiting factor. If `preview`
-is already slow, compare it with `surface`: a lower surface rate points to
-Waydroid's surface/compositor path, while both being slow points to the
-Camera3 provider, software ISP or device mode. These measurements do not
-replace visual latency review, but they make the Android preview boundary
-repeatable without relying on a particular camera application.
+is already slow, compare it with `surface` and `record`: a lower surface rate
+points to Waydroid's surface/compositor path, while a drop only in `record`
+points to the Android recording template or its negotiated stream. When all
+three are slow, the Camera3 provider, software ISP or device mode is the
+likely boundary. These measurements do not replace visual latency review, but
+they make the Android preview boundary repeatable without relying on a
+particular camera application.
 
 For a repeatable before/after report, save two results from the same profile
 and run:

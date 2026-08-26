@@ -58,6 +58,15 @@ grep -q '^result: ' "$TEST_DIR/surface-stdout"
 grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile surface' \
 	"$TEST_DIR/waydroid.log"
 
+record_result=$TEST_DIR/record-result.txt
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	"$RUNNER" "$apk" record "$record_result" >"$TEST_DIR/record-stdout"
+grep -q '^result: ' "$TEST_DIR/record-stdout"
+grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile record' \
+	"$TEST_DIR/waydroid.log"
+
 if PATH="$TEST_DIR/bin:$PATH" "$RUNNER" "$apk" unsupported \
 	>"$TEST_DIR/invalid.out" 2>"$TEST_DIR/invalid.err"; then
 	printf '%s\n' 'probe runner accepted an unsupported profile' >&2

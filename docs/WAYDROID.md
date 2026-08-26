@@ -335,16 +335,19 @@ to an `ImageReader`. It also records one asynchronous `PixelCopy` RGB sample
 surface without adding readback to the repeating capture path. A private-only
 result below the camera application's visible frame rate points to
 provider/software-ISP or Waydroid compositor work; compare it with `surface`
-to locate the boundary. A large drop only when YUV/JPEG is added points to
-multi-stream conversion load. This distinction is required before changing
+to locate the boundary. The `record` profile uses Camera2's
+`TEMPLATE_RECORD` with the same displayed `TextureView`, so a rate drop only in
+that profile points to the recording template or its negotiated stream; it is
+diagnostic and does not invoke an encoder or save a file. A large drop only
+when YUV/JPEG is added points to multi-stream conversion load. This distinction
+is required before changing
 the GPU default: the accepted r35 path still reads an
 RGBA frame back to CPU memory and converts it to Android NV12. Patch 0010 adds
 a separate texture-only private RGB route that avoids that readback;
 explicit YUV and encoder streams keep the old path. Patch 0011 can replace the
 RGB path's blocking completion with an Android native release fence when the
 EGL extension is present; it leaves the synchronous fallback intact. This is
-why `preview`,
-`preview-yuv` and `surface` must all be compared before changing the runtime
+why `preview`, `preview-yuv`, `surface` and `record` must all be compared before changing the runtime
 baseline: an RGB preview can be faster while a multi-stream video request
 remains NV12-bound.
 

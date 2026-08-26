@@ -108,10 +108,12 @@ use the guarded installer:
     sudo scripts/install-waydroid-camera \
       /private/path/waydroid-camera-stage
 
-Start Waydroid again and run the Camera2 probe in full, preview, preview-yuv
-and surface profiles. The surface profile is important for this phone because
-it distinguishes slow Camera3/software-ISP delivery from slow Android-surface
-presentation.
+Start Waydroid again and run the Camera2 probe in full, preview, preview-yuv,
+surface and record profiles. The surface profile is important for this phone
+because it distinguishes slow Camera3/software-ISP delivery from slow
+Android-surface presentation. The record profile exercises Camera2's
+`TEMPLATE_RECORD` without invoking an encoder, so it can reveal a
+recording-template-specific slowdown before a real video test.
 
 ## Reproducibility record
 

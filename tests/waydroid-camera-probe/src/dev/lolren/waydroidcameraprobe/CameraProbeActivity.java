@@ -49,6 +49,7 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_PREVIEW = "preview";
     private static final String PROFILE_PREVIEW_YUV = "preview-yuv";
     private static final String PROFILE_SURFACE = "surface";
+    private static final String PROFILE_RECORD = "record";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
@@ -289,7 +290,7 @@ public final class CameraProbeActivity extends Activity {
 
             int[] modes = characteristics.get(
                     CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
-            selectedAfMode = chooseAutofocusMode(modes);
+            selectedAfMode = chooseAutofocusMode(modes, needsRecordTemplate());
             Integer maxAfRegions = characteristics.get(
                     CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
             Integer lensFacing = characteristics.get(
@@ -423,8 +424,7 @@ public final class CameraProbeActivity extends Activity {
                 }
                 session = configured;
                 try {
-                    previewRequest = opened.createCaptureRequest(
-                            CameraDevice.TEMPLATE_PREVIEW);
+                    previewRequest = opened.createCaptureRequest(captureTemplate());
                     previewRequest.addTarget(needsSurface()
                             ? previewSurface : privateReader.getSurface());
                     if (yuvReader != null)
@@ -435,7 +435,7 @@ public final class CameraProbeActivity extends Activity {
 
                     if (selectedAfMode == CaptureRequest.CONTROL_AF_MODE_AUTO) {
                         CaptureRequest.Builder trigger = opened.createCaptureRequest(
-                                CameraDevice.TEMPLATE_PREVIEW);
+                                captureTemplate());
                         trigger.addTarget(needsSurface()
                                 ? previewSurface : privateReader.getSurface());
                         if (yuvReader != null)
@@ -793,10 +793,11 @@ public final class CameraProbeActivity extends Activity {
             valid = privateAccepted && (!needsYuv() || yuvResult.contains("valid=true"))
                     && autofocusTerminal;
             result = String.format(Locale.US,
-                    "CAMERA id=%s valid=%s profile=%s privateFrames=%d afMode=%d "
-                            + "privateSize=%s %s afStates=%s afRegion=%s "
+                    "CAMERA id=%s valid=%s profile=%s template=%s privateFrames=%d "
+                            + "afMode=%d privateSize=%s %s afStates=%s afRegion=%s "
                             + "yuv=%s surfacePixels=%s",
-                    id, valid, profile, privateFrames, selectedAfMode,
+                    id, valid, profile, captureTemplateName(), privateFrames,
+                    selectedAfMode,
                     privateStreamSize, privateTiming(), afStates,
                     focusRegions == null ? "none" : focusRegions[0].toString(),
                     needsYuv() ? yuvResult : "not-requested",
@@ -1146,7 +1147,7 @@ public final class CameraProbeActivity extends Activity {
 
     private static String normalizeProfile(String requested) {
         if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested)
-                || PROFILE_SURFACE.equals(requested))
+                || PROFILE_SURFACE.equals(requested) || PROFILE_RECORD.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
@@ -1160,7 +1161,20 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private boolean needsSurface() {
-        return PROFILE_SURFACE.equals(profile);
+        return PROFILE_SURFACE.equals(profile) || needsRecordTemplate();
+    }
+
+    private boolean needsRecordTemplate() {
+        return PROFILE_RECORD.equals(profile);
+    }
+
+    private int captureTemplate() {
+        return needsRecordTemplate()
+                ? CameraDevice.TEMPLATE_RECORD : CameraDevice.TEMPLATE_PREVIEW;
+    }
+
+    private String captureTemplateName() {
+        return needsRecordTemplate() ? "record" : "preview";
     }
 
     private boolean needsJpeg() {
@@ -1194,7 +1208,9 @@ public final class CameraProbeActivity extends Activity {
         return false;
     }
 
-    private static int chooseAutofocusMode(int[] modes) {
+    private static int chooseAutofocusMode(int[] modes, boolean preferVideo) {
+        if (preferVideo && contains(modes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO))
+            return CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO;
         if (contains(modes, CaptureRequest.CONTROL_AF_MODE_AUTO))
             return CaptureRequest.CONTROL_AF_MODE_AUTO;
         if (contains(modes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE))

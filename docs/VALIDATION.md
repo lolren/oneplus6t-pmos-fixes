@@ -964,14 +964,19 @@ is still required, followed by a fresh USB identity check and the
 `rootfs_mounts=0`/`overlay_precondition=pass` gate before any device-side
 camera or Waydroid work.
 
-## Waydroid isolated preview probe
+## Waydroid isolated preview and recording-template probe
 
-Date: 2026-08-25. The Camera2 probe was extended with three explicit profiles:
+Date: 2026-08-26. The Camera2 probe now has five explicit performance
+profiles:
 the unchanged `full` acceptance run, `preview` for a private/
-implementation-defined stream only, and `preview-yuv` for private preview plus
-YUV without JPEG. The latter two avoid confusing a multi-stream validation
-load with the frame rate a camera application can receive from one preview
-stream. Unknown profile values fall back to `full`.
+implementation-defined stream only, `preview-yuv` for private preview plus YUV
+without JPEG, `surface` for the displayed `TextureView`, and `record` for the
+same displayed `TextureView` driven by Camera2's `TEMPLATE_RECORD`. The latter
+four avoid confusing a multi-stream validation load with the frame rate a
+camera application can receive from one preview or recording-template stream.
+The `record` profile does not invoke an Android encoder or create a file;
+native video capture still needs its own playback test. Unknown profile values
+fall back to `full`.
 
 The updated Java source compiled and packaged successfully with the local
 Android SDK platform 34 and build-tools 36.0.0. The generated debug APK was
@@ -994,9 +999,11 @@ waydroid shell cat \
 Repeat with `preview-yuv`, then the default full probe. A slow private-only
 result implicates the provider/software ISP, Waydroid compositor or device
 mode; a large drop only after adding YUV/JPEG implicates multi-stream
-conversion pressure. The GPU path still performs a synchronous RGBA readback
-and NV12 conversion, so it must be benchmarked on this phone before the GPU
-configuration is changed or declared faster.
+conversion pressure. Run `record` after `surface` to distinguish a drop in
+Camera2's recording template from a generic displayed-surface drop. The GPU
+path still performs a synchronous RGBA readback and NV12 conversion for
+explicit YUV/video-encoder streams, so it must be benchmarked on this phone
+before the GPU configuration is changed or declared faster.
 
 ## Waydroid conditional-mipmap candidate
 
@@ -1148,10 +1155,11 @@ Rollback to the r35 bundle if RGB import fails, colours are swapped, buffers
 are corrupted or lifecycle stability regresses. Do not replace the accepted
 baseline merely because a host build succeeded.
 
-## Waydroid display-path probe
+## Waydroid display and recording-template probe
 
-Date: 2026-08-26. The Camera2 probe now accepts a `surface` profile in addition
-to `preview`, `preview-yuv` and `full`. It presents the implementation-defined
+Date: 2026-08-26. The Camera2 probe now accepts `surface` and `record` profiles
+in addition to `preview`, `preview-yuv` and `full`. It presents the
+implementation-defined
 stream on a real Android `TextureView` and counts `onSurfaceTextureUpdated`
 callbacks. Results identify this with `privateTimingSource=surface`; the
 existing profiles continue to report `ImageReader` delivery. This separates a
@@ -1160,12 +1168,15 @@ without depending on a third-party camera application. After the timing
 threshold, `surface` also performs one asynchronous `PixelCopy` into an
 ARGB_8888 bitmap and records `surfaceRgbMean` and `surfaceRgbRange`. This is
 colour-order and blank-surface evidence only; it is deliberately outside the
-repeating capture path and is not an image-quality acceptance test.
+repeating capture path and is not an image-quality acceptance test. The
+`record` profile uses Camera2's `TEMPLATE_RECORD` with the same `TextureView`,
+but does not invoke an encoder or create a file.
 
 The updated APK compiled and verified with Android SDK platform 34 and
 build-tools 36.0.0. The host runner and full fixes test suite pass, including
-the new surface-profile command check. This is diagnostic instrumentation only;
-it does not change the native camera stack or Waydroid overlay.
+the surface- and record-profile command checks. This is diagnostic
+instrumentation only; it does not change the native camera stack or Waydroid
+overlay.
 
 The host-side `pmos-compare-waydroid-camera-probes` helper is also covered by
 the fixes test suite. Given two saved results from the same profile, it checks

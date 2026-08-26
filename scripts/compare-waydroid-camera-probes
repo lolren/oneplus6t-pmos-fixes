@@ -9,7 +9,7 @@ Usage: $PROGRAM BASELINE_RESULT CANDIDATE_RESULT
 
 Compare two saved Camera2 probe results without installing or changing a
 Waydroid package. The files should come from the same profile and camera
-sequence, for example two 'preview' or two 'surface' runs.
+sequence, for example two 'preview', 'surface' or 'record' runs.
 EOF
 }
 
