@@ -1352,3 +1352,27 @@ The four location-bridge tests, Python compilation and complete `make test`
 suite pass. The change is still source-only: the phone's physical recovery
 gate prevents native GNSS, GeoClue, Waydroid location and map acceptance from
 being claimed.
+
+## Advanced Snapshot r8 capture-safety candidate
+
+Date: 2026-08-26. Advanced Snapshot commit
+`d1e4831ad809270e3f3e0db1f41dda5f2e3d96a3` adds three defensive fixes: failed
+or empty non-local capture results are rejected before gallery insertion,
+non-finite or unusable camera zoom limits cannot trigger an invalid clamp, and
+unknown orientation values are ignored safely. The source repository pushed
+the commit and its postmarketOS recipe was bumped to package revision r8.
+
+The clean pinned GTK Docker build passed `cargo fmt --check` and all 15 Rust
+tests (6 application and 9 Aperture). A clean pmbootstrap AArch64 build
+produced and the Advanced Snapshot package validator accepted:
+
+```text
+advanced-snapshot-0.1.0-r8.apk: becc4bc1a734af22b28b7dde7f47c792af6386a93c3b24f2b53bdb47bebc70dd
+advanced-snapshot-lang-0.1.0-r8.apk: f615e75c29579bf877e611a10178021936ab5f63388e9d0f9d041d39b0e56c77
+camera-r7-r6 archive: e97741f0d3c028c6ca546fd5ff71da23b22c50b905fb6cde8f7a1e6678730996
+```
+
+The signed `camera-r7-r6` generation keeps PipeWire r7 unchanged and retains
+the r7 app pair as rollback. It is an opt-in, uninstalled candidate: the phone
+still has no usable SSH/ADB/fastboot runtime transport, so no device camera
+acceptance or claim of fixing the observed hardware preview crash is made.

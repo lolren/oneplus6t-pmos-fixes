@@ -5,8 +5,8 @@ pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r7 Advanced Snapshot
-source recipe and matches the signed r7/r5 package generation; the phone's
+device-specific identifier. The current patch carries the r8 Advanced Snapshot
+source recipe and matches the signed r7/r6 candidate generation; the phone's
 accepted runtime baseline remains Advanced Snapshot r1 until recovery and a
 fresh device check.
 
@@ -15,7 +15,7 @@ fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`b2d6207906131d7405f52a6db81f59298b6a79f0e16b2af7564d6e6adb730b14`.
+`bc0eeccbba0e202915610c6a00a6d30d818243665f1f7bf2429eed3cb5ceaf87`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -41,8 +41,8 @@ Applying the integration patch to the reviewed base produces:
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r7` plus
-  `advanced-snapshot-lang-0.1.0-r7` (source candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r8` plus
+  `advanced-snapshot-lang-0.1.0-r8` (source candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -61,6 +61,8 @@ during live diagnosis. They do not imply that many public releases.
 | `advanced-snapshot-lang-0.1.0-r2.apk` (previous accepted app build) | `82cf5d353b7c5fd68ba1ba795a4a1f51ae0ae214d6e88d90f452d5025bd8f37a` |
 | `advanced-snapshot-0.1.0-r7.apk` (current source candidate) | `35179b51fa6180688c0f4a62f3fe2a82b4c031733a4dc66d8e7229b5d2c1c6d9` |
 | `advanced-snapshot-lang-0.1.0-r7.apk` (current source candidate) | `1b1916aca508c557f4b035d5fa5f161809afbe2ab91874d85962ae31152ffee9` |
+| `advanced-snapshot-0.1.0-r8.apk` (capture-safety candidate) | `becc4bc1a734af22b28b7dde7f47c792af6386a93c3b24f2b53bdb47bebc70dd` |
+| `advanced-snapshot-lang-0.1.0-r8.apk` (capture-safety candidate) | `f615e75c29579bf877e611a10178021936ab5f63388e9d0f9d041d39b0e56c77` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -68,7 +70,7 @@ The reference IMX519 module has matching `7.1.0-rc1-sdm845` vermagic and a
 PKCS#7 SHA-512 signature from its kernel build key. The final kernel package
 does not contain the discarded actuator-readiness or diagnostics experiments.
 
-The current r7 source candidate is pinned to Advanced Snapshot commit
+The previous r7 source candidate is pinned to Advanced Snapshot commit
 `0df3acc7626a5d5db195c58536ab649e16b83cd3`. Its GitHub source archive has
 SHA-512
 `194a5e16bf66852edcc34de31d9c94d01eeb191f453e8576edfcc10525a34ab904a61e5b637072f2f5d1f25326e72c16db0305e187309b2ae1072b6ade37a9c3`.
@@ -77,6 +79,18 @@ on top of the previously accepted one-buffer preview queue. The corresponding
 r7 APK was not installed or claimed as accepted because the reference phone's
 Waydroid rootfs/I/O recovery gate is still closed; build the package in a clean
 aarch64 buildroot and validate it on the phone before replacing the r1 baseline.
+
+The r8 capture-safety candidate is pinned to Advanced Snapshot commit
+`d1e4831ad809270e3f3e0db1f41dda5f2e3d96a3`. Its GitHub source archive has
+SHA-512
+`d1371e84da7fc4aa061ce96f1e77faf63e61ed756442830b1f376c729d3f3f7510fad1b6707e7d95f36c975c4984921a7bb041bd00255ebb38eaa7e560feee12`.
+It rejects missing, non-local, empty or non-regular capture outputs before they
+reach the gallery, makes zoom clamping safe when a camera reports unusable
+limits, and treats unknown orientation values as a harmless no-op. The clean
+aarch64 build passed 6 application tests and 9 Aperture tests; the package
+validator passed signatures, AArch64 ELF, metadata, resource namespace and
+language-split checks. It is published as the opt-in `camera-r7-r6` generation
+with r7 as the exact rollback. It has not been installed or hardware-accepted.
 
 ## Current installation and rollback baseline
 

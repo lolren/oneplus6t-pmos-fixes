@@ -20,6 +20,30 @@ The bundled manifest pins every package filename, version and SHA-256 plus the
 SHA-256 of the public signing key. The public key is kept under
 `packaging/keys/`; no private signing key is present or required.
 
+## Latest opt-in candidate
+
+`data/camera-generation-r7-r6.psv` describes the newly built capture-safety
+candidate. It keeps `pipewire-spa-libcamera` at r7, upgrades Advanced Snapshot
+and its language package from r7 to r8, and retains the exact r7 pair for
+rollback. The matching development stage is published as the
+[`camera-r7-r6` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r6).
+
+This candidate adds capture-output validation, safe zoom handling for unusable
+camera limits and a harmless fallback for unknown orientation values. It passed
+the clean AArch64 build and package validator but remains source-only until the
+phone's transport and hardware health gates reopen. Use the explicit manifest
+when reviewing it:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r7-r6 \
+  --manifest data/camera-generation-r7-r6.psv \
+  install
+```
+
+The default remains `camera-generation-r7-r5.psv` until this candidate has been
+accepted on hardware.
+
 ## Stage layout
 
 ```text

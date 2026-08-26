@@ -415,7 +415,7 @@ index d0a1016..b38ed5a 100644
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000..95439c5
+index 0000000..689eebb
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -423,8 +423,8 @@ index 0000000..95439c5
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=7
-+_commit="0df3acc7626a5d5db195c58536ab649e16b83cd3"
++pkgrel=8
++_commit="d1e4831ad809270e3f3e0db1f41dda5f2e3d96a3"
 +pkgdesc="Mobile-first camera application with truthful manual controls"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -485,7 +485,7 @@ index 0000000..95439c5
 +}
 +
 +sha512sums="
-+194a5e16bf66852edcc34de31d9c94d01eeb191f453e8576edfcc10525a34ab904a61e5b637072f2f5d1f25326e72c16db0305e187309b2ae1072b6ade37a9c3  advanced-snapshot-0.1.0.tar.gz
++d1371e84da7fc4aa061ce96f1e77faf63e61ed756442830b1f376c729d3f3f7510fad1b6707e7d95f36c975c4984921a7bb041bd00255ebb38eaa7e560feee12  advanced-snapshot-0.1.0.tar.gz
 +7f729fa3797bce8f2088d3b6aa72057cd6c3d5cd3cebca2b001d92cb9c0ffd9375a98e16db949717d32a608ccd7d11a31552f8192e8b48df61d482d61fe9f931  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
