@@ -4,7 +4,8 @@
 OnePlus 6T PipeWire r7 plus Advanced Snapshot r7 generation and its exact r7/r4
 rollback. It is deliberately narrower than a general package updater. The
 legacy `camera-generation-r7-r1.psv` remains available for the earlier
-r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5.
+r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5. The
+opt-in r7/r7 manifest carries the r9 save-feedback app pair and r8 rollback.
 
 ## Requirements
 
@@ -43,6 +44,22 @@ when reviewing it:
 
 The default remains `camera-generation-r7-r5.psv` until this candidate has been
 accepted on hardware.
+
+`data/camera-generation-r7-r7.psv` is the next opt-in UI-only candidate. It
+keeps PipeWire r7 unchanged, upgrades Advanced Snapshot from r8 to r9 and
+retains the exact r8 application pair for rollback. r9 reports a visible
+`Could not save photo` toast when the capture pipeline returns no usable file;
+it does not alter the camera kernel, libcamera, PipeWire or Waydroid stack. The
+matching development stage is published as the `camera-r7-r7` prerelease.
+The clean AArch64 package build and validator pass, but hardware preview and
+save acceptance remain blocked by the current phone transport gate.
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r7-r7 \
+  --manifest data/camera-generation-r7-r7.psv \
+  install
+```
 
 ## Stage layout
 

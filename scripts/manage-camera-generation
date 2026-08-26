@@ -124,7 +124,7 @@ fi
 [ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
 manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
 
-for required_command in apk awk cmp cp date find grep id mkdir pgrep sed \
+for required_command in apk awk cmp cp date find grep id mkdir mktemp pgrep rm sed \
 	sha256sum sort systemctl tr wc; do
 	command -v "$required_command" >/dev/null 2>&1 || \
 		die "missing required command: $required_command"
@@ -304,8 +304,22 @@ verify_repository_index() {
 	index_channel=$1
 	index_path=$stage/$index_channel/aarch64/APKINDEX.tar.gz
 	printf '[%s]\n' "$index_path" >>"$repository_signature_log"
-	apk --keys-dir "$keys_dir" verify "$index_path" \
-		>>"$repository_signature_log" 2>&1 || \
+	index_check_root=$(mktemp -d "${TMPDIR:-/tmp}/oneplus6t-index-check.XXXXXX") || \
+		die "could not create temporary index-check root"
+	index_check_failed=no
+	if ! mkdir -p "$index_check_root/etc/apk/keys" || \
+		! cp "$keys_dir/$signing_key_name" \
+			"$index_check_root/etc/apk/keys/$signing_key_name" || \
+		! apk --root "$index_check_root" add --initdb --usermode \
+			--no-network --no-interactive >>"$repository_signature_log" 2>&1 || \
+		! apk --root "$index_check_root" --arch aarch64 \
+			--no-network --no-interactive \
+			--repository "$stage/$index_channel" search advanced-snapshot \
+			>>"$repository_signature_log" 2>&1; then
+		index_check_failed=yes
+	fi
+	rm -rf -- "$index_check_root"
+	[ "$index_check_failed" = no ] || \
 		die "repository index signature verification failed: $index_path"
 }
 

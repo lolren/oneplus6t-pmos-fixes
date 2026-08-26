@@ -1376,3 +1376,28 @@ The signed `camera-r7-r6` generation keeps PipeWire r7 unchanged and retains
 the r7 app pair as rollback. It is an opt-in, uninstalled candidate: the phone
 still has no usable SSH/ADB/fastboot runtime transport, so no device camera
 acceptance or claim of fixing the observed hardware preview crash is made.
+
+## Advanced Snapshot r9 save-feedback candidate
+
+Date: 2026-08-26. Advanced Snapshot commit
+`ec9f03db6177b8c0ee5fda826668fbbce59d9423` changes the completed-capture
+callback to report `Could not save photo` when the pipeline returns no usable
+file. It does not change sensor controls, kernel code, PipeWire, libcamera or
+Waydroid behavior. The postmarketOS recipe is package revision r9 and pins
+the GitHub archive SHA-512
+`8e0c20384443b06251affc932ccca0e93929cc31a2cadc473e0fb6606725801ba7775711f1ad926a162bb23c0c5b5e850d139ae81aa519447ee759a3099b5125`.
+
+A clean pmbootstrap AArch64 build ran the application checks (6 tests) and
+Aperture checks (9 tests). The final pmbootstrap repository-index update also
+reported pre-existing untrusted staged r7/r8 packages, but the r9 APKs were
+created, signed and passed the independent package validator:
+
+```text
+advanced-snapshot-0.1.0-r9.apk: 9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555
+advanced-snapshot-lang-0.1.0-r9.apk: 59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa
+camera-r7-r7 archive: 09d291bb92ab5027abbc74677c48a2ec304ee1041e48d43e1cc7f202dc7295b5
+```
+
+The signed `camera-r7-r7` generation keeps PipeWire r7 unchanged, retains the
+r8 app pair for rollback and is opt-in. It is not hardware-accepted because
+the reference phone still has no usable SSH/ADB/fastboot runtime transport.

@@ -3,8 +3,11 @@ set -eu
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in
-	--keys-dir)
+	--keys-dir|--root|--arch|--repository)
 		shift 2
+		;;
+	--no-network|--no-interactive)
+		shift
 		;;
 	*)
 		break
@@ -16,6 +19,10 @@ command_name=${1:?missing apk command}
 shift
 
 case "$command_name" in
+search)
+	[ "${PMOS_MOCK_INDEX_SIGNATURE_FAILURE:-no}" = no ] || exit 1
+	printf '%s\n' 'advanced-snapshot-0.1.0-r1'
+	;;
 verify)
 	[ "${PMOS_MOCK_SIGNATURE_FAILURE:-no}" = no ] || exit 1
 	case "$1" in
@@ -34,6 +41,12 @@ list)
 	printf '%s-%s aarch64 {mock} (MIT) [installed]\n' "$package" "$version"
 	;;
 add)
+	for argument in "$@"; do
+		if [ "$argument" = --initdb ]; then
+			printf '%s\n' 'OK: mock initdb'
+			exit 0
+		fi
+	done
 	candidate_pipewire=${PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION:-1.6.8-r7}
 	rollback_pipewire=${PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION:-1.6.8-r6}
 	candidate_app=${PMOS_MOCK_CANDIDATE_APP_VERSION:-0.1.0-r1}

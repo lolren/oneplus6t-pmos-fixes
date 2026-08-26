@@ -5,8 +5,9 @@ pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r8 Advanced Snapshot
-source recipe and matches the signed r7/r6 candidate generation; the phone's
+device-specific identifier. The current patch carries the r9 Advanced Snapshot
+source recipe; the previously signed r7/r6 candidate generation remains the
+r8 app candidate, and the phone's
 accepted runtime baseline remains Advanced Snapshot r1 until recovery and a
 fresh device check.
 
@@ -15,7 +16,7 @@ fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`bc0eeccbba0e202915610c6a00a6d30d818243665f1f7bf2429eed3cb5ceaf87`.
+`51976b99c6e6b9b9d6de1987e1e64d4cfaebe4e1537bc17699ced5d259dce91a`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -41,8 +42,8 @@ Applying the integration patch to the reviewed base produces:
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r8` plus
-  `advanced-snapshot-lang-0.1.0-r8` (source candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r9` plus
+  `advanced-snapshot-lang-0.1.0-r9` (capture-save feedback candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -63,6 +64,8 @@ during live diagnosis. They do not imply that many public releases.
 | `advanced-snapshot-lang-0.1.0-r7.apk` (current source candidate) | `1b1916aca508c557f4b035d5fa5f161809afbe2ab91874d85962ae31152ffee9` |
 | `advanced-snapshot-0.1.0-r8.apk` (capture-safety candidate) | `becc4bc1a734af22b28b7dde7f47c792af6386a93c3b24f2b53bdb47bebc70dd` |
 | `advanced-snapshot-lang-0.1.0-r8.apk` (capture-safety candidate) | `f615e75c29579bf877e611a10178021936ab5f63388e9d0f9d041d39b0e56c77` |
+| `advanced-snapshot-0.1.0-r9.apk` (save-feedback candidate) | `9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555` |
+| `advanced-snapshot-lang-0.1.0-r9.apk` (save-feedback candidate) | `59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -91,6 +94,17 @@ aarch64 build passed 6 application tests and 9 Aperture tests; the package
 validator passed signatures, AArch64 ELF, metadata, resource namespace and
 language-split checks. It is published as the opt-in `camera-r7-r6` generation
 with r7 as the exact rollback. It has not been installed or hardware-accepted.
+
+The r9 capture-save feedback candidate is pinned to Advanced Snapshot commit
+`ec9f03db6177b8c0ee5fda826668fbbce59d9423`. Its GitHub source archive has
+SHA-512
+`8e0c20384443b06251affc932ccca0e93929cc31a2cadc473e0fb6606725801ba7775711f1ad926a162bb23c0c5b5e850d139ae81aa519447ee759a3099b5125`.
+It reports a visible save-error toast when the capture pipeline produces no
+usable file instead of silently returning to the preview. Its signed aarch64
+APK hashes are `9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555`
+for the main package and
+`59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` for the
+language package. Both passed the cross-build and package validator.
 
 ## Current installation and rollback baseline
 

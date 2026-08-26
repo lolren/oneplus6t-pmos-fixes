@@ -310,6 +310,13 @@ Use it with `data/camera-generation-r7-r6.psv`; it keeps PipeWire r7 and
 rolls back to the r7 Advanced Snapshot pair. It is source/package validated but
 not hardware-accepted, so the default manager manifest remains r7/r5.
 
+An opt-in r9 save-feedback candidate is available from the
+[camera-r7-r7 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r7).
+Use it with `data/camera-generation-r7-r7.psv`; it keeps PipeWire r7, upgrades
+the app pair from r8 to r9 and rolls back to r8. The app now reports a visible
+error when a capture produces no usable file. It is source/package validated
+but not hardware-accepted, so the default manager manifest remains r7/r5.
+
 The equivalent low-level simulation is:
 
 ```sh
