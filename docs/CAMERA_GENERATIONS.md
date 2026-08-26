@@ -24,12 +24,12 @@ The bundled manifest pins every package filename, version and SHA-256 plus the
 SHA-256 of the public signing key. The public key is kept under
 `packaging/keys/`; no private signing key is present or required.
 
-## Latest opt-in candidate
+## Earlier r7 UI-only candidates
 
-`data/camera-generation-r7-r6.psv` describes the newly built capture-safety
+`data/camera-generation-r7-r6.psv` describes the earlier capture-safety
 candidate. It keeps `pipewire-spa-libcamera` at r7, upgrades Advanced Snapshot
 and its language package from r7 to r8, and retains the exact r7 pair for
-rollback. The matching development stage is published as the
+rollback. The matching development stage remains published as the
 [`camera-r7-r6` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r6).
 
 This candidate adds capture-output validation, safe zoom handling for unusable
@@ -45,8 +45,8 @@ when reviewing it:
   install
 ```
 
-The default remains `camera-generation-r7-r5.psv` until this candidate has been
-accepted on hardware.
+The default remains `camera-generation-r7-r5.psv`; the r7 UI-only generations
+are retained as historical, independently rollback-safe transitions.
 
 `data/camera-generation-r7-r7.psv` is the next opt-in UI-only candidate. It
 keeps PipeWire r7 unchanged, upgrades Advanced Snapshot from r8 to r9 and
