@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+# Generation validation matches apk's operation lines literally. Do not let a
+# translated locale make a safe/unsafe transaction look different to the
+# parser.
+export LC_ALL=C
+
 PROGRAM=${0##*/}
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PACKAGES='pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang'

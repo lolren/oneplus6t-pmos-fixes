@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+# The safety gate parses apk's operation verbs below. Keep those tokens stable
+# even when the user's interactive locale is translated.
+export LC_ALL=C
+
 PROGRAM=${0##*/}
 sudo_command=${PMOS_UPDATE_SUDO:-sudo}
 apk_command=${PMOS_UPDATE_APK:-apk}

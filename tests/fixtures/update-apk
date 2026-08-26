@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+[ "${LC_ALL:-}" = C ] || {
+	printf '%s\n' 'mock apk requires the update guard to force LC_ALL=C' >&2
+	exit 1
+}
+
 command=${1:?missing apk command}
 shift
 [ "$command" = upgrade ] || {
