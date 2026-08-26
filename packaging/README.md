@@ -27,9 +27,9 @@ libcamera and tuning changes are deliberately not installed by this noarch
 helper package; their separately reviewed pmaports integration is in
 `packaging/pmaports/`.
 
-The package also installs `pmos-manage-camera-generation`, the current r7/r5
-and legacy r7/r1 through r7/r4 immutable manifests, the public verification
-key and the non-image all-sensor runner. It also installs
+The package also installs `pmos-manage-camera-generation`, the default r7/r5,
+opt-in r7/r6 capture-safety and legacy r7/r1 through r7/r4 immutable manifests,
+the public verification key and the non-image all-sensor runner. It also installs
 `pmos-safe-upgrade`, whose simulation-first gate blocks ordinary `apk upgrade`
 transactions that touch camera-critical packages. The
 manager does not contain APKs or a private key and does nothing without an
