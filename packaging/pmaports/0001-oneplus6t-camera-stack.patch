@@ -506,7 +506,7 @@ index 0000000..8a6682a
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
 +pkgrel=13
-+_commit="eef98bb16a5af6cdb21150811a4ea33d6543daf"
++_commit="eef98bbb16a5af6cdb21150811a4ea33d6543daf"
 +pkgdesc="Mobile-first camera application with truthful manual controls"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
