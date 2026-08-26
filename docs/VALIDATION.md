@@ -946,6 +946,24 @@ status=Not charging
 This is a one-sample baseline, not battery-life acceptance. Repeat it at idle,
 camera preview, modem activity and screen-off after recovery.
 
+## 2026-08-26 recovery boundary recheck
+
+The host rechecked the reference link without sending commands to the phone.
+`172.16.42.1` still answered one ICMP packet, but the OnePlus was not present
+as a USB device, `fastboot devices` was empty, and `adb devices` showed only
+the separately connected Pixel test device. TCP port 22 accepted a connection
+but did not send an SSH banner within a bounded 25-second exchange; the
+alternate service ports refused connections. This is consistent with a
+phone-side userspace/storage hang or an incomplete recovery state, not a
+healthy SSH session.
+
+No reboot, install, overlay copy, partition, boot-slot, firmware or fastboot
+operation was attempted during this recheck. Do not use the surviving ping or
+TCP accept as an installation health signal. A physical power/recovery cycle
+is still required, followed by a fresh USB identity check and the
+`rootfs_mounts=0`/`overlay_precondition=pass` gate before any device-side
+camera or Waydroid work.
+
 ## Waydroid isolated preview probe
 
 Date: 2026-08-25. The Camera2 probe was extended with three explicit profiles:
