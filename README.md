@@ -78,6 +78,23 @@ It supports both systemd and OpenRC, persists `sshd`, verifies the listener and
 does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
+The matching AArch64/noarch runtime package is published in the
+[runtime-r16 release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r16).
+On a booted phone with normal postmarketOS repositories configured, download
+the APK and checksum, verify them, then install the local package:
+
+```sh
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r16/oneplus6t-pmos-fixes-0.1.0-r16.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r16/SHA256SUMS
+sha256sum -c SHA256SUMS
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r16.apk
+```
+
+`--allow-untrusted` is needed because this standalone package is not in the
+phone's configured repository; the HTTPS download and committed checksum are
+the integrity check. Its normal dependencies are still resolved from the
+configured postmarketOS repositories.
+
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
 and Waydroid health acceptance, enable it explicitly with:

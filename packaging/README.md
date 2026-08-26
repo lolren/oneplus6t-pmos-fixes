@@ -12,6 +12,19 @@ cd packaging
 abuild -r
 ```
 
+The current reproducible AArch64/noarch build is also available from the
+[runtime-r16 release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r16).
+Its `SHA256SUMS` entry is:
+
+```text
+a83a42aedf40c595289151fd505805e0fe996b3ed552e3ab6d393472bf53e6f5  oneplus6t-pmos-fixes-0.1.0-r16.apk
+```
+
+Use `sha256sum -c SHA256SUMS` before installing the standalone APK. Since it
+is not in a configured repository, installation uses
+`apk add --allow-untrusted`; the package's ordinary dependencies remain
+resolved through the target's configured repositories.
+
 The package depends on the current owners of `ip`, `mmcli`, `nmcli` and the
 Mobile Broadband Provider database. `curl`, `resolvectl` and systemd time
 tools remain optional: diagnostics degrade safely when they are absent, and the
