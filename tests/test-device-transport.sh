@@ -26,6 +26,7 @@ grep -Fqx 'network_link=pass' "$output"
 grep -Fqx 'network_address=pass' "$output"
 grep -Fqx 'ping=pass' "$output"
 grep -Fqx 'ssh_tcp=pass' "$output"
+grep -Fqx 'ssh_probe=accepted' "$output"
 grep -Fqx 'ssh_banner=pass' "$output"
 grep -Fqx 'adb_devices=1' "$output"
 grep -Fqx 'adb_oneplus=present' "$output"
@@ -57,6 +58,7 @@ env \
 	PMOS_TRANSPORT_FASTBOOT="$BIN/fastboot" \
 	"$REPORT" --output "$missing"
 grep -Fqx 'ssh_tcp=pass' "$missing"
+grep -Fqx 'ssh_probe=accepted' "$missing"
 grep -Fqx 'ssh_banner=missing' "$missing"
 grep -Fqx 'assessment=network-up-ssh-not-speaking' "$missing"
 

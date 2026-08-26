@@ -164,10 +164,13 @@ if available "$ping_cmd"; then
 fi
 
 ssh_tcp=unavailable
+ssh_probe=unavailable
 ssh_banner=unavailable
 if available "$nc_cmd"; then
-	if "$nc_cmd" -z -w "$probe_timeout" "$target_ip" 22 >/dev/null 2>&1; then
+	ssh_probe_output=
+	if ssh_probe_output=$("$nc_cmd" -zv -w "$probe_timeout" "$target_ip" 22 2>&1); then
 		ssh_tcp=pass
+		ssh_probe=accepted
 		if available "$timeout_cmd"; then
 			banner=$("$timeout_cmd" "$probe_timeout" "$nc_cmd" \
 				-w "$probe_timeout" "$target_ip" 22 \
@@ -183,6 +186,15 @@ if available "$nc_cmd"; then
 		esac
 	else
 		ssh_tcp=fail
+		if printf '%s\n' "$ssh_probe_output" | grep -Eqi \
+			'(timed out|timeout|operation now in progress|no route|unreachable)'; then
+			ssh_probe=timeout-or-filtered
+		elif printf '%s\n' "$ssh_probe_output" | grep -Eqi \
+			'(refused|connection reset|reset by peer)'; then
+			ssh_probe=refused-or-reset
+		else
+			ssh_probe=failed
+		fi
 		ssh_banner=not-tested
 	fi
 fi
@@ -226,6 +238,8 @@ if [ "$ssh_banner" = pass ]; then
 	assessment=ssh-usable
 elif [ "$ping_result" = pass ] && [ "$ssh_tcp" = pass ]; then
 	assessment=network-up-ssh-not-speaking
+elif [ "$ping_result" = pass ] && [ "$ssh_probe" = timeout-or-filtered ]; then
+	assessment=network-up-ssh-filtered-or-unresponsive
 elif [ "$fastboot_devices" != unavailable ] && [ "$fastboot_devices" -gt 0 ]; then
 	assessment=fastboot-device-present
 elif [ "$adb_oneplus" = present ]; then
@@ -245,6 +259,7 @@ printf 'network_link=%s\n' "$network_link"
 printf 'network_address=%s\n' "$network_address"
 printf 'ping=%s\n' "$ping_result"
 printf 'ssh_tcp=%s\n' "$ssh_tcp"
+printf 'ssh_probe=%s\n' "$ssh_probe"
 printf 'ssh_banner=%s\n' "$ssh_banner"
 printf 'adb_devices=%s\n' "$adb_devices"
 printf 'adb_oneplus=%s\n' "$adb_oneplus"

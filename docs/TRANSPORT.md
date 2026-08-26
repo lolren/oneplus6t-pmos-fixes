@@ -14,7 +14,8 @@ It checks the following without authenticating or changing state:
 - whether Linux identifies a CDC-NCM network interface as `OnePlus_6T`;
 - whether that interface is up and has a local IPv4 address;
 - whether `172.16.42.1` answers ICMP;
-- whether TCP port 22 accepts connections and sends an SSH protocol banner;
+- whether TCP port 22 accepts connections, whether a bounded probe was
+  refused/filtered, and whether it sends an SSH protocol banner;
 - the count of ADB devices and whether an ADB description identifies
   `fajita`/OnePlus; and
 - the count returned by the read-only `fastboot devices` command.
@@ -39,6 +40,7 @@ The important SSH combinations are:
 | --- | --- |
 | `ping=pass`, `ssh_tcp=pass`, `ssh_banner=pass` | The network path and SSH service are usable. |
 | `ping=pass`, `ssh_tcp=pass`, `ssh_banner=missing` | The kernel/network path is alive, but the phone-side SSH service or userspace is not speaking SSH. Do not infer that login works. |
+| `ping=pass`, `ssh_probe=timeout-or-filtered` | The phone answers ICMP but drops or does not answer TCP/22. Check the phone-side firewall and `sshd` state; this is not evidence of a cable fault. |
 | `ping=fail`, `ssh_tcp=fail` | No usable IP path was confirmed; check the USB gadget, cable, interface address and phone boot state. |
 | `adb_oneplus=present` | ADB identifies a OnePlus/fajita device; this is a separate transport from NCM and SSH. |
 | `fastboot_devices` greater than zero | A fastboot device is visible, but the report does not assume it is the OnePlus when other Android devices are attached. |
