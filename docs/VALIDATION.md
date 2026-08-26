@@ -1600,10 +1600,12 @@ selected simple-IPA/libcamera targets with GCC, Meson and Ninja using
 base `875bddba6538818f2c3c9849e184f40688ad5140`; its current SHA-256 is
 `144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51`.
 
-This is a source checkpoint, not a release claim: r26 APKs have not been
-built, installed or hardware-accepted. A clean AArch64 package build and a
-physical shutter/gain test remain required. The phone's USB-NCM link still has
-no usable SSH banner, so no device mutation was attempted.
+This is the source portion of the r26/r13 candidate release. Clean AArch64
+runtime and IPA packages were subsequently built, signed and placed in the
+guarded five-package `camera-r26-r13` prerelease. They remain uninstalled and
+hardware-unaccepted. A physical shutter/gain test is still required; the
+phone's USB-NCM link has no usable SSH banner, so no device mutation was
+attempted.
 
 ## Advanced Snapshot r13 AArch64 package checkpoint
 
@@ -1626,11 +1628,12 @@ advanced-snapshot-lang-0.1.0-r13.apk: a03b0a561e4355a4da506e29f0d8b7f16173da6941
 public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
 ```
 
-The package pair is source/package validated but not installed or hardware-
-accepted. The matching libcamera r26 packages are recorded in the following
-checkpoint. The reference phone still has no usable SSH banner, ADB device or
-fastboot transport, so live camera, display, modem, audio, location, NFC,
-Waydroid, battery and rollback acceptance remain open.
+The package pair is source/package validated and is included in the opt-in
+`camera-r26-r13` prerelease, but is not installed or hardware-accepted. The
+matching libcamera r26 packages are recorded in the following checkpoint. The
+reference phone still has no usable SSH banner, ADB device or fastboot
+transport, so live camera, display, modem, audio, location, NFC, Waydroid,
+battery and rollback acceptance remain open.
 
 ## Libcamera r26 and PipeWire r7 AArch64 package checkpoint
 
@@ -1655,5 +1658,19 @@ advanced-snapshot-lang-0.1.0-r13.apk: a03b0a561e4355a4da506e29f0d8b7f16173da6941
 
 Direct payload inspection confirmed AArch64 ELF objects for the libcamera
 runtime, simple IPA module and Advanced Snapshot executable. This is a
-source/package checkpoint only: no phone package was installed, and no live
+source/package checkpoint only: the packages are available in the opt-in
+`camera-r26-r13` prerelease, but no phone package was installed, and no live
 preview, focus, exposure, display, modem or rollback result is claimed.
+
+The signed offline bundle is published as the GitHub prerelease
+`camera-r26-r13`. Its reproducibility anchors are:
+
+```text
+oneplus6t-camera-r26-r13-aarch64.tar.gz: eb87cbc9589bec7138a007d5708e94e1481a68077ca19f1daa3d6e00c302739f
+SHA256SUMS: fddd44393a9bad6321c4e846a967f67741588d312d0809727b1353df05fdb60e
+```
+
+The bundle contains five signed candidate packages and five signed rollback
+packages, including the r24/r11 runtime/UI baseline. It is intentionally
+opt-in and must pass the native camera smoke test on the reference phone
+before being treated as a supported generation.
