@@ -854,9 +854,14 @@ rollback. Both candidate and rollback repository indexes are signed and the
 manager now verifies those index signatures before invoking apk. The exact
 package hashes are recorded in `data/camera-generation-r7-r5.psv`.
 
-This generation is staged in the local ignored artifact directory and has not
-been installed on the reference phone. Physical health-gate, launch, preview,
-photo, video, rollback and reboot acceptance remain pending recovery.
+This generation is staged in the local ignored artifact directory and was
+published as the
+[camera-r7-r5 development prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r5).
+The archive SHA-256 is
+`d3f637a4fa54186d853f48e13b0ea97725be16805549338ed6977c32e992b0d4`.
+It has not been installed on the reference phone. Physical health-gate,
+launch, preview, photo, video, rollback and reboot acceptance remain pending
+recovery.
 
 ## Remaining validation
 

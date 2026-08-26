@@ -266,6 +266,12 @@ service/world-file checks and all-sensor health test. Use the `rollback`
 operation for the exact reverse transition. See
 [docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md).
 
+A matching development AArch64 stage is available from the
+[camera-r7-r5 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r5).
+Verify its `SHA256SUMS` file, extract the archive, and pass the extracted
+directory as `--stage`. The release is explicitly not a production build and
+still requires the simulation and phone-side health gates below.
+
 The equivalent low-level simulation is:
 
 ```sh

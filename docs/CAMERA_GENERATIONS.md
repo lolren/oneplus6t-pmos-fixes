@@ -44,6 +44,12 @@ Each repository must contain exactly its three APKs. Extra APK files are a
 hard failure, preventing dependency resolution from silently selecting an
 unreviewed build.
 
+A matching development AArch64 stage can be downloaded from the
+[camera-r7-r5 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r5).
+Verify `SHA256SUMS` before extraction. The archive is signed with the
+development verification key bundled in this repository; it is a reproducible
+development artifact, not a production repository.
+
 ## Check and simulate
 
 Show the installed generation without a stage directory:
