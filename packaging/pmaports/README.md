@@ -19,7 +19,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`ef65e287d8c539abe21f7b892c35eb1aac2afac6881478864341316ae04a19bc`.
+`144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -83,6 +83,8 @@ AArch64 build and live manual-exposure test pass.
 | `advanced-snapshot-lang-0.1.0-r9.apk` (save-feedback candidate) | `59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` |
 | `advanced-snapshot-0.1.0-r11.apk` (bounded rear-flash candidate) | `f4dafe29a4682df10b4649fee3110dac419c8179098e0a9762f48a2251cf7c1b` |
 | `advanced-snapshot-lang-0.1.0-r11.apk` (bounded rear-flash candidate) | `40a9a822421d5640ce14f1046006bbb5b92b022862d977de0d7d14cf30f2c95a` |
+| `advanced-snapshot-0.1.0-r13.apk` (manual-exposure compile-fixed candidate) | `0c12ce8685afcadd1794e4a530f231d461647e41066965b307b2a43d5f121c81` |
+| `advanced-snapshot-lang-0.1.0-r13.apk` (manual-exposure compile-fixed candidate) | `a03b0a561e4355a4da506e29f0d8b7f16173da694155391e465a3dbfeaab1bd3` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.

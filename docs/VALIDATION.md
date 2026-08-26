@@ -1576,9 +1576,36 @@ accepted the patch with `git am`, passed `git diff --check`, and built all 46
 selected simple-IPA/libcamera targets with GCC, Meson and Ninja using
 `-Dwerror=true`. The regenerated pmaports integration patch applies cleanly to
 base `875bddba6538818f2c3c9849e184f40688ad5140`; its current SHA-256 is
-`ef65e287d8c539abe21f7b892c35eb1aac2afac6881478864341316ae04a19bc`.
+`144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51`.
 
 This is a source checkpoint, not a release claim: r26 APKs have not been
 built, installed or hardware-accepted. A clean AArch64 package build and a
 physical shutter/gain test remain required. The phone's USB-NCM link still has
 no usable SSH banner, so no device mutation was attempted.
+
+## Advanced Snapshot r13 AArch64 package checkpoint
+
+Date: 2026-08-26. The reproducible pmaports overlay now carries the
+compile-fixed Advanced Snapshot r13 recipe, pinned to source commit
+`eef98bbb16a5af6cdb21150811a4ea33d6543daf`. The overlay applies cleanly to
+pmaports base `875bddba6538818f2c3c9849e184f40688ad5140`; its current
+SHA-256 is
+`144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51`.
+
+A pmbootstrap 3.11.1 edge AArch64/musl package build completed successfully.
+The package test phase passed all 15 cross-compiled tests (6 application and 9
+Aperture), and `advanced-snapshot`'s independent validator accepted both
+signed APKs for architecture, expected contents, metadata, schemas, resource
+namespace, language split and overlap with distro Snapshot:
+
+```text
+advanced-snapshot-0.1.0-r13.apk: 0c12ce8685afcadd1794e4a530f231d461647e41066965b307b2a43d5f121c81
+advanced-snapshot-lang-0.1.0-r13.apk: a03b0a561e4355a4da506e29f0d8b7f16173da694155391e465a3dbfeaab1bd3
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The package pair is source/package validated but not installed or hardware-
+accepted. The matching libcamera r26 package has not yet been built, and the
+reference phone still has no usable SSH banner, ADB device or fastboot
+transport, so live camera, display, modem, audio, location, NFC, Waydroid,
+battery and rollback acceptance remain open.
