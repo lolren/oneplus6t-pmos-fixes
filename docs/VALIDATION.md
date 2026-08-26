@@ -3,6 +3,26 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-26 daily-use setup host gate
+
+The new `configure-daily-use` wrapper sequences the existing cellular,
+network-time and microphone-route helpers. It defaults to read-only preview,
+requires `--apply` before changing state, runs privileged helpers through
+`sudo` from the graphical user's session and enables only the user's audio
+unit. It does not install packages, touch Waydroid or reboot.
+
+The focused wrapper test and the complete pMOS suite passed on 2026-08-26:
+
+```text
+daily-use setup tests passed
+make test: pass
+```
+
+The staged installation also verified the executable helper, `/usr/sbin`
+symlink and installed `DAILY-USE.md`. Live apply and bearer/clock/modem-call
+acceptance remain gated by the unavailable OnePlus userspace transport; this
+host result does not claim that the phone has been changed.
+
 ## Environment
 
 Validated on 23-24 August 2026:

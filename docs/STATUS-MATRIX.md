@@ -11,6 +11,7 @@ Audit date: 2026-08-26.
 
 | Area | Implemented in the repositories | Host evidence | Remaining requirement |
 | --- | --- | --- | --- |
+| Daily-use setup | One command sequences the existing APN, network-time and audio-route helpers with dry-run/apply modes and independent rollback | Wrapper, shell syntax, dry-run/apply sequencing and package staging tests pass | Run the apply path in the phone's graphical user session and verify live bearer, synchronized clock and real modem-call routes |
 | Mobile data | NetworkManager profile helper; provider database lookup; GID1-aware MVNO overlay; explicit APN fallback; managed rollback | APN selection and installer tests pass | Re-run on the recovered phone with the target SIM, then verify bearer, DNS and HTTPS |
 | Network time | systemd network-time configuration and read-only check | Configuration and check scripts are tested | Verify synchronization after a real cold boot and cellular-only connection |
 | Messages | Chatty/D-Bus/desktop activation diagnostic and fallback activation | Fixture-backed activation checks pass; prior touchscreen launch was recorded | Reconfirm on the recovered display |

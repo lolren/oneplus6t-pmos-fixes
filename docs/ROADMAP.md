@@ -46,4 +46,5 @@ location and Android-container failures cannot obscure one another.
    before moving to the next subsystem.
 
 No bootloader, partition, boot-slot or firmware operation belongs to any of
-these stages. A reboot is a separate action and requires explicit approval.
+these stages. The managers never reboot automatically; a reboot is a separate
+manual acceptance action after reviewing the evidence.

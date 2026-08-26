@@ -76,6 +76,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now oneplus6t-waydroid-location.service
 ```
 
+For the normal daily-use setup, preview and then apply the carrier-neutral
+mobile-data, network-time and microphone-route configuration together:
+
+```sh
+pmos-configure-daily-use
+pmos-configure-daily-use --apply
+```
+
+Run it as the normal graphical user so `sudo` handles the privileged cellular
+and time helpers while `systemctl --user` enables the audio route service.
+The complete procedure, carrier-selection order and independent rollback
+commands are in [docs/DAILY-USE.md](docs/DAILY-USE.md).
+
 A local Alpine `APKBUILD` and its upstreaming checklist are in
 [packaging/](packaging/). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for why a
 carrier-specific profile must not be placed in the OnePlus device package.
@@ -215,22 +228,20 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12. The follow-on native-fence candidate exports GPU completion to Android when supported and keeps a synchronous fallback; phone acceptance is pending. Download the [r37/r38 development bundles](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38). |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
-Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7, Snapshot r3 and
-Advanced Snapshot r1 are installed. Exact r23 libcamera APKs are the immediate
-libcamera rollback; the older
-r20/r6/r2 complete userspace set is also retained. The native r24 stack passed
-bounded captures on all three stable camera paths, rear tap/reset tests and
-70/95-second continuous-focus stability runs. The Waydroid r35 overlay uses the
-Mesa GPU software-ISP path, passed a clean three-camera Camera2
-YUV/JPEG/private, autofocus and exposure probe, and produced a clean 1600x1200
-JPEG capture.
+The repository retains the previously accepted r8/r24/r7/r3 camera baseline
+and publishes the newer opt-in r26/r13 lower-stack candidate. The current
+source, package and signature checks pass on the host, but the reference
+phone's present USB session exposes only CDC-NCM with working ping; its SSH
+userspace, ADB and fastboot endpoints are not currently usable. Therefore the
+current audit does not claim that any candidate is installed or that the
+earlier physical acceptance still describes the phone's present state.
 
-Advanced Snapshot r1 is installed beside Snapshot. Its signed package and the
-matching PipeWire SPA r7 package build reproducibly and passed one coherent
-offline installation plus all-sensor acceptance. r7 carries
-generation-correlated `AfState`; r1 keeps the focus marker amber while waiting,
-turns it green only for metadata-confirmed focus and red for failure. Exact
-r6/r0 APKs are retained as the immediate rollback.
+Advanced Snapshot r13 and the matching libcamera/IPA r26 and PipeWire r7
+packages are available as a signed, hash-pinned candidate with a retained
+r24/r11 rollback. The candidate has not been hardware-accepted yet. The
+earlier r7/r1 focus result and stability evidence remains in
+[docs/VALIDATION.md](docs/VALIDATION.md) as historical evidence, not a current
+installation claim.
 
 The current native UI exposes a visible tap reticle plus Exposure, Colour,
 Contrast, Detail, Zoom, Reset and an opt-in rear **Hardware flash** switch when
@@ -423,49 +434,23 @@ recovered phone can detect a real tag. See [docs/NFC.md](docs/NFC.md).
 
 ## Project status
 
-- Mobile data: live-tested, including replacement, disconnect/reconnect, DNS
-  and HTTPS.
-- Network time: enabled and synchronized; persistent systemd clock state is
-  present.
-- Messages: package, daemon, automated activation and touchscreen launch pass.
-- Display: a serialized-brightness kernel r9 candidate is compiled, signed and
-  published with an r8 rollback; static-line and brightness-crash runtime
-  acceptance remains pending physical recovery and evidence.
-- Cameras: installed native r8/r24/r7/r3 plus Advanced Snapshot r1 passed
-  coherent package, D-Bus launch and all-sensor non-image acceptance. Exact
-  r6/r0 APKs remain the immediate rollback; the Waydroid r35 lower layer passes
-  all three Camera2 stream/AF/EV probes and the GPU/JPEG acceptance capture.
-- Waydroid camera performance: an ARMv7/API-33 r37 RGB-private-preview bundle
-  and r38 native-RGB-fence candidate are built and reproducibly documented,
-  published in the [r37/r38 development release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38),
-  but remain uninstalled pending physical recovery and before/after `preview`,
-  `surface` and JPEG colour acceptance. The r35 overlay remains the rollback
-  baseline.
-- Next priorities: complete Advanced Snapshot visual photo/video acceptance
-  and UI work. The first immutable camera manifest and guarded generation
-  manager plus the ordinary-update safety gate pass host simulation, while the
-  generation manager retains its real-phone simulation; next add the VibeMarketOS
-  signed downstream repository, compatibility-gated published generations,
-  then broaden Waydroid app testing and Play Store setup.
-  See
-  [docs/ROADMAP.md](docs/ROADMAP.md).
-- Reboot persistence: still to be recorded in the validation log.
-- Location: the read-only native report, dry-run Android bridge and optional
-  disabled continuous service are documented; GNSS and Android map acceptance
-  are pending device recovery, and no static Reading/Stroud coordinate has been
-  hard-coded.
-- Battery/power: the read-only `pmos-check-power` report, timed
-  `pmos-measure-power` sampler and acceptance sequence are documented in
-  [docs/POWER.md](docs/POWER.md); no unverified governor or suspend tweak has
-  been forced.
-- NFC: the read-only `pmos-check-nfc` report and explicit polling procedure are
-  documented; physical controller and tag acceptance are pending device
-  recovery.
-- Waydroid safety: `pmos-check-waydroid-health` now provides the documented
-  mount/I/O preflight; the reference phone currently fails it because stale
-  rootfs mounts and storage pressure remain.
-- Full modem-call audio, display-driver and battery-policy acceptance remain
-  separate from this camera revision.
+The current requirement-by-requirement audit is maintained in
+[docs/STATUS-MATRIX.md](docs/STATUS-MATRIX.md). In summary:
+
+- host-side APN selection, time-sync, audio routing, display candidate,
+  camera stack, Waydroid overlays, location bridge, NFC/power reports and
+  update guard are implemented and tested;
+- signed AArch64 camera r26/r13 and Waydroid r37/r38 candidates are published;
+- live modem/DNS/HTTPS, time-after-boot, modem-call audio, display stability,
+  native camera quality/video, Waydroid camera/GAPPS, GNSS, NFC, battery and
+  rollback persistence still require a usable phone transport; and
+- Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are
+  not claimed because the open stack does not provide those proprietary
+  components.
+
+The current USB evidence is CDC-NCM with ping working, but no usable SSH
+banner, OnePlus ADB device or fastboot device. No new package or kernel
+candidate has been installed through that incomplete transport.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 The requirement-by-requirement implementation and device-acceptance audit is

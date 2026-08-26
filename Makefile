@@ -11,6 +11,7 @@ SCRIPTS = \
 	scripts/configure-mobile-data \
 	scripts/remove-mobile-data \
 	scripts/check-mobile-data \
+	scripts/configure-daily-use \
 	scripts/configure-time-sync \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
@@ -76,6 +77,7 @@ test:
 		tests/test-display-kernel-manager.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
+	./tests/test-daily-use.sh
 	./tests/test-messages-check.sh
 	./tests/test-audio-route-policy.sh
 	./tests/test-power-report.sh
@@ -162,6 +164,7 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-configure-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/remove-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-remove-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-check-mobile-data"
+	ln -sfn "$(LIBEXECDIR)/scripts/configure-daily-use" "$(DESTDIR)$(SBINDIR)/pmos-configure-daily-use"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-time-sync" "$(DESTDIR)$(SBINDIR)/pmos-configure-time-sync"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-messages" "$(DESTDIR)$(SBINDIR)/pmos-check-messages"
 	ln -sfn "$(LIBEXECDIR)/scripts/manage-camera-generation" \

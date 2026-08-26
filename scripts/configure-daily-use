@@ -1,0 +1,207 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+set -eu
+
+# One entry point for the reversible, non-camera daily-use configuration.  The
+# individual helpers remain authoritative; this wrapper only sequences them
+# and never changes boot state or installs packages.
+
+PROGRAM=${0##*/}
+script_path=$0
+if command -v readlink >/dev/null 2>&1; then
+	resolved_path=$(readlink -f -- "$0" 2>/dev/null || true)
+	[ -n "$resolved_path" ] && script_path=$resolved_path
+fi
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd)
+
+mobile_command=${PMOS_DAILY_MOBILE_COMMAND:-$SCRIPT_DIR/configure-mobile-data}
+time_command=${PMOS_DAILY_TIME_COMMAND:-$SCRIPT_DIR/configure-time-sync}
+systemctl_command=${PMOS_DAILY_SYSTEMCTL:-systemctl}
+sudo_command=${PMOS_DAILY_SUDO:-sudo}
+output=${PMOS_DAILY_OUTPUT:-}
+
+apply=no
+mobile=yes
+time_sync=yes
+audio=yes
+timezone=
+apn=
+provider=
+username=
+password_stdin=no
+ip_mode=
+connection_name=
+operator_code=
+gid1=
+gid2=
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Configure the reversible postmarketOS daily-use helpers for the OnePlus 6T.
+Dry-run is the default; --apply is required before anything is changed.
+
+Options:
+  --apply                    apply the selected configuration
+  --dry-run                  print/perform read-only selection (default)
+  --skip-mobile-data         do not create or activate an APN profile
+  --skip-time-sync           do not enable systemd network time
+  --skip-audio               do not enable the microphone-route user service
+  --timezone ZONE            timezone passed to configure-time-sync
+  --apn APN                  explicit APN passed to configure-mobile-data
+  --provider NAME            provider label used with --apn
+  --username USER            APN username, if required
+  --password-stdin           pass APN password input to the mobile helper
+  --ip-mode MODE             ipv4, ipv6 or ipv4v6
+  --connection-name NAME     managed NetworkManager connection name
+  --operator-code MCCMNC     SIM operator override for testing/recovery
+  --gid1 HEX                 SIM GID1 override for testing/recovery
+  --gid2 HEX                 SIM GID2 override for testing/recovery
+  --output FILE              refuse to overwrite and write the report there
+  -h, --help                 show this help
+
+The cellular helper uses the standard provider database and reviewed MVNO
+overlay, including the Smarty GID1 rule. It refuses ambiguous providers.
+Each component can still be rolled back independently with its documented
+helper; this wrapper never reboots and never touches boot or firmware state.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+need_value() {
+	[ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--apply)
+		[ "$apply" = no ] || die '--apply and --dry-run are mutually exclusive'
+		apply=yes
+		shift
+		;;
+	--dry-run)
+		[ "$apply" = no ] || die '--apply and --dry-run are mutually exclusive'
+		shift
+		;;
+	--skip-mobile-data) mobile=no; shift ;;
+	--skip-time-sync) time_sync=no; shift ;;
+	--skip-audio) audio=no; shift ;;
+	--timezone) need_value "$@"; timezone=$2; shift 2 ;;
+	--apn) need_value "$@"; apn=$2; shift 2 ;;
+	--provider) need_value "$@"; provider=$2; shift 2 ;;
+	--username) need_value "$@"; username=$2; shift 2 ;;
+	--password-stdin) password_stdin=yes; shift ;;
+	--ip-mode) need_value "$@"; ip_mode=$2; shift 2 ;;
+	--connection-name) need_value "$@"; connection_name=$2; shift 2 ;;
+	--operator-code) need_value "$@"; operator_code=$2; shift 2 ;;
+	--gid1) need_value "$@"; gid1=$2; shift 2 ;;
+	--gid2) need_value "$@"; gid2=$2; shift 2 ;;
+	--output) need_value "$@"; output=$2; shift 2 ;;
+	-h|--help) usage; exit 0 ;;
+	*) usage >&2; die "unknown option: $1" ;;
+	esac
+done
+
+[ "$mobile$time_sync$audio" != nonono ] || die 'at least one component must be selected'
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+for command_path in "$mobile_command" "$time_command"; do
+	[ -x "$command_path" ] || die "helper is not executable: $command_path"
+done
+if [ "$audio" = yes ]; then
+	command -v "$systemctl_command" >/dev/null 2>&1 || \
+		die "systemctl is required for the audio user service"
+fi
+
+run_privileged() {
+	if [ "$(id -u)" -eq 0 ]; then
+		"$@"
+	else
+		command -v "$sudo_command" >/dev/null 2>&1 || die "root helper not found: $sudo_command"
+		"$sudo_command" "$@"
+	fi
+}
+
+print_mobile_command() {
+	printf 'would-run=configure-mobile-data --dry-run'
+	[ -z "$apn" ] || printf ' --apn %s' "$apn"
+	[ -z "$provider" ] || printf ' --provider %s' "$provider"
+	[ -z "$username" ] || printf ' --username %s' "$username"
+	[ "$password_stdin" = yes ] && printf ' --password-stdin'
+	[ -z "$ip_mode" ] || printf ' --ip-mode %s' "$ip_mode"
+	[ -z "$connection_name" ] || printf ' --connection-name %s' "$connection_name"
+	[ -z "$operator_code" ] || printf ' --operator-code %s' "$operator_code"
+	[ -z "$gid1" ] || printf ' --gid1 %s' "$gid1"
+	[ -z "$gid2" ] || printf ' --gid2 %s' "$gid2"
+	printf '\n'
+}
+
+run_mobile() {
+	if [ "$apply" = no ]; then
+		set -- --dry-run
+	else
+		set --
+	fi
+	[ -z "$apn" ] || set -- "$@" --apn "$apn"
+	[ -z "$provider" ] || set -- "$@" --provider "$provider"
+	[ -z "$username" ] || set -- "$@" --username "$username"
+	[ "$password_stdin" = yes ] && set -- "$@" --password-stdin
+	[ -z "$ip_mode" ] || set -- "$@" --ip-mode "$ip_mode"
+	[ -z "$connection_name" ] || set -- "$@" --connection-name "$connection_name"
+	[ -z "$operator_code" ] || set -- "$@" --operator-code "$operator_code"
+	[ -z "$gid1" ] || set -- "$@" --gid1 "$gid1"
+	[ -z "$gid2" ] || set -- "$@" --gid2 "$gid2"
+	if [ "$apply" = no ]; then
+		print_mobile_command
+		"$mobile_command" "$@"
+	else
+		printf '%s\n' 'apply=mobile-data'
+		run_privileged "$mobile_command" "$@"
+	fi
+}
+
+run_time_sync() {
+	if [ "$apply" = no ]; then
+		printf 'would-run=configure-time-sync'
+		[ -z "$timezone" ] || printf ' --timezone %s' "$timezone"
+		printf '\n'
+		return 0
+	fi
+	set --
+	[ -z "$timezone" ] || set -- "$@" --timezone "$timezone"
+	printf '%s\n' 'apply=time-sync'
+	run_privileged "$time_command" "$@"
+}
+
+run_audio() {
+	if [ "$apply" = no ]; then
+		printf '%s\n' 'would-run=systemctl --user daemon-reload'
+		printf '%s\n' 'would-run=systemctl --user enable --now oneplus6t-audio-route.service'
+		return 0
+	fi
+	printf '%s\n' 'apply=audio-route'
+	"$systemctl_command" --user daemon-reload
+	"$systemctl_command" --user enable --now oneplus6t-audio-route.service
+}
+
+printf 'report=oneplus6t-daily-use\n'
+printf 'mode=%s\n' "$([ "$apply" = yes ] && printf apply || printf dry-run)"
+printf 'mobile_data=%s\n' "$mobile"
+printf 'time_sync=%s\n' "$time_sync"
+printf 'audio_route=%s\n' "$audio"
+
+[ "$mobile" = no ] || run_mobile
+[ "$time_sync" = no ] || run_time_sync
+[ "$audio" = no ] || run_audio
+
+printf '%s\n' 'result=pass'
