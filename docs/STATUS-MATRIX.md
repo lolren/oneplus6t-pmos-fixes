@@ -33,11 +33,11 @@ Audit date: 2026-08-26.
 The host-side `scripts/check-device-transport` report is deliberately separate
 from phone runtime acceptance. On 2026-08-26 it confirmed the OnePlus as
 `ID_MODEL=OnePlus_6T` with a CDC-NCM interface, a working
-`172.16.42.2/16` host link and ping to `172.16.42.1`; TCP/22 accepted a
-connection but emitted no SSH banner. `fastboot devices` was empty and ADB
-showed only the separately attached Pixel. This means the phone was not in USB
-fastboot, and the NCM kernel path alone must not be treated as a usable SSH or
-installation session.
+`172.16.42.2/16` host link and ping to `172.16.42.1`; the latest bounded probe
+could not complete TCP/22 and received no SSH banner. `fastboot devices` was
+empty and ADB showed only the separately attached Pixel. This means the phone
+was not exposing USB fastboot or a usable SSH service, and the NCM kernel path
+alone must not be treated as an installation session.
 
 ## Reproducibility entry points
 
@@ -73,7 +73,7 @@ The last non-mutating host check found:
 USB: CDC-NCM networking only
 Fastboot: no device
 OnePlus ADB: no device
-SSH: TCP/22 accepts but no SSH banner
+SSH: TCP/22 not usable; no SSH banner
 ```
 
 Until a physical recovery cycle restores a usable Fastboot, ADB or SSH
