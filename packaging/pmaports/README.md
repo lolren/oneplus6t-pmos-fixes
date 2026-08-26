@@ -6,7 +6,7 @@ files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r14 Advanced Snapshot
-source recipe (the r14 APK still needs a clean AArch64 package rebuild), the
+source recipe and its verified AArch64 package pair, the
 libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
@@ -20,7 +20,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`87d36448f7eb8c5364860f016a5c37ea54a7b734e8cbeaed60076b4c9c0a5860`.
+`3f71542ce57df687f25838715fb569f9ecc658c76f1bdd9d6ad3032437ac2ff8`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -51,8 +51,8 @@ Applying the integration patch to the reviewed base produces:
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
 - `advanced-snapshot-0.1.0-r14` plus
   `advanced-snapshot-lang-0.1.0-r14` (Software HDR source/package candidate;
-  the exact AArch64 APK pair still needs rebuilding and is not yet installed);
-  the signed r13 pair remains the retained package checkpoint until then.
+  the exact AArch64 APK pair is signed and verified, but not installed); and
+  the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -61,8 +61,9 @@ The r14 application recipe is pinned to Advanced Snapshot commit
 `af69a7151b8fcba1d0650fd911f42e340279e8d0`. Its GitHub source archive SHA-512
 is
 `e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a`.
-The source build passed the pinned GTK compilation, 22 unit tests and clippy;
-build the signed AArch64 pair before adding it to a generation manifest.
+The source build passed the pinned GTK compilation, 22 unit tests and clippy.
+The signed AArch64 pair passed the independent package validator and is listed
+in the reference artifacts below.
 
 The r26 libcamera revision is now source- and package-validated. Its standalone
 manual-control patch and the full integration diff apply cleanly; the clean
@@ -71,12 +72,25 @@ uninstalled until the phone transport is usable and the live manual-exposure
 test passes. Keep the signed r24/r25 APKs for rollback.
 
 The complete opt-in userspace transition is described by
-`data/camera-generation-r26-r13.psv`. Its five-package candidate updates the
+`data/camera-generation-r26-r14.psv`. Its five-package candidate updates the
 r24 `libcamera`/IPA pair and the r11 Advanced Snapshot pair together, retains
-PipeWire r7, and keeps the exact r24 packages as rollback. The generation
-manager verifies both the current candidate key and the retained r24 rollback
-key before its offline simulation. It is not the default generation until the
-phone's live camera and lifecycle checks pass.
+PipeWire r7, and keeps the exact r24/r11 packages as rollback. The generation
+manager verifies the candidate key before its offline simulation. It is not
+the default generation until the phone's live camera and lifecycle checks
+pass. The earlier `camera-generation-r26-r13.psv` remains available for exact
+r13 reproduction.
+
+The r14 Software HDR helper is intentionally opt-in. It merges three
+exposure-bracketed JPEGs in linear light and writes one result atomically; it
+does not provide Android-vendor motion alignment, lens shading, calibrated
+colour or proprietary ISP processing. Review the complete candidate with:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r26-r14 \
+  --manifest data/camera-generation-r26-r14.psv \
+  install
+```
 
 ## Reference artifacts
 
@@ -105,6 +119,8 @@ phone's live camera and lifecycle checks pass.
 | `advanced-snapshot-lang-0.1.0-r11.apk` (bounded rear-flash candidate) | `40a9a822421d5640ce14f1046006bbb5b92b022862d977de0d7d14cf30f2c95a` |
 | `advanced-snapshot-0.1.0-r13.apk` (manual-exposure compile-fixed candidate) | `0c12ce8685afcadd1794e4a530f231d461647e41066965b307b2a43d5f121c81` |
 | `advanced-snapshot-lang-0.1.0-r13.apk` (manual-exposure compile-fixed candidate) | `a03b0a561e4355a4da506e29f0d8b7f16173da694155391e465a3dbfeaab1bd3` |
+| `advanced-snapshot-0.1.0-r14.apk` (Software HDR candidate) | `0df78733ec2fc3469dd11a4be274a0fb1bbbb9921dbf18601f99e6b0fa58b0ec` |
+| `advanced-snapshot-lang-0.1.0-r14.apk` (Software HDR candidate) | `25d01d10d69099c6c6d837a0cdd30c8724b3e831bf8fbbdf0730e36d75b4d98f` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.

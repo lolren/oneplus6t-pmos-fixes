@@ -1,8 +1,8 @@
 # Camera generation manager
 
-`scripts/manage-camera-generation` is the guarded installer for the current
-OnePlus 6T PipeWire r7 plus Advanced Snapshot r7 generation and its exact r7/r4
-rollback. It is deliberately narrower than a general package updater. The
+`scripts/manage-camera-generation` is the guarded installer for the OnePlus 6T
+camera generations and their exact rollback stages. It is deliberately
+narrower than a general package updater. The
 legacy `camera-generation-r7-r1.psv` remains available for the earlier
 r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5. The
 opt-in r7/r7 manifest carries the r9 save-feedback app pair and r8 rollback;
@@ -143,6 +143,36 @@ two Advanced Snapshot packages); PipeWire remains unchanged. The same
 simulation-first and rollback requirements apply as to the three-package
 generations.
 
+`data/camera-generation-r26-r14.psv` is the current opt-in lower-stack and UI
+candidate. It upgrades `libcamera` and `libcamera-ipa` from r24 to r26 and
+Advanced Snapshot from r11 to r14 in one transaction, while retaining
+PipeWire r7. The r14 application adds an opt-in Software HDR path: three
+exposure-bracketed JPEGs are merged in linear light and the result is written
+atomically. It does not provide Android-vendor motion alignment, lens shading,
+calibrated colour or proprietary ISP processing.
+
+The signed AArch64 stage is published as the
+[`camera-r26-r14` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r14).
+Its archive SHA-256 is
+`5d278feb47feb55d57625a20fef793d2eebab7acab67140aa2ce700e8e3de3b1` and the
+`SHA256SUMS` file SHA-256 is
+`b36d9ec268e351aa168e790b05aa72a23ba518a7ba4b81b2b2ddc53707aa37a6`.
+The candidate keeps the exact r24/r11 runtime/UI baseline as rollback and is
+still opt-in until the phone passes live preview, focus, exposure, HDR, video,
+display and lifecycle tests.
+
+Review it with:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r26-r14 \
+  --manifest data/camera-generation-r26-r14.psv \
+  install
+```
+
+The simulation must report four transitions (both libcamera packages and the
+two Advanced Snapshot packages); PipeWire remains unchanged.
+
 ## Stage layout
 
 ```text
@@ -164,7 +194,7 @@ camera-r7-r5/
 ```
 
 Each repository must contain exactly the APKs described by its manifest (three
-for the UI-only generations, five for r26/r13). Extra APK files are a hard
+for the UI-only generations, five for r26 generations). Extra APK files are a hard
 failure, preventing dependency resolution from silently selecting an
 unreviewed build.
 

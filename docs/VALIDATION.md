@@ -1702,7 +1702,7 @@ Date: 2026-08-26. The overlay recipe now pins Advanced Snapshot source commit
 immutable GitHub source archive SHA-512 is
 `e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a`.
 The updated pmaports integration patch SHA-256 is
-`87d36448f7eb8c5364860f016a5c37ea54a7b734e8cbeaed60076b4c9c0a5860`.
+`3f71542ce57df687f25838715fb569f9ecc658c76f1bdd9d6ad3032437ac2ff8`.
 
 The source adds an opt-in Software HDR switch and the packaged
 `advanced-snapshot-hdr` helper. It captures three exposure-bracketed JPEGs,
@@ -1710,7 +1710,29 @@ merges non-clipped samples in linear light, atomically installs one output and
 cleans temporary frames on every completion or abort path. It explicitly does
 not claim vendor ISP tuning or motion alignment. The pinned GTK build passed
 Meson, formatting, 8 application tests, 5 HDR-helper tests, 9 Aperture tests,
-clippy with `--deny warnings` and staged installation checks. A clean signed
-AArch64 r14 package and generation manifest are still pending; r13 remains
-the retained signed package checkpoint and no phone installation or image-
-quality acceptance is claimed.
+clippy with `--deny warnings` and staged installation checks. The clean signed
+AArch64 r14 pair passed the independent package validator and is included in
+the opt-in `camera-r26-r14` generation; no phone installation or image-quality
+acceptance is claimed.
+
+The r14 package hashes are:
+
+```text
+advanced-snapshot-0.1.0-r14.apk: 0df78733ec2fc3469dd11a4be274a0fb1bbbb9921dbf18601f99e6b0fa58b0ec
+advanced-snapshot-lang-0.1.0-r14.apk: 25d01d10d69099c6c6d837a0cdd30c8724b3e831bf8fbbdf0730e36d75b4d98f
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The signed five-package candidate and five-package rollback bundle is
+published as the GitHub prerelease `camera-r26-r14`. Its reproducibility
+anchors are:
+
+```text
+oneplus6t-camera-r26-r14-aarch64.tar.gz: 5d278feb47feb55d57625a20fef793d2eebab7acab67140aa2ce700e8e3de3b1
+SHA256SUMS: b36d9ec268e351aa168e790b05aa72a23ba518a7ba4b81b2b2ddc53707aa37a6
+```
+
+The bundle is source/package validated but remains opt-in: no phone package
+was installed, and live preview, focus, exposure, HDR, video, display,
+modem, audio, location, NFC, Waydroid, battery and rollback acceptance remain
+open behind the unavailable phone transport.

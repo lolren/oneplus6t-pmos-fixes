@@ -229,7 +229,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the previously accepted r8/r24/r7/r3 camera baseline
-and publishes the newer opt-in r26/r13 lower-stack candidate. The current
+and publishes the newer opt-in r26/r13 and r26/r14 lower-stack candidates. The current
 source, package and signature checks pass on the host, but the reference
 phone's present USB session exposes only CDC-NCM with working ping; its SSH
 userspace, ADB and fastboot endpoints are not currently usable. Therefore the
@@ -237,9 +237,8 @@ current audit does not claim that any candidate is installed or that the
 earlier physical acceptance still describes the phone's present state.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
-packages are now pinned as a source candidate; its AArch64 APK pair still needs
-rebuilding. The signed r13 pair remains the retained package checkpoint with a
-r24/r11 rollback. The candidate has not been hardware-accepted yet. The
+packages are now pinned and the signed AArch64 APK pair is published in the
+r26/r14 generation. The candidate has not been hardware-accepted yet. The
 earlier r7/r1 focus result and stability evidence remains in
 [docs/VALIDATION.md](docs/VALIDATION.md) as historical evidence, not a current
 installation claim.
@@ -362,6 +361,15 @@ only for rear stills and restores LED state on completion or interruption. It
 is source/package validated but not hardware-accepted, so the default manager
 manifest remains r7/r5.
 
+The current opt-in lower-stack candidate is available from the
+[camera-r26-r14 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r14).
+Use it with `data/camera-generation-r26-r14.psv`; it updates the matching
+libcamera/IPA r26 pair and Advanced Snapshot r14 while retaining the exact
+r24/r11 rollback stage. r14 adds the opt-in Software HDR helper, which merges
+three bracketed JPEG exposures in linear light. It remains source/package
+validated rather than hardware-accepted, and the default manager manifest
+stays r7/r5 until live camera and lifecycle testing is possible.
+
 The equivalent low-level simulation is:
 
 ```sh
@@ -393,9 +401,11 @@ Open **Advanced Snapshot** for the truthful reticle: amber means scanning,
 green means libcamera reported `Focused`, and red means `Failed` or a transport
 error. The fixed-focus front camera has no focus gesture.
 
-The sliders affect both preview and saved output. HDR is intentionally shown as
-unavailable because the open pipeline has no valid multi-frame merge and tone
-mapping stage.
+The sliders affect both preview and saved output. The Advanced Snapshot r14
+candidate also exposes opt-in Software HDR when its helper is installed; it
+uses three bracketed JPEG captures and a linear-light merge. This is not the
+same as Android-vendor HDR: motion alignment, lens shading, calibrated colour,
+temporal denoise and proprietary ISP processing remain outside the open stack.
 
 ### Safe postmarketOS updates
 
@@ -441,7 +451,8 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r26/r13 and Waydroid r37/r38 candidates are published;
+- signed AArch64 camera r26/r13 and r26/r14, plus Waydroid r37/r38 candidates,
+  are published;
 - live modem/DNS/HTTPS, time-after-boot, modem-call audio, display stability,
   native camera quality/video, Waydroid camera/GAPPS, GNSS, NFC, battery and
   rollback persistence still require a usable phone transport; and
