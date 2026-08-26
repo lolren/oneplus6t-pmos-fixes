@@ -376,6 +376,8 @@ tag. See [docs/NFC.md](docs/NFC.md).
   separate from this camera revision.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
+The requirement-by-requirement implementation and device-acceptance audit is
+kept in [docs/STATUS-MATRIX.md](docs/STATUS-MATRIX.md).
 
 ## Upstream data sources
 
