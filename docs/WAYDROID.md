@@ -323,11 +323,14 @@ APK with `--es profile preview` for private preview only or
 README. The additional `surface` profile renders the private stream to a real
 Android `TextureView` and reports `privateTimingSource=surface`, so it measures
 updates reaching the displayed viewfinder rather than only buffers delivered
-to an `ImageReader`. A private-only result below the camera application's
-visible frame rate points to provider/software-ISP or Waydroid compositor
-work; compare it with `surface` to locate the boundary. A large drop only when
-YUV/JPEG is added points to multi-stream conversion load. This distinction is
-required before changing the GPU default: the accepted r35 path still reads an
+to an `ImageReader`. It also records one asynchronous `PixelCopy` RGB sample
+(`surfaceRgbMean`/`surfaceRgbRange`) to expose channel swaps or an all-black
+surface without adding readback to the repeating capture path. A private-only
+result below the camera application's visible frame rate points to
+provider/software-ISP or Waydroid compositor work; compare it with `surface`
+to locate the boundary. A large drop only when YUV/JPEG is added points to
+multi-stream conversion load. This distinction is required before changing
+the GPU default: the accepted r35 path still reads an
 RGBA frame back to CPU memory and converts it to Android NV12. Patch 0010 adds
 a separate texture-only private RGB route that avoids that readback;
 explicit YUV and encoder streams keep the old path. This is why `preview`,

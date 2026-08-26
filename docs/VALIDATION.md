@@ -1138,7 +1138,11 @@ stream on a real Android `TextureView` and counts `onSurfaceTextureUpdated`
 callbacks. Results identify this with `privateTimingSource=surface`; the
 existing profiles continue to report `ImageReader` delivery. This separates a
 slow Camera3/software-ISP provider from a slow Waydroid surface/compositor path
-without depending on a third-party camera application.
+without depending on a third-party camera application. After the timing
+threshold, `surface` also performs one asynchronous `PixelCopy` into an
+ARGB_8888 bitmap and records `surfaceRgbMean` and `surfaceRgbRange`. This is
+colour-order and blank-surface evidence only; it is deliberately outside the
+repeating capture path and is not an image-quality acceptance test.
 
 The updated APK compiled and verified with Android SDK platform 34 and
 build-tools 36.0.0. The host runner and full fixes test suite pass, including

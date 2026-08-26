@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -19,12 +20,14 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import android.util.Range;
 import android.util.Rational;
 import android.util.Size;
+import android.view.PixelCopy;
 import android.view.Surface;
 import android.view.TextureView;
 
@@ -94,8 +97,10 @@ public final class CameraProbeActivity extends Activity {
     private boolean jpegRequested;
     private boolean jpegAccepted;
     private boolean privateAccepted;
+    private boolean surfacePixelSamplePending;
     private String yuvResult;
     private String jpegResult;
+    private String surfacePixelResult;
     private String exposureResult;
     private Rational exposureStep;
     private Range<Integer> selectedFpsRange;
@@ -217,6 +222,8 @@ public final class CameraProbeActivity extends Activity {
         privateAccepted = false;
         yuvResult = null;
         jpegResult = null;
+        surfacePixelSamplePending = false;
+        surfacePixelResult = null;
         exposureResult = null;
         exposureStep = null;
         selectedFpsRange = null;
@@ -749,6 +756,12 @@ public final class CameraProbeActivity extends Activity {
         if (privateTimedFrames < MIN_PRIVATE_TIMING_FRAMES)
             return;
 
+        if (needsSurface() && surfacePixelResult == null) {
+            if (!surfacePixelSamplePending)
+                requestSurfacePixelSample(token);
+            return;
+        }
+
         boolean autofocusRequired =
                 selectedAfMode == CaptureRequest.CONTROL_AF_MODE_AUTO;
         boolean autofocusTerminal = !autofocusRequired
@@ -770,26 +783,125 @@ public final class CameraProbeActivity extends Activity {
             result = String.format(Locale.US,
                     "CAMERA id=%s valid=%s %s %s privateFrames=%d afMode=%d "
                             + "privateSize=%s %s afStates=%s afRegion=%s "
-                            + "aeMetadata=%s %s",
+                            + "aeMetadata=%s %s surfacePixels=%s",
                     id, valid, yuvResult, jpegResult, privateFrames, selectedAfMode,
                     privateStreamSize, privateTiming(),
                     afStates, focusRegions == null ? "none" : focusRegions[0].toString(),
-                    exposureMetadata, exposureResult);
+                    exposureMetadata, exposureResult,
+                    needsSurface() ? surfacePixelResult : "not-requested");
         } else {
             valid = privateAccepted && (!needsYuv() || yuvResult.contains("valid=true"))
                     && autofocusTerminal;
             result = String.format(Locale.US,
                     "CAMERA id=%s valid=%s profile=%s privateFrames=%d afMode=%d "
                             + "privateSize=%s %s afStates=%s afRegion=%s "
-                            + "yuv=%s",
+                            + "yuv=%s surfacePixels=%s",
                     id, valid, profile, privateFrames, selectedAfMode,
                     privateStreamSize, privateTiming(), afStates,
                     focusRegions == null ? "none" : focusRegions[0].toString(),
-                    needsYuv() ? yuvResult : "not-requested");
+                    needsYuv() ? yuvResult : "not-requested",
+                    needsSurface() ? surfacePixelResult : "not-requested");
         }
         results.add(result);
         Log.i(TAG, result);
         completeCamera(token);
+    }
+
+    /**
+     * Take one asynchronous readback of the displayed private stream. The
+     * surface profile normally measures only TextureView update callbacks;
+     * this sample adds colour-order evidence without putting a readback in
+     * the repeating capture path.
+     */
+    private void requestSurfacePixelSample(int token) {
+        surfacePixelSamplePending = true;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            surfacePixelSamplePending = false;
+            surfacePixelResult = "surfacePixels=unavailable reason=api-too-old";
+            maybeCompleteCamera(token);
+            return;
+        }
+
+        if (previewSurface == null || privateStreamSize == null) {
+            surfacePixelSamplePending = false;
+            surfacePixelResult = "surfacePixels=unavailable reason=no-surface";
+            maybeCompleteCamera(token);
+            return;
+        }
+
+        Bitmap bitmap;
+        try {
+            bitmap = Bitmap.createBitmap(privateStreamSize.getWidth(),
+                    privateStreamSize.getHeight(), Bitmap.Config.ARGB_8888);
+            PixelCopy.request(previewSurface, bitmap, status -> {
+                surfacePixelSamplePending = false;
+                if (!isCurrent(token)) {
+                    bitmap.recycle();
+                    return;
+                }
+                if (status == PixelCopy.SUCCESS)
+                    surfacePixelResult = analyzeSurfaceBitmap(bitmap);
+                else
+                    surfacePixelResult = "surfacePixels=unavailable pixelCopyStatus=" + status;
+                bitmap.recycle();
+                maybeCompleteCamera(token);
+            }, handler);
+        } catch (Throwable error) {
+            surfacePixelSamplePending = false;
+            surfacePixelResult = "surfacePixels=unavailable error="
+                    + compactError(error);
+            maybeCompleteCamera(token);
+        }
+    }
+
+    private static String analyzeSurfaceBitmap(Bitmap bitmap) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int step = Math.max(1, Math.max(width, height) / 128);
+        long count = 0;
+        long nonBlack = 0;
+        long redSum = 0;
+        long greenSum = 0;
+        long blueSum = 0;
+        int redMin = 255;
+        int greenMin = 255;
+        int blueMin = 255;
+        int redMax = 0;
+        int greenMax = 0;
+        int blueMax = 0;
+
+        for (int y = 0; y < height; y += step) {
+            for (int x = 0; x < width; x += step) {
+                int color = bitmap.getPixel(x, y);
+                int red = (color >> 16) & 0xff;
+                int green = (color >> 8) & 0xff;
+                int blue = color & 0xff;
+                redSum += red;
+                greenSum += green;
+                blueSum += blue;
+                redMin = Math.min(redMin, red);
+                greenMin = Math.min(greenMin, green);
+                blueMin = Math.min(blueMin, blue);
+                redMax = Math.max(redMax, red);
+                greenMax = Math.max(greenMax, green);
+                blueMax = Math.max(blueMax, blue);
+                if (red + green + blue > 12)
+                    nonBlack++;
+                count++;
+            }
+        }
+
+        if (count == 0)
+            return "surfacePixels=invalid reason=empty-bitmap";
+
+        boolean valid = nonBlack > 0;
+        return String.format(Locale.US,
+                "surfacePixels=%s surfaceRgbMean=[%.1f,%.1f,%.1f] "
+                        + "surfaceRgbRange=[%d-%d,%d-%d,%d-%d] "
+                        + "surfaceRgbSamples=%d",
+                valid, (double) redSum / count, (double) greenSum / count,
+                (double) blueSum / count, redMin, redMax, greenMin, greenMax,
+                blueMin, blueMax, count);
     }
 
     private static String analyzeYuv(Image image) throws Exception {

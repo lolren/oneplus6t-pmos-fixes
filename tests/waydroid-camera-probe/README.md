@@ -16,7 +16,8 @@ For every camera reported by Android, the probe checks:
   performance can be compared without treating FPS as a pass/fail claim;
 - a `TextureView` surface-only run counts frames reaching the displayed Android
   viewfinder, separating presentation/compositor throughput from provider
-  delivery; and
+  delivery, and takes one asynchronous RGB pixel sample for channel-order
+  evidence; and
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
@@ -79,10 +80,13 @@ The preceding `CAMERA` records contain per-camera stream, private-preview
 size, `privateFps`, `privateIntervalMs`, autofocus, exposure and SHA-256
 evidence. The normal preview profiles report timestamps from an `ImageReader`
 and describe provider-delivered buffers; they are not a display-latency
-measurement. The `surface` profile reports `privateTimingSource=surface` and
-counts `TextureView` update callbacks instead, so it includes the Android
-surface/compositor path. Neither profile claims image-quality parity. Generated
-JPEGs remain in the application's private directory. Do not add them to Git.
+measurement. The `surface` profile reports `privateTimingSource=surface`,
+counts `TextureView` update callbacks, and adds fields such as
+`surfaceRgbMean=[r,g,b]` and `surfaceRgbRange=[r,g,b]` from one asynchronous
+readback. This includes the Android surface/compositor path and provides
+evidence for RGB channel ordering or an all-black surface, but it is not a
+colour-chart or image-quality pass/fail test. Generated JPEGs remain in the
+application's private directory. Do not add them to Git.
 
 ## Performance profiles
 
