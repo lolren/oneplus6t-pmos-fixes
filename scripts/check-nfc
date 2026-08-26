@@ -8,6 +8,7 @@ rfkill_cmd=${PMOS_NFC_RFKILL:-rfkill}
 systemctl_cmd=${PMOS_NFC_SYSTEMCTL:-systemctl}
 nfc_list_cmd=${PMOS_NFC_LIST:-nfc-list}
 nfc_poll_cmd=${PMOS_NFC_POLL:-nfc-poll}
+nfc_tool_cmd=${PMOS_NFC_TOOL:-nfctool}
 output=${PMOS_NFC_OUTPUT:-}
 poll=no
 
@@ -16,8 +17,9 @@ usage() {
 Usage: $PROGRAM [--output FILE] [--poll]
 
 Collect a read-only NFC readiness report. By default this only inspects
-sysfs, device nodes and installed reader tools. --poll explicitly runs
-nfc-list -v when that tool is available and may activate the NFC reader.
+sysfs, device nodes and installed reader tools. --poll explicitly starts
+nfctool polling when available, or falls back to nfc-list -v for libnfc
+readers; either poll command may activate the NFC reader.
 EOF
 }
 
@@ -108,6 +110,14 @@ if command -v "$nfc_poll_cmd" >/dev/null 2>&1; then
 else
 	printf 'nfc-poll=unavailable\n'
 fi
+if command -v "$nfc_tool_cmd" >/dev/null 2>&1; then
+	printf 'nfctool=available\n'
+	printf 'nfctool_devices_begin\n'
+	"$nfc_tool_cmd" -l 2>&1 || true
+	printf 'nfctool_devices_end\n'
+else
+	printf 'nfctool=unavailable\n'
+fi
 if command -v "$systemctl_cmd" >/dev/null 2>&1; then
 	for unit in neard.service pcscd.service; do
 		printf '%s=' "$unit"
@@ -119,11 +129,16 @@ fi
 
 printf '\n[poll]\n'
 if [ "$poll" = yes ]; then
-	if command -v "$nfc_list_cmd" >/dev/null 2>&1; then
+	if command -v "$nfc_tool_cmd" >/dev/null 2>&1; then
 		printf 'poll=started\n'
+		printf 'poll_backend=nfctool\n'
+		"$nfc_tool_cmd" -p 2>&1 || true
+	elif command -v "$nfc_list_cmd" >/dev/null 2>&1; then
+		printf 'poll=started\n'
+		printf 'poll_backend=nfc-list\n'
 		"$nfc_list_cmd" -v 2>&1 || true
 	else
-		printf 'poll=unavailable (nfc-list is not installed)\n'
+		printf 'poll=unavailable (nfctool and nfc-list are not installed)\n'
 	fi
 else
 	printf '%s\n' 'poll=disabled (read-only inspection only)'

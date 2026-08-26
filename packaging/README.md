@@ -49,6 +49,11 @@ native GNSS and Waydroid health acceptance, an administrator may enable it to
 run the documented ModemManager-to-Waydroid mock-provider bridge continuously.
 It is not enabled by the package and does not provide a vendor GNSS HAL.
 
+NFC userspace remains optional because `neard` is currently an Alpine testing
+package. If it is available in the target channel, install `neard` and
+`neard-systemd`, enable `neard.service`, and use `pmos-check-nfc --poll` for an
+explicit kernel-NCI tag test.
+
 The package also installs `pmos-run-device-acceptance`, which combines the
 individual reports into a private evidence directory. Its camera, Messages,
 GAPPS and NFC-poll checks are opt-in; the default run does not mutate the

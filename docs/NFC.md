@@ -20,6 +20,22 @@ The report records:
 - whether `rfkill`, `nfc-list`, `nfc-poll` and `systemctl` are installed; and
 - the state of the optional `neard.service` and `pcscd.service` units.
 
+For the phone's kernel NCI controller, the preferred userspace is the
+`neard` package and its `nfctool` utility. On Alpine/postmarketOS channels
+where those packages are available, install the daemon package and its
+systemd subpackage, then start the daemon:
+
+```sh
+sudo apk add neard neard-systemd
+sudo systemctl enable --now neard.service
+```
+
+The checker uses `nfctool -l` for non-invasive adapter discovery and
+`nfctool -p` for an explicit poll. `nfc-list -v` remains a fallback for
+libnfc-compatible external readers; it is not assumed to drive the phone's
+kernel NCI adapter. The Linux NFC subsystem exposes controller management and
+polling through generic netlink, which is the interface used by `nfctool`.
+
 The default mode does not start polling. It is safe to run while diagnosing a
 phone that may have an incomplete NFC driver.
 

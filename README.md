@@ -399,10 +399,11 @@ native ModemManager/GeoClue report needed before using the bridge.
 ### NFC
 
 The read-only NFC readiness report checks the controller/rfkill exposure,
-device nodes and installed tag-reader tools without enabling polling. Run
-`pmos-check-nfc --poll` only for an explicit tag test. NFC tag reading and
-payment support remain unaccepted until the recovered phone can detect a real
-tag. See [docs/NFC.md](docs/NFC.md).
+device nodes and installed tag-reader tools without enabling polling. When
+`neard`/`nfctool` is installed it uses the kernel-NCI path; `nfc-list` remains
+an external-reader fallback. Run `pmos-check-nfc --poll` only for an explicit
+tag test. NFC tag reading and payment support remain unaccepted until the
+recovered phone can detect a real tag. See [docs/NFC.md](docs/NFC.md).
 
 ## Project status
 

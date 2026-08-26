@@ -58,6 +58,7 @@ test:
 	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(HOST_DIAGNOSTIC_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
 		 tests/fixtures/camera-generation-smoke \
+		tests/fixtures/nfctool \
 		 tests/test-apn-selection.sh tests/test-messages-check.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
