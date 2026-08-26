@@ -56,6 +56,7 @@ test:
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
 		tests/test-waydroid-gpu-sync.sh \
+		tests/test-waydroid-rgb-preview.sh \
 		tests/test-waydroid-gapps.sh \
 		tests/test-display-report.sh \
 		tests/test-update-guard.sh \
@@ -72,6 +73,7 @@ test:
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-probe-runner.sh
 	sh tests/test-waydroid-gpu-sync.sh
+	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
 	./tests/test-update-guard.sh

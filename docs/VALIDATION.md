@@ -1088,6 +1088,48 @@ healthy Waydroid preflight, a fresh matched ARMv7 bundle, and before/after
 three cameras, JPEG capture and provider lifecycle remain healthy; otherwise
 use the previously accepted r35 bundle.
 
+## Waydroid RGB private-preview candidate
+
+Date: 2026-08-26. The Android Camera3 path previously mapped
+`IMPLEMENTATION_DEFINED` preview streams to NV12. That path is compatible with
+YUV and encoder consumers, but it requires the GPU to render an RGBA
+intermediate, synchronously read it back with `glReadPixels()` and convert it
+with libyuv on every frame. Patch `0010` selects an RGBX/XBGR buffer for
+texture-only private streams. The GPU then imports the real DMA-BUF fourcc and
+writes the RGB preview without the NV12 readback/conversion; explicit YUV and
+video-encoder streams remain on NV12. RGB output keeps the GPU completion fence,
+and the generic RGB post-processor is used only for same-size mapped streams.
+
+The candidate was built in a clean ARMv7/API-33 Android configuration with the
+same NDK, dependency prefix and `softisp-gpu=enabled` settings as the r35/r36
+bundles. The full Meson build, Android HAL link, software IPA, proxy and IPA
+signature completed successfully. The patch applies cleanly after 0009 in a
+fresh libcamera worktree and `git diff --check` is clean.
+
+Reproduction identifiers and artifacts from this build are:
+
+```text
+libcamera source candidate commit: 09f350cfef887172669ebc9c1378e16c064382e0
+0009 source commit: b296650f (published as Android patch 0009)
+0010-android-route-private-preview-to-rgb.patch: 6bcc844d7330fbeb5d5f3c64abde788f22e58b0f17aba8057df58c3a90ceef72
+waydroid-camera-rgb-r37-gpu.tar.gz: 88a9f2be8ac90f58c0428d82bd71ca4751636a56cc883bd8ecdd22ca87d14b3e
+waydroid-camera-rgb-r37-gpu.sha256: 46256be3808f91306daa32338aaddda25594067ef9dbebe89bbaeddcad36184a
+camera.libcamera.so: 1b8dfa9350a5439d65cfbf906dd856ba80ac2f7544729b80a02bd150d3c94702
+libcamera.so: 430a5233ece30bc5bc4a01866bcb1f0dd769a8241842a81d75dcfd04617493c3
+libcamera-base.so: c2ba957c78e4f889699aae317571c7d0c93f67405a8b0e3ca2cff1b7b6e4f1ec
+ipa_soft_simple.so: 0b372cc7f0b47a5eb2a232d8c0ab26b5968693cd834bf4bc7d318101315941dd
+soft_ipa_proxy: ba0de00f5c4ca21abe281ce05d017dcd1259a140d5516debc7087b52f69d7a70
+```
+
+This is a performance candidate, not a phone acceptance claim. After the
+health gate reports `rootfs_mounts=0` and `overlay_precondition=pass`, install
+the bundle only as a new backup-protected generation and compare `preview`,
+`preview-yuv`, `surface` and `full` against r35. Check all three cameras,
+saved JPEG colour/order, exposure and focus, then exercise provider stop/start.
+Rollback to the r35 bundle if RGB import fails, colours are swapped, buffers
+are corrupted or lifecycle stability regresses. Do not replace the accepted
+baseline merely because a host build succeeded.
+
 ## Waydroid display-path probe
 
 Date: 2026-08-26. The Camera2 probe now accepts a `surface` profile in addition

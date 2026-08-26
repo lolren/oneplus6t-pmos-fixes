@@ -1,0 +1,537 @@
+From 09f350cfef887172669ebc9c1378e16c064382e0 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Wed, 26 Aug 2026 03:51:05 +0100
+Subject: [PATCH] android: use RGB buffers for private preview streams
+
+---
+ include/libcamera/internal/egl.h           |  9 +-
+ src/android/camera_capabilities.cpp        | 44 ++++++++--
+ src/android/camera_capabilities.h          |  3 +
+ src/android/camera_device.cpp              | 41 +++++----
+ src/android/camera_stream.cpp              | 16 +++-
+ src/android/meson.build                    |  1 +
+ src/android/rgb/post_processor_rgb.cpp     | 99 ++++++++++++++++++++++
+ src/android/rgb/post_processor_rgb.h       | 29 +++++++
+ src/libcamera/egl.cpp                      | 32 +++----
+ src/libcamera/software_isp/debayer_egl.cpp | 18 +++-
+ 10 files changed, 244 insertions(+), 48 deletions(-)
+ create mode 100644 src/android/rgb/post_processor_rgb.cpp
+ create mode 100644 src/android/rgb/post_processor_rgb.h
+
+diff --git a/include/libcamera/internal/egl.h b/include/libcamera/internal/egl.h
+index 1e31d49..2720ead 100644
+--- a/include/libcamera/internal/egl.h
++++ b/include/libcamera/internal/egl.h
+@@ -57,12 +57,16 @@ public:
+ 	 * \param[in] stride Row stride in bytes
+ 	 * \param[in] texture_unit OpenGL texture unit
+ 	 * \param[in] texture_unit_uniform_id Shader uniform ID
++	 * \param[in] drm_format Optional DMA-BUF DRM format. If zero, derive it
++	 * from the GL format as before.
+ 	 */
+-	eGLImage(GLint format, uint32_t width, uint32_t height, uint32_t stride, GLenum texture_unit, uint32_t texture_unit_uniform_id)
++	eGLImage(GLint format, uint32_t width, uint32_t height, uint32_t stride,
++		  GLenum texture_unit, uint32_t texture_unit_uniform_id,
++		  uint32_t drm_format = 0)
+ 		: format_(format), width_(width), height_(height), stride_(stride),
+ 		  framesize_(stride * height),
+ 		  texture_unit_uniform_id_(texture_unit_uniform_id),
+-		  texture_unit_(texture_unit)
++		  texture_unit_(texture_unit), drm_format_(drm_format)
+ 	{
+ 		glGenTextures(1, &texture_);
+ 		glGenFramebuffers(1, &fbo_);
+@@ -90,6 +94,7 @@ public:
+ 	GLenum texture_unit_; /**< Texture unit associated with this image eg (GL_TEXTURE0) */
+ 	GLuint texture_; /**< OpenGL texture object ID */
+ 	GLuint fbo_; /**< OpenGL frame buffer object ID */
++	uint32_t drm_format_; /**< Explicit DMA-BUF DRM format, or zero */
+ 	bool dmabuf_import_failed_ = false; /**< Previous image import failed */
+ 
+ private:
+diff --git a/src/android/camera_capabilities.cpp b/src/android/camera_capabilities.cpp
+index 6bd6cb3..92e6261 100644
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -15,6 +15,7 @@
+ #include <type_traits>
+ 
+ #include <hardware/camera3.h>
++#include <hardware/gralloc.h>
+ 
+ #include <libcamera/base/log.h>
+ #include <libcamera/base/utils.h>
+@@ -81,12 +82,10 @@ const std::map<int, const Camera3Format> camera3FormatsMap = {
+ 			"YCbCr_420_888"
+ 		}
+ 	}, {
+-		/*
+-		 * \todo Translate IMPLEMENTATION_DEFINED inspecting the gralloc
+-		 * usage flag. For now, copy the YCbCr_420 configuration.
+-		 */
++		/* Prefer the RGB texture path for private preview buffers. The
++		 * usage-aware mapping below retains NV12 for encoder and YUV users. */
+ 		HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED, {
+-			{ formats::NV12, formats::NV21 },
++			{ formats::XBGR8888, formats::NV12, formats::NV21 },
+ 			true,
+ 			"IMPLEMENTATION_DEFINED"
+ 		}
+@@ -408,6 +407,8 @@ int CameraCapabilities::initialize(std::shared_ptr<Camera> camera,
+ 	facing_ = facing;
+ 	rawStreamAvailable_ = false;
+ 	maxFrameDuration_ = 0;
++	implementationDefinedRgb_ = false;
++	formatsMap_.clear();
+ 
+ 	/* Acquire the camera and initialize available stream configurations. */
+ 	int ret = camera_->acquire();
+@@ -618,7 +619,18 @@ int CameraCapabilities::initializeStreamConfigurations()
+ 		 * Record the mapping and then proceed to generate the
+ 		 * stream configurations map, by testing the image resolutions.
+ 		 */
+-		formatsMap_[androidFormat] = mappedFormat;
++		if (androidFormat == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
++		    mappedFormat == formats::XBGR8888) {
++			/*
++			 * Keep the legacy, format-only lookup on the conservative NV12
++			 * path. Stream configuration passes usage explicitly and can use
++			 * RGB only for texture-like private buffers.
++			 */
++			implementationDefinedRgb_ = true;
++			formatsMap_[androidFormat] = formats::NV12;
++		} else {
++			formatsMap_[androidFormat] = mappedFormat;
++		}
+ 		LOG(HAL, Debug) << "Mapped Android format "
+ 				<< camera3Format.name << " to "
+ 				<< mappedFormat;
+@@ -1558,6 +1570,10 @@ int CameraCapabilities::initializeStaticMetadata()
+ /* Translate Android format code to libcamera pixel format. */
+ PixelFormat CameraCapabilities::toPixelFormat(int format) const
+ {
++	/* Used by allocator fallbacks that only carry an explicit HAL format. */
++	if (format == HAL_PIXEL_FORMAT_RGBX_8888)
++		return formats::XBGR8888;
++
+ 	auto it = formatsMap_.find(format);
+ 	if (it == formatsMap_.end()) {
+ 		LOG(HAL, Error) << "Requested format " << utils::hex(format)
+@@ -1568,6 +1584,22 @@ PixelFormat CameraCapabilities::toPixelFormat(int format) const
+ 	return it->second;
+ }
+ 
++PixelFormat CameraCapabilities::toPixelFormat(int format, uint64_t usage) const
++{
++	if (format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
++	    implementationDefinedRgb_) {
++		constexpr uint64_t yuvUsage =
++			GRALLOC_USAGE_HW_VIDEO_ENCODER |
++			GRALLOC_USAGE_HW_CAMERA_READ |
++			GRALLOC_USAGE_HW_CAMERA_WRITE;
++
++		if (!(usage & yuvUsage))
++			return formats::XBGR8888;
++	}
++
++	return toPixelFormat(format);
++}
++
+ std::unique_ptr<CameraMetadata> CameraCapabilities::requestTemplateManual() const
+ {
+ 	if (!capabilities_.count(ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)) {
+diff --git a/src/android/camera_capabilities.h b/src/android/camera_capabilities.h
+index 56ac1ef..ffdee52 100644
+--- a/src/android/camera_capabilities.h
++++ b/src/android/camera_capabilities.h
+@@ -7,6 +7,7 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
+ #include <map>
+ #include <memory>
+ #include <set>
+@@ -30,6 +31,7 @@ public:
+ 
+ 	CameraMetadata *staticMetadata() const { return staticMetadata_.get(); }
+ 	libcamera::PixelFormat toPixelFormat(int format) const;
++	libcamera::PixelFormat toPixelFormat(int format, uint64_t usage) const;
+ 	unsigned int maxJpegBufferSize() const { return maxJpegBufferSize_; }
+ 
+ 	std::unique_ptr<CameraMetadata> requestTemplateManual() const;
+@@ -77,6 +79,7 @@ private:
+ 
+ 	std::vector<Camera3StreamConfiguration> streamConfigurations_;
+ 	std::map<int, libcamera::PixelFormat> formatsMap_;
++	bool implementationDefinedRgb_ = false;
+ 	std::unique_ptr<CameraMetadata> staticMetadata_;
+ 	unsigned int maxJpegBufferSize_;
+ 
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 86a9670..a2dc200 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -43,18 +43,18 @@ LOG_DECLARE_CATEGORY(HAL)
+ namespace {
+ 
+ /*
+- * The software ISP has to debayer every preview frame before Android can
+- * display it.  Waydroid commonly asks for a 1600x1200 private/YUV stream even
+- * though the UI only displays a much smaller image.  Keep the source stream at
+- * a supported, aspect-ratio-preserving 1280-wide mode and scale the result
+- * into Android's requested buffer.  JPEG streams are deliberately excluded
+- * here and retain their requested source size.
++ * The software ISP has to debayer every YUV preview frame before Android can
++ * display it. Waydroid commonly asks for a 1600x1200 YUV stream even though
++ * the UI only displays a much smaller image. Keep that source stream at a
++ * supported, aspect-ratio-preserving 1280-wide mode and scale the result into
++ * Android's requested buffer. Private RGB texture streams are deliberately
++ * excluded: they are rendered directly by the GPU into the framework buffer.
++ * JPEG streams retain their requested source size.
+  */
+-Size reducedPreviewSourceSize(const camera3_stream_t *stream,
++Size reducedPreviewSourceSize(const PixelFormat &format,
+ 				      const Size &requested)
+ {
+-	if (stream->format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
+-	    stream->format != HAL_PIXEL_FORMAT_YCBCR_420_888)
++	if (format != formats::NV12)
+ 		return requested;
+ 
+ 	const Size candidates[] = {
+@@ -638,9 +638,9 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 	for (unsigned int i = 0; i < stream_list->num_streams; ++i) {
+ 		camera3_stream_t *stream = stream_list->streams[i];
+ 		Size size(stream->width, stream->height);
+-		Size sourceSize = reducedPreviewSourceSize(stream, size);
+-
+-		PixelFormat format = capabilities_.toPixelFormat(stream->format);
++		PixelFormat format = capabilities_.toPixelFormat(stream->format,
++									 stream->usage);
++		Size sourceSize = reducedPreviewSourceSize(format, size);
+ 
+ 		LOG(HAL, Info) << "Stream #" << i
+ 			       << ", direction: " << directionToString(stream->stream_type)
+@@ -682,15 +682,13 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		}
+ 
+ 		/*
+-		 * While gralloc usage flags are supposed to report usage
+-		 * patterns to select a suitable buffer allocation strategy, in
+-		 * practice they're also used to make other decisions, such as
+-		 * selecting the actual format for the IMPLEMENTATION_DEFINED
+-		 * HAL pixel format. To avoid issues, we thus have to set the
+-		 * GRALLOC_USAGE_HW_CAMERA_WRITE flag unconditionally, even for
+-		 * streams that will be produced in software.
++		 * minigbm resolves a texture-only IMPLEMENTATION_DEFINED buffer to
++		 * RGBX8888. Keep it that way so the GPU software ISP can render
++		 * directly into the Android buffer. Encoder/YUV streams need the
++		 * camera-write hint to resolve to NV12 instead.
+ 		 */
+-		stream->usage |= GRALLOC_USAGE_HW_CAMERA_WRITE;
++		if (format != formats::XBGR8888)
++			stream->usage |= GRALLOC_USAGE_HW_CAMERA_WRITE;
+ 
+ 		/*
+ 		 * If a CameraStream with the same size and format as the
+@@ -735,7 +733,8 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 			 * the encoder.
+ 			 */
+ 			if (cfg.size.width != jpegStream->width ||
+-			    cfg.size.height != jpegStream->height)
++			    cfg.size.height != jpegStream->height ||
++			    cfg.pixelFormat != formats::NV12)
+ 				continue;
+ 
+ 			LOG(HAL, Info)
+diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+index af5741f..253f799 100644
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -16,8 +16,11 @@
+ #include <libcamera/formats.h>
+ 
+ #include "jpeg/post_processor_jpeg.h"
++#include "rgb/post_processor_rgb.h"
+ #include "yuv/post_processor_yuv.h"
+ 
++#include "system/graphics.h"
++
+ #include "camera_buffer.h"
+ #include "camera_capabilities.h"
+ #include "camera_device.h"
+@@ -86,7 +89,8 @@ int CameraStream::configure()
+ {
+ 	if (type_ == Type::Internal || type_ == Type::Mapped) {
+ 		const PixelFormat outFormat =
+-			cameraDevice_->capabilities()->toPixelFormat(camera3Stream_->format);
++			cameraDevice_->capabilities()->toPixelFormat(
++				camera3Stream_->format, camera3Stream_->usage);
+ 		output_ = configuration();
+ 		output_.pixelFormat = outFormat;
+ 		output_.size.width = camera3Stream_->width;
+@@ -101,6 +105,10 @@ int CameraStream::configure()
+ 			postProcessor_ = std::make_unique<PostProcessorJpeg>(cameraDevice_);
+ 			break;
+ 
++		case formats::XBGR8888:
++			postProcessor_ = std::make_unique<PostProcessorRgb>();
++			break;
++
+ 		default:
+ 			LOG(HAL, Error) << "Unsupported format: " << outFormat;
+ 			return -EINVAL;
+@@ -220,7 +228,11 @@ FrameBuffer *CameraStream::getBuffer()
+ 		 * \todo Store a reference to the format of the source stream
+ 		 * instead of hardcoding.
+ 		 */
+-		auto frameBuffer = allocator_->allocate(HAL_PIXEL_FORMAT_YCBCR_420_888,
++		int halPixelFormat = HAL_PIXEL_FORMAT_YCBCR_420_888;
++		if (configuration().pixelFormat == formats::XBGR8888)
++			halPixelFormat = HAL_PIXEL_FORMAT_RGBX_8888;
++
++		auto frameBuffer = allocator_->allocate(halPixelFormat,
+ 							configuration().size,
+ 							camera3Stream_->usage);
+ 		if (!frameBuffer) {
+diff --git a/src/android/meson.build b/src/android/meson.build
+index 163d845..426c3bf 100644
+--- a/src/android/meson.build
++++ b/src/android/meson.build
+@@ -32,6 +32,7 @@ android_hal_sources = files([
+     'camera_request.cpp',
+     'camera_stream.cpp',
+     'hal_framebuffer.cpp',
++	'rgb/post_processor_rgb.cpp',
+     'yuv/post_processor_yuv.cpp'
+ ])
+ 
+diff --git a/src/android/rgb/post_processor_rgb.cpp b/src/android/rgb/post_processor_rgb.cpp
+new file mode 100644
+index 0000000..70d7e91
+--- /dev/null
++++ b/src/android/rgb/post_processor_rgb.cpp
+@@ -0,0 +1,99 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2026, Lolren
++ *
++ * Android private RGB stream copy post-processor
++ */
++
++#include "post_processor_rgb.h"
++
++#include <cerrno>
++#include <cstring>
++
++#include <libcamera/base/log.h>
++#include <libcamera/formats.h>
++
++#include "libcamera/internal/mapped_framebuffer.h"
++
++using namespace libcamera;
++
++LOG_DEFINE_CATEGORY(RGB)
++
++int PostProcessorRgb::configure(const StreamConfiguration &inCfg,
++				const StreamConfiguration &outCfg)
++{
++	if (inCfg.pixelFormat != formats::XBGR8888 ||
++	    outCfg.pixelFormat != formats::XBGR8888) {
++		LOG(RGB, Error) << "Unsupported RGB stream format (from "
++				<< inCfg.pixelFormat << " to " << outCfg.pixelFormat
++				<< ")";
++		return -EINVAL;
++	}
++
++	if (inCfg.size != outCfg.size) {
++		LOG(RGB, Error) << "RGB copy cannot scale from " << inCfg.size
++				<< " to " << outCfg.size;
++		return -EINVAL;
++	}
++
++	size_ = inCfg.size;
++	rowBytes_ = static_cast<size_t>(size_.width) * 4;
++	sourceStride_ = inCfg.stride;
++	if (sourceStride_ < rowBytes_) {
++		LOG(RGB, Error) << "RGB source stride is too small: "
++				<< sourceStride_ << " < " << rowBytes_;
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++void PostProcessorRgb::process(
++	Camera3RequestDescriptor::StreamBuffer *streamBuffer)
++{
++	const FrameBuffer &source = *streamBuffer->srcBuffer;
++	CameraBuffer *destination = streamBuffer->dstBuffer.get();
++
++	if (source.planes().size() != 1 || destination->numPlanes() != 1) {
++		LOG(RGB, Error) << "RGB stream does not have one plane";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
++	const MappedFrameBuffer sourceMapped(&source, MappedFrameBuffer::MapFlag::Read);
++	if (!sourceMapped.isValid() || sourceMapped.planes().empty()) {
++		LOG(RGB, Error) << "Failed to mmap RGB camera frame buffer";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
++	Span<uint8_t> destinationPlane = destination->plane(0);
++	if (destinationPlane.empty()) {
++		LOG(RGB, Error) << "Failed to mmap RGB destination buffer";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
++	unsigned int destinationStride = destination->stride(0);
++	if (!destinationStride)
++		destinationStride = static_cast<unsigned int>(rowBytes_);
++	if (destinationStride < rowBytes_ ||
++	    sourceMapped.planes()[0].size() <
++		static_cast<size_t>(sourceStride_) * size_.height ||
++	    destinationPlane.size() <
++		static_cast<size_t>(destinationStride) * size_.height) {
++		LOG(RGB, Error) << "RGB buffer layout is too small";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
++	for (unsigned int y = 0; y < size_.height; ++y) {
++		std::memcpy(destinationPlane.data() +
++				    static_cast<size_t>(y) * destinationStride,
++				sourceMapped.planes()[0].data() +
++				    static_cast<size_t>(y) * sourceStride_,
++				rowBytes_);
++	}
++
++	processComplete.emit(streamBuffer, PostProcessor::Status::Success);
++}
+diff --git a/src/android/rgb/post_processor_rgb.h b/src/android/rgb/post_processor_rgb.h
+new file mode 100644
+index 0000000..e474387
+--- /dev/null
++++ b/src/android/rgb/post_processor_rgb.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2026, Lolren
++ *
++ * Android private RGB stream copy post-processor
++ */
++
++#pragma once
++
++#include <cstddef>
++
++#include "../post_processor.h"
++
++#include <libcamera/geometry.h>
++
++class PostProcessorRgb : public PostProcessor
++{
++public:
++	PostProcessorRgb() = default;
++
++	int configure(const libcamera::StreamConfiguration &inCfg,
++		      const libcamera::StreamConfiguration &outCfg) override;
++	void process(Camera3RequestDescriptor::StreamBuffer *streamBuffer) override;
++
++private:
++	libcamera::Size size_;
++	size_t rowBytes_ = 0;
++	unsigned int sourceStride_ = 0;
++};
+diff --git a/src/libcamera/egl.cpp b/src/libcamera/egl.cpp
+index b8b5fb3..bb1feba 100644
+--- a/src/libcamera/egl.cpp
++++ b/src/libcamera/egl.cpp
+@@ -169,25 +169,27 @@ void eGL::activateBindTexture(eGLImage &eglImage)
+  */
+ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
+ {
+-	EGLint drm_format;
++	EGLint drm_format = static_cast<EGLint>(eglImage.drm_format_);
+ 	int ret = 0;
+ 
+ 	ASSERT(tid_ == Thread::currentId());
+ 
+-	switch (eglImage.format_) {
+-	case GL_RED:
+-	case GL_LUMINANCE:
+-		drm_format = DRM_FORMAT_R8;
+-		break;
+-	case GL_RG:
+-		drm_format = DRM_FORMAT_RG88;
+-		break;
+-	case GL_RGBA:
+-		drm_format = DRM_FORMAT_ARGB8888;
+-		break;
+-	default:
+-		LOG(eGL, Error) << "unhandled GL format";
+-		return -ENODEV;
++	if (!drm_format) {
++		switch (eglImage.format_) {
++		case GL_RED:
++		case GL_LUMINANCE:
++			drm_format = DRM_FORMAT_R8;
++			break;
++		case GL_RG:
++			drm_format = DRM_FORMAT_RG88;
++			break;
++		case GL_RGBA:
++			drm_format = DRM_FORMAT_ARGB8888;
++			break;
++		default:
++			LOG(eGL, Error) << "unhandled GL format";
++			return -ENODEV;
++		}
+ 	}
+ 
+ 	// clang-format off
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 22b09e2..b3e29a1 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -686,8 +686,10 @@ eGLImage *DebayerEGL::getCachedOutputFrameBuffer(FrameBuffer *output)
+ 			LOG(Debayer, Debug) << "Output cache " << outputBufferCount_ << " exceeded evicted entry";
+ 		}
+ 
+-		eglImageOutCache_.emplace_back(fd, std::make_unique<eGLImage>(GL_RGBA, outputSize_.width,
+-									      outputSize_.height, outputConfig_.stride, GL_TEXTURE1, 1));
++		eglImageOutCache_.emplace_back(fd, std::make_unique<eGLImage>(
++			GL_RGBA, outputSize_.width, outputSize_.height,
++			outputConfig_.stride, GL_TEXTURE1, 1,
++			outputPixelFormat_.fourcc()));
+ 		eglImageOut = eglImageOutCache_.back().second.get();
+ 
+ 		if (egl_.createOutputDMABufTexture2D(*eglImageOut, output->planes()[0].fd.get())) {
+@@ -894,8 +896,20 @@ int DebayerEGL::start()
+ 
+ 	LOG(Debayer, Debug) << "Available fragment shader texture units " << maxTextureImageUnits;
+ 
++	/*
++	 * NV12 uses a GL_RGBA intermediate and the historical ABGR shader
++	 * ordering expected by libyuv. Direct RGB output is imported with its
++	 * actual DRM fourcc, so its shader must use the native channel order.
++	 * XRGB/ARGB are the no-swap equivalents of XBGR/ABGR respectively.
++	 */
+ 	PixelFormat gpuOutputFormat = outputIsNv12_ ? formats::ABGR8888
+ 					       : outputPixelFormat_;
++	if (!outputIsNv12_) {
++		if (outputPixelFormat_ == formats::XBGR8888)
++			gpuOutputFormat = formats::XRGB8888;
++		else if (outputPixelFormat_ == formats::ABGR8888)
++			gpuOutputFormat = formats::ARGB8888;
++	}
+ 	if (initBayerShaders(inputPixelFormat_, gpuOutputFormat))
+ 		return -EINVAL;
+ 	if (initScaleShaders(gpuOutputFormat))
+-- 
+2.49.0
+
