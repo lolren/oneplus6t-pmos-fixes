@@ -60,6 +60,14 @@ AArch64 runtime and IPA APKs are signed and verified below. They remain
 uninstalled until the phone transport is usable and the live manual-exposure
 test passes. Keep the signed r24/r25 APKs for rollback.
 
+The complete opt-in userspace transition is described by
+`data/camera-generation-r26-r13.psv`. Its five-package candidate updates the
+r24 `libcamera`/IPA pair and the r11 Advanced Snapshot pair together, retains
+PipeWire r7, and keeps the exact r24 packages as rollback. The generation
+manager verifies both the current candidate key and the retained r24 rollback
+key before its offline simulation. It is not the default generation until the
+phone's live camera and lifecycle checks pass.
+
 ## Reference artifacts
 
 | Package | SHA-256 |

@@ -253,4 +253,112 @@ unset PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION \
 	PMOS_MOCK_CANDIDATE_APP_VERSION PMOS_MOCK_ROLLBACK_APP_VERSION \
 	PMOS_MOCK_CANDIDATE_LANG_VERSION PMOS_MOCK_ROLLBACK_LANG_VERSION
 
+# A lower-stack generation must update libcamera and libcamera-ipa in the same
+# guarded transaction as the UI packages. Exercise that optional manifest
+# shape while retaining a direct runtime world constraint for rollback checks.
+stage=$TEST_ROOT/stage-runtime
+state=$TEST_ROOT/packages-runtime
+world=$TEST_ROOT/world-runtime
+manifest=$TEST_ROOT/generation-runtime.psv
+mkdir -p "$stage/candidate/aarch64" "$stage/candidate/noarch" \
+	"$stage/rollback/aarch64" "$stage/rollback/noarch"
+: >"$stage/candidate/aarch64/APKINDEX.tar.gz"
+: >"$stage/rollback/aarch64/APKINDEX.tar.gz"
+printf '%s\n' 'candidate pipewire r7' \
+	>"$stage/candidate/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk"
+printf '%s\n' 'candidate app r13' \
+	>"$stage/candidate/aarch64/advanced-snapshot-0.1.0-r13.apk"
+printf '%s\n' 'candidate lang r13' \
+	>"$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r13.apk"
+printf '%s\n' 'candidate libcamera r26' \
+	>"$stage/candidate/aarch64/libcamera-99990.7.2-r26.apk"
+printf '%s\n' 'candidate ipa r26' \
+	>"$stage/candidate/aarch64/libcamera-ipa-99990.7.2-r26.apk"
+printf '%s\n' 'rollback pipewire r7' \
+	>"$stage/rollback/aarch64/pipewire-spa-libcamera-1.6.8-r7.apk"
+printf '%s\n' 'rollback app r11' \
+	>"$stage/rollback/aarch64/advanced-snapshot-0.1.0-r11.apk"
+printf '%s\n' 'rollback lang r11' \
+	>"$stage/rollback/noarch/advanced-snapshot-lang-0.1.0-r11.apk"
+printf '%s\n' 'rollback libcamera r24' \
+	>"$stage/rollback/aarch64/libcamera-99990.7.2-r24.apk"
+printf '%s\n' 'rollback ipa r24' \
+	>"$stage/rollback/aarch64/libcamera-ipa-99990.7.2-r24.apk"
+
+{
+	printf '%s\n' 'schema|1' 'generation|test-r26-r13' 'compatible|oneplus,fajita'
+	printf 'signing-key|mock.rsa.pub|%s\n' "$(hash_file "$keys/mock.rsa.pub")"
+	for channel in candidate rollback; do
+		case "$channel" in
+		candidate) app_version=0.1.0-r13; lang_version=0.1.0-r13; camera_version=99990.7.2-r26; pipe_version=1.6.8-r7 ;;
+		rollback) app_version=0.1.0-r11; lang_version=0.1.0-r11; camera_version=99990.7.2-r24; pipe_version=1.6.8-r7 ;;
+		esac
+		printf '%s\n' \
+			"$channel|pipewire-spa-libcamera|$pipe_version|aarch64|pipewire-spa-libcamera-$pipe_version.apk|$(hash_file "$stage/$channel/aarch64/pipewire-spa-libcamera-$pipe_version.apk")" \
+			"$channel|advanced-snapshot|$app_version|aarch64|advanced-snapshot-$app_version.apk|$(hash_file "$stage/$channel/aarch64/advanced-snapshot-$app_version.apk")" \
+			"$channel|advanced-snapshot-lang|$lang_version|noarch|advanced-snapshot-lang-$lang_version.apk|$(hash_file "$stage/$channel/noarch/advanced-snapshot-lang-$lang_version.apk")" \
+			"$channel|libcamera|$camera_version|aarch64|libcamera-$camera_version.apk|$(hash_file "$stage/$channel/aarch64/libcamera-$camera_version.apk")" \
+			"$channel|libcamera-ipa|$camera_version|aarch64|libcamera-ipa-$camera_version.apk|$(hash_file "$stage/$channel/aarch64/libcamera-ipa-$camera_version.apk")"
+	done
+} >"$manifest"
+
+printf '%s\n' \
+	'pipewire-spa-libcamera|1.6.8-r7' \
+	'advanced-snapshot|0.1.0-r11' \
+	'advanced-snapshot-lang|0.1.0-r11' \
+	'libcamera|99990.7.2-r24' \
+	'libcamera-ipa|99990.7.2-r24' >"$state"
+printf '%s\n' \
+	'base-package' \
+	'advanced-snapshot><mock-r11' \
+	'advanced-snapshot-lang><mock-r11-lang' \
+	'libcamera><mock-r24' \
+	'libcamera-ipa><mock-r24' | sort >"$world"
+: >"$systemctl_log"
+: >"$smoke_log"
+PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION=1.6.8-r7
+PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION=1.6.8-r7
+PMOS_MOCK_CANDIDATE_APP_VERSION=0.1.0-r13
+PMOS_MOCK_ROLLBACK_APP_VERSION=0.1.0-r11
+PMOS_MOCK_CANDIDATE_LANG_VERSION=0.1.0-r13
+PMOS_MOCK_ROLLBACK_LANG_VERSION=0.1.0-r11
+PMOS_MOCK_CANDIDATE_LIBCAMERA_VERSION=99990.7.2-r26
+PMOS_MOCK_ROLLBACK_LIBCAMERA_VERSION=99990.7.2-r24
+PMOS_MOCK_CANDIDATE_LIBCAMERA_IPA_VERSION=99990.7.2-r26
+PMOS_MOCK_ROLLBACK_LIBCAMERA_IPA_VERSION=99990.7.2-r24
+export PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION \
+	PMOS_MOCK_CANDIDATE_APP_VERSION PMOS_MOCK_ROLLBACK_APP_VERSION \
+	PMOS_MOCK_CANDIDATE_LANG_VERSION PMOS_MOCK_ROLLBACK_LANG_VERSION \
+	PMOS_MOCK_CANDIDATE_LIBCAMERA_VERSION PMOS_MOCK_ROLLBACK_LIBCAMERA_VERSION \
+	PMOS_MOCK_CANDIDATE_LIBCAMERA_IPA_VERSION \
+	PMOS_MOCK_ROLLBACK_LIBCAMERA_IPA_VERSION
+
+runtime_initial_world_hash=$(hash_file "$world")
+runtime_status=$(run_manager status)
+printf '%s\n' "$runtime_status" | grep -q '^state=rollback$'
+runtime_install_sim=$(run_manager --evidence "$TEST_ROOT/runtime-install-sim" install)
+printf '%s\n' "$runtime_install_sim" | grep -q '^transitions=4$'
+[ "$(hash_file "$world")" = "$runtime_initial_world_hash" ]
+runtime_install=$(run_manager --evidence "$TEST_ROOT/runtime-install" --apply install)
+printf '%s\n' "$runtime_install" | grep -q '^state=candidate$'
+grep -q '^libcamera|99990.7.2-r26$' "$state"
+grep -q '^libcamera-ipa|99990.7.2-r26$' "$state"
+grep -q '^libcamera><mock-r26$' "$world"
+runtime_candidate_world_hash=$(hash_file "$world")
+runtime_rollback_sim=$(run_manager --evidence "$TEST_ROOT/runtime-rollback-sim" rollback)
+printf '%s\n' "$runtime_rollback_sim" | grep -q '^transitions=4$'
+[ "$(hash_file "$world")" = "$runtime_candidate_world_hash" ]
+runtime_rollback=$(run_manager --evidence "$TEST_ROOT/runtime-rollback" --apply rollback)
+printf '%s\n' "$runtime_rollback" | grep -q '^state=rollback$'
+grep -q '^libcamera|99990.7.2-r24$' "$state"
+grep -q '^libcamera-ipa|99990.7.2-r24$' "$state"
+[ "$(hash_file "$world")" = "$runtime_initial_world_hash" ]
+
+unset PMOS_MOCK_CANDIDATE_PIPEWIRE_VERSION PMOS_MOCK_ROLLBACK_PIPEWIRE_VERSION \
+	PMOS_MOCK_CANDIDATE_APP_VERSION PMOS_MOCK_ROLLBACK_APP_VERSION \
+	PMOS_MOCK_CANDIDATE_LANG_VERSION PMOS_MOCK_ROLLBACK_LANG_VERSION \
+	PMOS_MOCK_CANDIDATE_LIBCAMERA_VERSION PMOS_MOCK_ROLLBACK_LIBCAMERA_VERSION \
+	PMOS_MOCK_CANDIDATE_LIBCAMERA_IPA_VERSION \
+	PMOS_MOCK_ROLLBACK_LIBCAMERA_IPA_VERSION
+
 printf '%s\n' 'Camera generation manager tests passed'

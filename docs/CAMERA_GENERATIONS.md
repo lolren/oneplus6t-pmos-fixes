@@ -108,6 +108,41 @@ transport and physical camera gates reopen.
   install
 ```
 
+`data/camera-generation-r26-r13.psv` is the complete lower-stack candidate.
+It upgrades `libcamera` and `libcamera-ipa` from r24 to r26 in the same
+transaction as Advanced Snapshot r11 to r13, while retaining PipeWire r7.
+The rollback pair uses the older r24 packages, which are signed by the
+retained `pmos@local-6a8d1587` development key; the manager's key directory
+contains that public key as well as the current candidate key. This is an
+opt-in source/package candidate only: it still requires live preview, manual
+shutter/gain, focus, colour and suspend testing before becoming the default.
+
+Its stage has five APKs in each repository rather than the three-package UI
+stage:
+
+```text
+candidate/aarch64/   APKINDEX.tar.gz, libcamera, libcamera-ipa,
+                     pipewire-spa-libcamera, advanced-snapshot
+candidate/noarch/    advanced-snapshot-lang
+rollback/aarch64/    APKINDEX.tar.gz, libcamera, libcamera-ipa,
+                     pipewire-spa-libcamera, advanced-snapshot
+rollback/noarch/     advanced-snapshot-lang
+```
+
+Review it with:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r26-r13 \
+  --manifest data/camera-generation-r26-r13.psv \
+  install
+```
+
+The simulation must report four transitions (both libcamera packages and the
+two Advanced Snapshot packages); PipeWire remains unchanged. The same
+simulation-first and rollback requirements apply as to the three-package
+generations.
+
 ## Stage layout
 
 ```text
@@ -128,8 +163,9 @@ camera-r7-r5/
         └── advanced-snapshot-lang-0.1.0-r4.apk
 ```
 
-Each repository must contain exactly its three APKs. Extra APK files are a
-hard failure, preventing dependency resolution from silently selecting an
+Each repository must contain exactly the APKs described by its manifest (three
+for the UI-only generations, five for r26/r13). Extra APK files are a hard
+failure, preventing dependency resolution from silently selecting an
 unreviewed build.
 
 A matching development AArch64 stage can be downloaded from the

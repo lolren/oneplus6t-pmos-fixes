@@ -53,6 +53,10 @@ add)
 	rollback_app=${PMOS_MOCK_ROLLBACK_APP_VERSION:-0.1.0-r0}
 	candidate_lang=${PMOS_MOCK_CANDIDATE_LANG_VERSION:-0.1.0-r1}
 	rollback_lang=${PMOS_MOCK_ROLLBACK_LANG_VERSION:-0.1.0-r0}
+	candidate_libcamera=${PMOS_MOCK_CANDIDATE_LIBCAMERA_VERSION:-}
+	rollback_libcamera=${PMOS_MOCK_ROLLBACK_LIBCAMERA_VERSION:-}
+	candidate_libcamera_ipa=${PMOS_MOCK_CANDIDATE_LIBCAMERA_IPA_VERSION:-}
+	rollback_libcamera_ipa=${PMOS_MOCK_ROLLBACK_LIBCAMERA_IPA_VERSION:-}
 	simulate=no
 	target=
 	for argument in "$@"; do
@@ -71,6 +75,10 @@ add)
 		to_app=$candidate_app
 		from_lang=$rollback_lang
 		to_lang=$candidate_lang
+		from_libcamera=$rollback_libcamera
+		to_libcamera=$candidate_libcamera
+		from_libcamera_ipa=$rollback_libcamera_ipa
+		to_libcamera_ipa=$candidate_libcamera_ipa
 	else
 		action=Downgrading
 		from_pipewire=$candidate_pipewire
@@ -79,17 +87,35 @@ add)
 		to_app=$rollback_app
 		from_lang=$candidate_lang
 		to_lang=$rollback_lang
+		from_libcamera=$candidate_libcamera
+		to_libcamera=$rollback_libcamera
+		from_libcamera_ipa=$candidate_libcamera_ipa
+		to_libcamera_ipa=$rollback_libcamera_ipa
 	fi
 	operation_count=0
 	[ "$from_pipewire" = "$to_pipewire" ] || operation_count=$((operation_count + 1))
 	[ "$from_app" = "$to_app" ] || operation_count=$((operation_count + 1))
 	[ "$from_lang" = "$to_lang" ] || operation_count=$((operation_count + 1))
+	[ "$candidate_libcamera" = "$rollback_libcamera" ] || operation_count=$((operation_count + 1))
+	[ "$candidate_libcamera_ipa" = "$rollback_libcamera_ipa" ] || operation_count=$((operation_count + 1))
 	operation_index=0
 	if [ "$from_pipewire" != "$to_pipewire" ]; then
 		operation_index=$((operation_index + 1))
 		printf '(%s/%s) %s pipewire-spa-libcamera (%s -> %s)\n' \
 			"$operation_index" "$operation_count" "$action" \
 			"$from_pipewire" "$to_pipewire"
+	fi
+	if [ "$from_libcamera" != "$to_libcamera" ]; then
+		operation_index=$((operation_index + 1))
+		printf '(%s/%s) %s libcamera (%s -> %s)\n' \
+			"$operation_index" "$operation_count" "$action" \
+			"$from_libcamera" "$to_libcamera"
+	fi
+	if [ "$from_libcamera_ipa" != "$to_libcamera_ipa" ]; then
+		operation_index=$((operation_index + 1))
+		printf '(%s/%s) %s libcamera-ipa (%s -> %s)\n' \
+			"$operation_index" "$operation_count" "$action" \
+			"$from_libcamera_ipa" "$to_libcamera_ipa"
 	fi
 	if [ "$from_app" != "$to_app" ]; then
 		operation_index=$((operation_index + 1))
@@ -116,23 +142,45 @@ add)
 			"pipewire-spa-libcamera|$candidate_pipewire" \
 			"advanced-snapshot|$candidate_app" \
 			"advanced-snapshot-lang|$candidate_lang" >"$state_tmp"
+		if [ -n "$candidate_libcamera" ]; then
+			printf '%s\n' \
+				"libcamera|$candidate_libcamera" \
+				"libcamera-ipa|$candidate_libcamera_ipa" >>"$state_tmp"
+		fi
 		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
-			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/' \
+			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/ && \
+			$0 !~ /^libcamera(-ipa)?($|[<>=~])/' \
 			"$PMOS_MOCK_WORLD" >"$world_tmp"
 		printf '%s\n' \
 			"advanced-snapshot><mock-${candidate_app##*-}" \
 			"advanced-snapshot-lang><mock-${candidate_lang##*-}-lang" >>"$world_tmp"
+		if [ -n "$candidate_libcamera" ]; then
+			printf '%s\n' \
+				"libcamera><mock-${candidate_libcamera##*-}" \
+				"libcamera-ipa><mock-${candidate_libcamera_ipa##*-}" >>"$world_tmp"
+		fi
 	else
 		printf '%s\n' \
 			"pipewire-spa-libcamera|$rollback_pipewire" \
 			"advanced-snapshot|$rollback_app" \
 			"advanced-snapshot-lang|$rollback_lang" >"$state_tmp"
+		if [ -n "$rollback_libcamera" ]; then
+			printf '%s\n' \
+				"libcamera|$rollback_libcamera" \
+				"libcamera-ipa|$rollback_libcamera_ipa" >>"$state_tmp"
+		fi
 		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
-			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/' \
+			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/ && \
+			$0 !~ /^libcamera(-ipa)?($|[<>=~])/' \
 			"$PMOS_MOCK_WORLD" >"$world_tmp"
 		printf '%s\n' \
 			"advanced-snapshot><mock-${rollback_app##*-}" \
 			"advanced-snapshot-lang><mock-${rollback_lang##*-}-lang" >>"$world_tmp"
+		if [ -n "$rollback_libcamera" ]; then
+			printf '%s\n' \
+				"libcamera><mock-${rollback_libcamera##*-}" \
+				"libcamera-ipa><mock-${rollback_libcamera_ipa##*-}" >>"$world_tmp"
+		fi
 		if [ "$candidate_pipewire" != "$rollback_pipewire" ]; then
 			printf '%s\n' "pipewire-spa-libcamera><mock-${rollback_pipewire##*-}" \
 				>>"$world_tmp"

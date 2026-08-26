@@ -8,7 +8,9 @@ export LC_ALL=C
 
 PROGRAM=${0##*/}
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-PACKAGES='pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang'
+BASE_PACKAGES='pipewire-spa-libcamera advanced-snapshot advanced-snapshot-lang'
+OPTIONAL_PACKAGES='libcamera libcamera-ipa'
+PACKAGES=$BASE_PACKAGES
 
 operation=
 apply=no
@@ -26,7 +28,9 @@ usage() {
 	cat <<EOF
 Usage: $PROGRAM [options] status|install|rollback
 
-Manage the reviewed OnePlus 6T PipeWire/Advanced Snapshot generation.
+Manage the reviewed OnePlus 6T camera generation. A generation may contain
+the PipeWire/Advanced Snapshot UI pair and, for a lower-stack transition,
+matching libcamera runtime packages.
 
 Options:
   --stage DIR          offline repository root containing candidate/rollback
@@ -147,8 +151,35 @@ manifest_package() {
 [ "$(manifest_header schema)" = 1 ] || die 'unsupported manifest schema'
 manifest_generation=$(manifest_header generation)
 manifest_compatible=$(manifest_header compatible)
+
+# Legacy generations contain the three UI/media packages. New lower-stack
+# generations opt in to both runtime rows together; accepting one without its
+# matching IPA would make rollback and dependency verification incomplete.
+for optional_package in $OPTIONAL_PACKAGES; do
+	optional_candidate_count=$(awk -F '|' -v package="$optional_package" \
+		'$1 == "candidate" && $2 == package { count++ } END { print count + 0 }' \
+		"$manifest")
+	optional_rollback_count=$(awk -F '|' -v package="$optional_package" \
+		'$1 == "rollback" && $2 == package { count++ } END { print count + 0 }' \
+		"$manifest")
+	if [ "$optional_candidate_count" -eq 0 ] && \
+		[ "$optional_rollback_count" -eq 0 ]; then
+		continue
+	fi
+	[ "$optional_candidate_count" -eq 1 ] && \
+		[ "$optional_rollback_count" -eq 1 ] || \
+		die "manifest must contain one candidate and rollback row for $optional_package"
+	PACKAGES="$PACKAGES $optional_package"
+done
+
+package_count=0
+for package in $PACKAGES; do
+	package_count=$((package_count + 1))
+done
 manifest_rows=$(awk -F '|' '$1 == "candidate" || $1 == "rollback" { count++ } END { print count + 0 }' "$manifest")
-[ "$manifest_rows" -eq 6 ] || die 'manifest must contain exactly six package rows'
+expected_manifest_rows=$((package_count * 2))
+[ "$manifest_rows" -eq "$expected_manifest_rows" ] || \
+	die "manifest must contain exactly $expected_manifest_rows package rows"
 
 for manifest_channel in candidate rollback; do
 	for manifest_name in $PACKAGES; do
@@ -188,12 +219,12 @@ rollback_app_version=$(manifest_package rollback advanced-snapshot 3)
 rollback_lang_version=$(manifest_package rollback advanced-snapshot-lang 3)
 
 transition_count=0
-[ "$candidate_pipewire_version" = "$rollback_pipewire_version" ] || \
-	transition_count=$((transition_count + 1))
-[ "$candidate_app_version" = "$rollback_app_version" ] || \
-	transition_count=$((transition_count + 1))
-[ "$candidate_lang_version" = "$rollback_lang_version" ] || \
-	transition_count=$((transition_count + 1))
+for transition_package in $PACKAGES; do
+	transition_candidate_version=$(manifest_package candidate "$transition_package" 3)
+	transition_rollback_version=$(manifest_package rollback "$transition_package" 3)
+	[ "$transition_candidate_version" = "$transition_rollback_version" ] || \
+		transition_count=$((transition_count + 1))
+done
 [ "$transition_count" -gt 0 ] || die 'candidate and rollback generations are identical'
 
 installed_version() {
@@ -208,16 +239,18 @@ installed_version() {
 }
 
 current_channel() {
-	state_pipewire=$(installed_version pipewire-spa-libcamera)
-	state_app=$(installed_version advanced-snapshot)
-	state_lang=$(installed_version advanced-snapshot-lang)
-	if [ "$state_pipewire" = "$candidate_pipewire_version" ] && \
-		[ "$state_app" = "$candidate_app_version" ] && \
-		[ "$state_lang" = "$candidate_lang_version" ]; then
+	channel_matches() {
+		wanted_channel=$1
+		for channel_package in $PACKAGES; do
+			channel_expected=$(manifest_package "$wanted_channel" \
+				"$channel_package" 3)
+			channel_actual=$(installed_version "$channel_package")
+			[ "$channel_actual" = "$channel_expected" ] || return 1
+		done
+	}
+	if channel_matches candidate; then
 		printf '%s\n' candidate
-	elif [ "$state_pipewire" = "$rollback_pipewire_version" ] && \
-		[ "$state_app" = "$rollback_app_version" ] && \
-		[ "$state_lang" = "$rollback_lang_version" ]; then
+	elif channel_matches rollback; then
 		printf '%s\n' rollback
 	else
 		printf '%s\n' mixed
@@ -280,8 +313,8 @@ for repository_root in "$candidate_root" "$rollback_root"; do
 	[ -r "$repository_root/aarch64/APKINDEX.tar.gz" ] || \
 		die "missing repository index: $repository_root/aarch64/APKINDEX.tar.gz"
 	repository_apks=$(find "$repository_root" -type f -name '*.apk' -print | wc -l | tr -d ' ')
-	[ "$repository_apks" -eq 3 ] || \
-		die "$repository_root must contain exactly three APK files"
+	[ "$repository_apks" -eq "$package_count" ] || \
+		die "$repository_root must contain exactly $package_count APK files"
 done
 
 package_path() {
@@ -348,12 +381,12 @@ verify_package() {
 verify_all_packages() {
 	: >"$package_hash_log"
 	: >"$package_signature_log"
-	verify_package candidate pipewire-spa-libcamera "$candidate_pipewire"
-	verify_package candidate advanced-snapshot "$candidate_app"
-	verify_package candidate advanced-snapshot-lang "$candidate_lang"
-	verify_package rollback pipewire-spa-libcamera "$rollback_pipewire"
-	verify_package rollback advanced-snapshot "$rollback_app"
-	verify_package rollback advanced-snapshot-lang "$rollback_lang"
+	for verify_channel in candidate rollback; do
+		for verify_name in $PACKAGES; do
+			verify_package "$verify_channel" "$verify_name" \
+				"$(package_path "$verify_channel" "$verify_name")"
+		done
+	done
 }
 
 verify_all_packages
@@ -408,35 +441,32 @@ world_before_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
 run_transaction() {
 	transaction_mode=$1
 	if [ "$operation" = install ]; then
-		if [ "$transaction_mode" = simulate ]; then
-			root_run apk add --simulate --upgrade --allow-untrusted --network=no \
-				--interactive=no --repository "$candidate_root" \
-				"$candidate_app" "$candidate_lang"
-		else
-			root_run apk add --upgrade --allow-untrusted --network=no \
-				--interactive=no --repository "$candidate_root" \
-				"$candidate_app" "$candidate_lang"
-		fi
+		transaction_target=candidate
 	else
-		if [ "$rollback_pipewire_version" = "$candidate_pipewire_version" ]; then
-			if [ "$transaction_mode" = simulate ]; then
-				root_run apk add --simulate --allow-untrusted --network=no \
-					--interactive=no --repository "$rollback_root" \
-					"$rollback_app" "$rollback_lang"
-			else
-				root_run apk add --allow-untrusted --network=no \
-					--interactive=no --repository "$rollback_root" \
-					"$rollback_app" "$rollback_lang"
-			fi
-		elif [ "$transaction_mode" = simulate ]; then
-			root_run apk add --simulate --allow-untrusted --network=no \
-				--interactive=no --repository "$rollback_root" \
-				"$rollback_pipewire" "$rollback_app" "$rollback_lang"
-		else
-			root_run apk add --allow-untrusted --network=no \
-				--interactive=no --repository "$rollback_root" \
-				"$rollback_pipewire" "$rollback_app" "$rollback_lang"
-		fi
+		transaction_target=rollback
+	fi
+	transaction_root=$stage/$transaction_target
+
+	# Pass only packages whose version changes. This keeps UI-only generations
+	# compatible with the dependency-owned PipeWire behavior while allowing a
+	# lower-stack generation to carry libcamera and its IPA atomically.
+	set --
+	for transaction_package in $PACKAGES; do
+		transaction_candidate_version=$(manifest_package candidate \
+			"$transaction_package" 3)
+		transaction_rollback_version=$(manifest_package rollback \
+			"$transaction_package" 3)
+		[ "$transaction_candidate_version" = "$transaction_rollback_version" ] || \
+			set -- "$@" "$(package_path "$transaction_target" \
+				"$transaction_package")"
+	done
+	[ "$#" -gt 0 ] || die 'camera generation has no package transition'
+	if [ "$transaction_mode" = simulate ]; then
+		root_run apk add --simulate --upgrade --allow-untrusted --network=no \
+			--interactive=no --repository "$transaction_root" "$@"
+	else
+		root_run apk add --upgrade --allow-untrusted --network=no \
+			--interactive=no --repository "$transaction_root" "$@"
 	fi
 }
 
@@ -444,35 +474,23 @@ validate_transaction_log() {
 	log_path=$1
 	if [ "$operation" = install ]; then
 		log_action=Upgrading
-		from_pipewire=$rollback_pipewire_version
-		from_app=$rollback_app_version
-		from_lang=$rollback_lang_version
-		to_pipewire=$candidate_pipewire_version
-		to_app=$candidate_app_version
-		to_lang=$candidate_lang_version
+		from_channel=rollback
+		to_channel=candidate
 		forbidden_actions='Installing|Downgrading|Removing|Purging'
 	else
 		log_action=Downgrading
-		from_pipewire=$candidate_pipewire_version
-		from_app=$candidate_app_version
-		from_lang=$candidate_lang_version
-		to_pipewire=$rollback_pipewire_version
-		to_app=$rollback_app_version
-		to_lang=$rollback_lang_version
+		from_channel=candidate
+		to_channel=rollback
 		forbidden_actions='Installing|Upgrading|Removing|Purging'
 	fi
-	if [ "$from_pipewire" != "$to_pipewire" ]; then
-		grep -F "$log_action pipewire-spa-libcamera ($from_pipewire -> $to_pipewire)" \
-			"$log_path" >/dev/null || die 'PipeWire transition missing from apk output'
-	fi
-	if [ "$from_app" != "$to_app" ]; then
-		grep -F "$log_action advanced-snapshot ($from_app -> $to_app)" \
-			"$log_path" >/dev/null || die 'application transition missing from apk output'
-	fi
-	if [ "$from_lang" != "$to_lang" ]; then
-		grep -F "$log_action advanced-snapshot-lang ($from_lang -> $to_lang)" \
-			"$log_path" >/dev/null || die 'language transition missing from apk output'
-	fi
+	for transition_package in $PACKAGES; do
+		from_version=$(manifest_package "$from_channel" "$transition_package" 3)
+		to_version=$(manifest_package "$to_channel" "$transition_package" 3)
+		[ "$from_version" = "$to_version" ] || \
+			grep -F "$log_action $transition_package ($from_version -> $to_version)" \
+				"$log_path" >/dev/null || \
+				die "transition missing for $transition_package"
+	done
 	log_count=$(grep -c " $log_action " "$log_path" || true)
 	[ "$log_count" -eq "$transition_count" ] || \
 		die "expected exactly $transition_count $log_action operations"
@@ -612,7 +630,11 @@ for world_snapshot in "$evidence/world.before" "$evidence/world.after"; do
 	if grep -Eq '^pipewire-spa-libcamera($|[<>=~])' "$world_snapshot"; then
 		die 'PipeWire must remain dependency-owned, not a world entry'
 	fi
-	awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/' "$world_snapshot" \
+	# Runtime rows may be explicitly selected by apk during a lower-stack
+	# transition. They are generation-owned too, so their world identities must
+	# not be mistaken for unrelated user packages.
+	awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
+		$0 !~ /^libcamera(-ipa)?($|[<>=~])/' "$world_snapshot" \
 		>"$world_snapshot.unrelated"
 	grep -E '^advanced-snapshot(-lang)?($|[<>=~])' "$world_snapshot" | sort \
 		>"$world_snapshot.app"

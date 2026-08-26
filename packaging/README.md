@@ -35,8 +35,9 @@ and off by default; it is not a libcamera automatic-flash implementation.
 
 The package also installs `pmos-manage-camera-generation`, the default r7/r5,
 opt-in r7/r6 capture-safety, opt-in r7/r7 save-feedback, opt-in r7/r10
-adjustment-safety, opt-in r7/r11 bounded-flash and legacy r7/r1 through r7/r4 immutable manifests,
-the public verification key and the non-image all-sensor runner. It also installs
+adjustment-safety, opt-in r7/r11 bounded-flash, the opt-in r26/r13 lower-stack
+generation and legacy r7/r1 through r7/r4 immutable manifests, the current
+and retained rollback public verification keys and the non-image all-sensor runner. It also installs
 `pmos-safe-upgrade`, whose simulation-first gate blocks ordinary `apk upgrade`
 transactions that touch camera-critical packages. The
 manager does not contain APKs or a private key and does nothing without an
