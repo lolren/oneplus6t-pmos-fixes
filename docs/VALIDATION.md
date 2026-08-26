@@ -1402,3 +1402,31 @@ camera-r7-r7 archive: 09d291bb92ab5027abbc74677c48a2ec304ee1041e48d43e1cc7f202dc
 The signed `camera-r7-r7` generation keeps PipeWire r7 unchanged, retains the
 r8 app pair for rollback and is opt-in. It is not hardware-accepted because
 the reference phone still has no usable SSH/ADB/fastboot runtime transport.
+
+## Advanced Snapshot r10 adjustment-serialization generation
+
+Date: 2026-08-26. Advanced Snapshot commit
+`2a9763b8f42c1bb755a507de1cc49ed3c8f09a77` serializes and cancels image-
+adjustment helper processes. A newer Exposure, Colour, Contrast or Detail
+request invalidates the older generation; camera switches, page teardown and
+stream stop also invalidate it. Stale completion callbacks are ignored, which
+prevents rapid slider movement from applying old values after a newer request
+or keeping a dead helper attached to the camera page.
+
+The r10 source archive SHA-512 is
+`ebb1e7818dd9777a5b794ba0667cf449957949a0f3d6e4cb014f12f85538b2d9b9dfad9fe5ec700e2c3accbd6e555cfc457f7cde78c22a03ef93b060bfc1a5b5`.
+The clean postmarketOS edge AArch64/musl build completed with all 15
+cross-compiled tests passing (6 application and 9 Aperture), and the
+independent package validator accepted both signed APKs:
+
+```text
+advanced-snapshot-0.1.0-r10.apk: f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9
+advanced-snapshot-lang-0.1.0-r10.apk: 2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9
+camera-r7-r10 archive: b6f8e692c8e8fa59b749b2cb8c9c1ed0e92e14e27bbe99dd7fe948c6db29e5c5
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The signed stage keeps PipeWire r7 unchanged and retains the r9 app pair for
+rollback. It is an opt-in, uninstalled candidate: the reference phone still
+has no usable SSH/ADB/fastboot runtime transport, so native preview, saved
+photo, video, display and rollback acceptance remain open.

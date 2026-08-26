@@ -1,0 +1,10 @@
+schema|1
+generation|oneplus6t-r7-r10
+compatible|oneplus,fajita
+signing-key|pmos@local-6a8b0868.rsa.pub|31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+candidate|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1
+candidate|advanced-snapshot|0.1.0-r10|aarch64|advanced-snapshot-0.1.0-r10.apk|f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9
+candidate|advanced-snapshot-lang|0.1.0-r10|noarch|advanced-snapshot-lang-0.1.0-r10.apk|2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9
+rollback|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1
+rollback|advanced-snapshot|0.1.0-r9|aarch64|advanced-snapshot-0.1.0-r9.apk|9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555
+rollback|advanced-snapshot-lang|0.1.0-r9|noarch|advanced-snapshot-lang-0.1.0-r9.apk|59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa

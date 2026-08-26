@@ -5,7 +5,7 @@ pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r9 Advanced Snapshot
+device-specific identifier. The current patch carries the r10 Advanced Snapshot
 source recipe; the previously signed r7/r6 candidate generation remains the
 r8 app candidate, and the phone's
 accepted runtime baseline remains Advanced Snapshot r1 until recovery and a
@@ -16,7 +16,7 @@ fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`51976b99c6e6b9b9d6de1987e1e64d4cfaebe4e1537bc17699ced5d259dce91a`.
+`9dd5aeff9619090a36dcf863161d19d2fbe2237cf7f176ba0a937c16af8ce8c3`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -42,8 +42,8 @@ Applying the integration patch to the reviewed base produces:
 - `libcamera-99990.7.2-r24` and `libcamera-ipa-99990.7.2-r24`;
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r9` plus
-  `advanced-snapshot-lang-0.1.0-r9` (capture-save feedback candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r10` plus
+  `advanced-snapshot-lang-0.1.0-r10` (adjustment-serialization candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -66,6 +66,8 @@ during live diagnosis. They do not imply that many public releases.
 | `advanced-snapshot-lang-0.1.0-r8.apk` (capture-safety candidate) | `f615e75c29579bf877e611a10178021936ab5f63388e9d0f9d041d39b0e56c77` |
 | `advanced-snapshot-0.1.0-r9.apk` (save-feedback candidate) | `9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555` |
 | `advanced-snapshot-lang-0.1.0-r9.apk` (save-feedback candidate) | `59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` |
+| `advanced-snapshot-0.1.0-r10.apk` (adjustment-serialization candidate) | `f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9` |
+| `advanced-snapshot-lang-0.1.0-r10.apk` (adjustment-serialization candidate) | `2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -105,6 +107,18 @@ APK hashes are `9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555
 for the main package and
 `59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` for the
 language package. Both passed the cross-build and package validator.
+
+The r10 adjustment-serialization candidate is pinned to Advanced Snapshot
+commit `2a9763b8f42c1bb755a507de1cc49ed3c8f09a77`. Its GitHub source archive
+has SHA-512
+`ebb1e7818dd9777a5b794ba0667cf449957949a0f3d6e4cb014f12f85538b2d9b9dfad9fe5ec700e2c3accbd6e555cfc457f7cde78c22a03ef93b060bfc1a5b5`.
+The candidate invalidates stale adjustment helpers on superseding slider
+requests and page or camera teardown. Its r10 APK hashes are
+`f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9` and
+`2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9`.
+The signed `camera-r7-r10` stage keeps PipeWire r7 unchanged and retains the
+r9 app pair for rollback. It is source/package validated but not installed or
+hardware-accepted.
 
 ## Current installation and rollback baseline
 
