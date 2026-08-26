@@ -5,7 +5,7 @@ pmaports: six SDM845 kernel patches, seventeen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r11 Advanced Snapshot
+device-specific identifier. The current patch carries the r12 Advanced Snapshot
 source recipe, the libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
@@ -19,7 +19,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`7be05142a61879f8ba9ae4b04f50b1b04520a6c17aad83e4aadce9fe2c48744d`.
+`ef65e287d8c539abe21f7b892c35eb1aac2afac6881478864341316ae04a19bc`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -48,8 +48,8 @@ Applying the integration patch to the reviewed base produces:
   the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r11` plus
-  `advanced-snapshot-lang-0.1.0-r11` (bounded rear-flash candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r12` plus
+  `advanced-snapshot-lang-0.1.0-r12` (manual-exposure and rear-flash candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.

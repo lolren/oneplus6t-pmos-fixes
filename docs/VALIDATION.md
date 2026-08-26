@@ -1576,7 +1576,7 @@ accepted the patch with `git am`, passed `git diff --check`, and built all 46
 selected simple-IPA/libcamera targets with GCC, Meson and Ninja using
 `-Dwerror=true`. The regenerated pmaports integration patch applies cleanly to
 base `875bddba6538818f2c3c9849e184f40688ad5140`; its current SHA-256 is
-`7be05142a61879f8ba9ae4b04f50b1b04520a6c17aad83e4aadce9fe2c48744d`.
+`ef65e287d8c539abe21f7b892c35eb1aac2afac6881478864341316ae04a19bc`.
 
 This is a source checkpoint, not a release claim: r26 APKs have not been
 built, installed or hardware-accepted. A clean AArch64 package build and a
