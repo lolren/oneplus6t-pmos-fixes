@@ -72,7 +72,7 @@ values after a newer request, camera switch, page teardown or stream stop. The
 matching signed AArch64 stage is published as the
 [`camera-r7-r10` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r10).
 The archive SHA-256 is
-`b6f8e692c8e8fa59b749b2cb8c9c1ed0e92e14e27bbe99dd7fe948c6db29e5c5`.
+`0e6533469b381ef11cde8a0d3ab849a0f4f2e131b6b65a14dd1a2deb6d76c34b`.
 It passed source/package validation but remains uninstalled until the phone's
 transport and physical camera gates reopen.
 

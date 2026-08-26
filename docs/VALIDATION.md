@@ -1422,7 +1422,7 @@ independent package validator accepted both signed APKs:
 ```text
 advanced-snapshot-0.1.0-r10.apk: f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9
 advanced-snapshot-lang-0.1.0-r10.apk: 2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9
-camera-r7-r10 archive: b6f8e692c8e8fa59b749b2cb8c9c1ed0e92e14e27bbe99dd7fe948c6db29e5c5
+camera-r7-r10 archive: 0e6533469b381ef11cde8a0d3ab849a0f4f2e131b6b65a14dd1a2deb6d76c34b
 public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
 ```
 
