@@ -24,7 +24,8 @@ SCRIPTS = \
 	scripts/run-waydroid-camera-probe \
 	scripts/compare-waydroid-camera-probes \
 	scripts/audio-route-policy \
-	scripts/check-audio-routing
+	scripts/check-audio-routing \
+	scripts/run-device-acceptance
 
 PYTHON_SCRIPTS = \
 	scripts/v4l2-focus-control.py \
@@ -62,8 +63,9 @@ test:
 		tests/test-waydroid-probe-compare.sh \
 		tests/test-waydroid-gpu-sync.sh \
 		tests/test-waydroid-rgb-preview.sh \
-		tests/test-waydroid-gapps.sh \
+		 tests/test-waydroid-gapps.sh \
 		tests/test-display-report.sh \
+		tests/test-device-acceptance.sh \
 		tests/test-update-guard.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
@@ -82,6 +84,7 @@ test:
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
+	sh tests/test-device-acceptance.sh
 	sh tests/test-device-transport.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
@@ -164,3 +167,5 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/waydroid-location-bridge.py" \
 		"$(DESTDIR)$(SBINDIR)/pmos-waydroid-location-bridge"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-audio-routing" "$(DESTDIR)$(SBINDIR)/pmos-check-audio-routing"
+	ln -sfn "$(LIBEXECDIR)/scripts/run-device-acceptance" \
+		"$(DESTDIR)$(SBINDIR)/pmos-run-device-acceptance"

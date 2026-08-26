@@ -1,0 +1,206 @@
+#!/bin/sh
+set -eu
+
+# Run the bounded OnePlus 6T acceptance checks as one evidence-producing job.
+# Individual checks remain authoritative; this script only sequences them and
+# records their exit status. It never configures a modem, changes time or
+# power policy, writes a Waydroid overlay, reboots, or touches boot state.
+
+PROGRAM=${0##*/}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+compatible_file=${PMOS_ACCEPT_COMPATIBLE_FILE:-/proc/device-tree/compatible}
+output=
+with_camera=no
+with_messages=no
+with_gapps=no
+nfc_poll=no
+close_camera_apps=no
+stability_seconds=60
+
+mobile_data_check=${PMOS_ACCEPT_MOBILE_DATA_CHECK:-$SCRIPT_DIR/check-mobile-data}
+audio_check=${PMOS_ACCEPT_AUDIO_CHECK:-$SCRIPT_DIR/check-audio-routing}
+display_check=${PMOS_ACCEPT_DISPLAY_CHECK:-$SCRIPT_DIR/check-display}
+location_check=${PMOS_ACCEPT_LOCATION_CHECK:-$SCRIPT_DIR/check-location}
+nfc_check=${PMOS_ACCEPT_NFC_CHECK:-$SCRIPT_DIR/check-nfc}
+power_check=${PMOS_ACCEPT_POWER_CHECK:-$SCRIPT_DIR/check-power}
+waydroid_check=${PMOS_ACCEPT_WAYDROID_CHECK:-$SCRIPT_DIR/check-waydroid-health}
+messages_check=${PMOS_ACCEPT_MESSAGES_CHECK:-$SCRIPT_DIR/check-messages}
+gapps_check=${PMOS_ACCEPT_GAPPS_CHECK:-$SCRIPT_DIR/check-waydroid-gapps}
+camera_check=${PMOS_ACCEPT_CAMERA_CHECK:-$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM --output DIRECTORY [options]
+
+Run the OnePlus 6T postmarketOS acceptance checks and keep each report in a
+new evidence directory. The normal checks are mobile data, audio, display,
+location, NFC, power and the Waydroid health preflight.
+
+Options:
+  --output DIRECTORY       new or empty evidence directory
+  --with-camera            run the bounded all-sensor autofocus/stability test
+  --with-messages          launch Chatty and verify its D-Bus window
+  --with-gapps             verify the optional Waydroid Google packages
+  --nfc-poll               explicitly poll for an NFC reader/tag
+  --close-camera-apps      allow the camera test to stop camera applications
+  --stability-seconds N    camera rear-camera window, 10..300 (default: 60)
+  --help                   show this help
+
+The camera test restarts only the graphical user's PipeWire/WirePlumber
+services and is therefore opt-in. Location and NFC evidence can contain
+private coordinates or tag identifiers; keep the output directory private.
+No option flashes, reboots, changes partitions or modifies boot state.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a directory'
+		output=$2
+		shift 2
+		;;
+	--with-camera)
+		with_camera=yes
+		shift
+		;;
+	--with-messages)
+		with_messages=yes
+		shift
+		;;
+	--with-gapps)
+		with_gapps=yes
+		shift
+		;;
+	--nfc-poll)
+		nfc_poll=yes
+		shift
+		;;
+	--close-camera-apps)
+		close_camera_apps=yes
+		shift
+		;;
+	--stability-seconds)
+		[ "$#" -ge 2 ] || die '--stability-seconds requires a value'
+		stability_seconds=$2
+		shift 2
+		;;
+	--help|-h)
+		usage
+		exit 0
+		;;
+	*)
+		die "unknown argument: $1"
+		;;
+	esac
+done
+
+[ -n "$output" ] || die '--output is required'
+case "$stability_seconds" in
+''|*[!0-9]*) die '--stability-seconds must be an integer' ;;
+esac
+[ "$stability_seconds" -ge 10 ] && [ "$stability_seconds" -le 300 ] || \
+	die '--stability-seconds must be between 10 and 300'
+
+if [ -e "$output" ]; then
+	[ -d "$output" ] || die "output is not a directory: $output"
+	[ -z "$(find "$output" -mindepth 1 -maxdepth 1 -print -quit)" ] || \
+		die "refusing non-empty output directory: $output"
+else
+	mkdir -p "$output"
+fi
+output=$(CDPATH= cd -- "$output" && pwd)
+
+for command_name in find grep mkdir tr date uname; do
+	command -v "$command_name" >/dev/null 2>&1 || \
+		die "missing required command: $command_name"
+done
+
+summary=$output/summary.psv
+report=$output/report.txt
+printf 'check|status|log\n' >"$summary"
+
+failures=0
+record() {
+	name=$1
+	status=$2
+	log=$3
+	printf '%s|%s|%s\n' "$name" "$status" "$log" >>"$summary"
+	[ "$status" -eq 0 ] || failures=$((failures + 1))
+}
+
+run_check() {
+	name=$1
+	shift
+	log=$output/$name.log
+	set +e
+	"$@" >"$log" 2>&1
+	status=$?
+	set -e
+	record "$name" "$status" "$log"
+}
+
+printf 'report=oneplus6t-device-acceptance\n' >"$report"
+printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$report"
+printf 'compatible_file=%s\n' "$compatible_file" >>"$report"
+printf 'output=%s\n' "$output" >>"$report"
+
+compatibility_log=$output/compatibility.log
+if [ -r "$compatible_file" ] &&
+	tr '\000' '\n' <"$compatible_file" | grep -Fxq oneplus,fajita; then
+	printf '%s\n' 'compatible=pass' >"$compatibility_log"
+	record compatibility 0 "$compatibility_log"
+else
+	printf '%s\n' 'compatible=fail' >"$compatibility_log"
+	record compatibility 1 "$compatibility_log"
+fi
+
+run_check mobile-data "$mobile_data_check"
+run_check audio-routing "$audio_check"
+run_check display "$display_check"
+run_check location "$location_check"
+if [ "$nfc_poll" = yes ]; then
+	run_check nfc "$nfc_check" --poll
+else
+	run_check nfc "$nfc_check"
+fi
+run_check power "$power_check"
+run_check waydroid-health "$waydroid_check" --status
+
+if [ "$with_messages" = yes ]; then
+	run_check messages "$messages_check" --activate
+fi
+if [ "$with_gapps" = yes ]; then
+	run_check waydroid-gapps "$gapps_check"
+fi
+if [ "$with_camera" = yes ]; then
+	if [ "$close_camera_apps" = yes ]; then
+		run_check camera "$camera_check" \
+			--output "$output/camera" \
+			--stability-seconds "$stability_seconds" \
+			--focus-result required --close-camera-apps
+	else
+		run_check camera "$camera_check" \
+			--output "$output/camera" \
+			--stability-seconds "$stability_seconds" \
+			--focus-result required
+	fi
+fi
+
+{
+	cat "$summary"
+	printf 'failures=%s\n' "$failures"
+	if [ "$failures" -eq 0 ]; then
+		printf '%s\n' 'result=pass'
+	else
+		printf '%s\n' 'result=fail'
+	fi
+} >>"$report"
+
+cat "$report"
+[ "$failures" -eq 0 ]

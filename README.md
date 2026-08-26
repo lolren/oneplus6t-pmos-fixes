@@ -71,6 +71,22 @@ A local Alpine `APKBUILD` and its upstreaming checklist are in
 [packaging/](packaging/). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for why a
 carrier-specific profile must not be placed in the OnePlus device package.
 
+## Unattended acceptance run
+
+After the phone is reachable, collect one reproducible evidence directory for
+the daily-use checks:
+
+```sh
+pmos-run-device-acceptance --output "$HOME/oneplus6t-acceptance/run-1"
+```
+
+Add `--with-camera --close-camera-apps` for the bounded all-sensor focus and
+stability test, `--with-messages` for Chatty activation, or
+`--with-gapps` for the optional Waydroid Play Store package check. The
+runner keeps per-check logs and `summary.psv`; see
+[docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for the safety boundary and privacy
+notes.
+
 ## Time synchronization
 
 A fresh installation with a 1970 clock can have working packet transport while

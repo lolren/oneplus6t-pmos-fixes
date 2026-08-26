@@ -59,6 +59,8 @@ The main procedures are:
 - [DISPLAY.md](DISPLAY.md), [LOCATION.md](LOCATION.md),
   [AUDIO.md](AUDIO.md), [NFC.md](NFC.md) and [POWER.md](POWER.md) — bounded
   diagnostics and physical acceptance sequences; and
+- [ACCEPTANCE.md](ACCEPTANCE.md) — one unattended evidence-producing run
+  covering the daily-use checks and optional camera/Messages/GAPPS gates; and
 - [SAFETY.md](SAFETY.md) — operations that are deliberately refused.
 
 ## Current device gate
