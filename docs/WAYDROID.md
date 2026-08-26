@@ -338,6 +338,13 @@ explicit YUV and encoder streams keep the old path. This is why `preview`,
 baseline: an RGB preview can be faster while a multi-stream video request
 remains NV12-bound.
 
+The installed `pmos-compare-waydroid-camera-probes` helper compares two saved
+results from the same profile. It verifies matching camera IDs and valid
+records, reports per-camera FPS deltas and preserves the surface RGB evidence
+for review. It is intentionally a reporting tool, not an automatic approval:
+visual colour/order, JPEG, exposure/focus and provider lifecycle checks still
+decide whether a candidate is retained.
+
 The final r35 run on 25 August 2026 verified all three YUV/JPEG/private stream
 sets. Camera 0 reported rear autofocus states `[3, 4]`, camera 2 reported
 `[3, 5]`, and the fixed-focus front camera reported `[0]`. All cameras

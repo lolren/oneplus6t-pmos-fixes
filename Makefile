@@ -22,6 +22,7 @@ SCRIPTS = \
 	scripts/check-waydroid-health \
 	scripts/check-waydroid-gapps \
 	scripts/run-waydroid-camera-probe \
+	scripts/compare-waydroid-camera-probes \
 	scripts/audio-route-policy \
 	scripts/check-audio-routing
 
@@ -55,6 +56,7 @@ test:
 		 tests/test-apn-selection.sh tests/test-messages-check.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
+		tests/test-waydroid-probe-compare.sh \
 		tests/test-waydroid-gpu-sync.sh \
 		tests/test-waydroid-rgb-preview.sh \
 		tests/test-waydroid-gapps.sh \
@@ -72,6 +74,7 @@ test:
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-probe-runner.sh
+	sh tests/test-waydroid-probe-compare.sh
 	sh tests/test-waydroid-gpu-sync.sh
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
@@ -149,6 +152,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-gapps"
 	ln -sfn "$(LIBEXECDIR)/scripts/run-waydroid-camera-probe" \
 		"$(DESTDIR)$(SBINDIR)/pmos-run-waydroid-camera-probe"
+	ln -sfn "$(LIBEXECDIR)/scripts/compare-waydroid-camera-probes" \
+		"$(DESTDIR)$(SBINDIR)/pmos-compare-waydroid-camera-probes"
 	ln -sfn "$(LIBEXECDIR)/scripts/v4l2-focus-control.py" "$(DESTDIR)$(SBINDIR)/pmos-v4l2-focus-control"
 	ln -sfn "$(LIBEXECDIR)/scripts/waydroid-location-bridge.py" \
 		"$(DESTDIR)$(SBINDIR)/pmos-waydroid-location-bridge"

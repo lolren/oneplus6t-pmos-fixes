@@ -1,0 +1,143 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM BASELINE_RESULT CANDIDATE_RESULT
+
+Compare two saved Camera2 probe results without installing or changing a
+Waydroid package. The files should come from the same profile and camera
+sequence, for example two 'preview' or two 'surface' runs.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
+	usage
+	exit 0
+fi
+[ "$#" -eq 2 ] || {
+	usage >&2
+	exit 2
+}
+
+baseline=$1
+candidate=$2
+[ -r "$baseline" ] || die "baseline result is not readable: $baseline"
+[ -r "$candidate" ] || die "candidate result is not readable: $candidate"
+
+awk '
+function field(line, wanted,    i, pair) {
+	for (i = 1; i <= NF; i++) {
+		split($i, pair, "=")
+		if (pair[1] == wanted)
+			return pair[2]
+	}
+	return ""
+}
+
+function valid_fps(value) {
+	return value ~ /^[0-9]+([.][0-9]+)?$/
+}
+
+function record_camera(store, line,    id) {
+	id = field(line, "id")
+	if (id == "")
+		return
+	store[id, "valid"] = field(line, "valid")
+	store[id, "fps"] = field(line, "privateFps")
+	store[id, "interval"] = field(line, "privateIntervalMs")
+	store[id, "timing"] = field(line, "privateTimingSource")
+	store[id, "rgb"] = field(line, "surfaceRgbMean")
+	store[id, "rgbRange"] = field(line, "surfaceRgbRange")
+	store[id, "seen"] = 1
+}
+
+FNR == 1 {
+	file++
+}
+
+/^CAMERA / {
+	if (file == 1)
+		record_camera(baseline, $0)
+	else if (file == 2)
+		record_camera(candidate, $0)
+}
+
+/^PROBE_DONE / {
+	if (file == 1) {
+		baseline_done = $0
+		baseline_profile = field($0, "profile")
+	} else if (file == 2) {
+		candidate_done = $0
+		candidate_profile = field($0, "profile")
+	}
+}
+
+END {
+	failed = 0
+	printf "comparison=waydroid-camera-probes\n"
+	printf "baseline_profile=%s\n", baseline_profile == "" ? "full" : baseline_profile
+	printf "candidate_profile=%s\n", candidate_profile == "" ? "full" : candidate_profile
+	if (baseline_done == "" || candidate_done == "") {
+		print "result=fail reason=missing-probe-summary"
+		exit 1
+	}
+	if (baseline_profile != candidate_profile) {
+		print "result=fail reason=profile-mismatch"
+		exit 1
+	}
+
+	for (key in baseline) {
+		if (key !~ SUBSEP "seen$")
+			continue
+		id = substr(key, 1, index(key, SUBSEP) - 1)
+		if (!candidate[id, "seen"]) {
+			printf "camera=%s result=fail reason=missing-candidate-camera\n", id
+			failed = 1
+			continue
+		}
+		if (baseline[id, "valid"] != "true" || candidate[id, "valid"] != "true")
+			failed = 1
+		b = baseline[id, "fps"]
+		c = candidate[id, "fps"]
+		if (valid_fps(b) && valid_fps(c) && (b + 0) != 0)
+			delta = sprintf("%.1f", ((c - b) / b) * 100)
+		else
+			delta = "unavailable"
+		printf "camera=%s baseline_valid=%s candidate_valid=%s " \
+			"baseline_fps=%s candidate_fps=%s fps_delta_percent=%s " \
+			"baseline_interval_ms=%s candidate_interval_ms=%s " \
+			"baseline_timing=%s candidate_timing=%s " \
+			"baseline_rgb_mean=%s candidate_rgb_mean=%s " \
+			"baseline_rgb_range=%s candidate_rgb_range=%s\n",
+			id, baseline[id, "valid"], candidate[id, "valid"], b, c, delta,
+			baseline[id, "interval"], candidate[id, "interval"],
+			baseline[id, "timing"], candidate[id, "timing"],
+			baseline[id, "rgb"], candidate[id, "rgb"],
+			baseline[id, "rgbRange"], candidate[id, "rgbRange"]
+	}
+
+	for (key in candidate) {
+		if (key !~ SUBSEP "seen$")
+			continue
+		id = substr(key, 1, index(key, SUBSEP) - 1)
+		if (!baseline[id, "seen"]) {
+			printf "camera=%s result=fail reason=unexpected-candidate-camera\n", id
+			failed = 1
+		}
+	}
+
+	if (failed) {
+		print "result=fail reason=invalid-or-incomplete-camera-results"
+		exit 1
+	}
+	print "result=pass note=performance-and-colour-values-require-human-acceptance"
+}
+' "$baseline" "$candidate"

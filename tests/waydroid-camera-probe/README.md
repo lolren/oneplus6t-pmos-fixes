@@ -148,6 +148,22 @@ Camera3 provider, software ISP or device mode. These measurements do not
 replace visual latency review, but they make the Android preview boundary
 repeatable without relying on a particular camera application.
 
+For a repeatable before/after report, save two results from the same profile
+and run:
+
+```sh
+pmos-compare-waydroid-camera-probes \
+  /tmp/oneplus6t-preview-r35.txt \
+  /tmp/oneplus6t-preview-r37.txt
+```
+
+The comparison checks that the same camera IDs are present and valid, then
+prints each camera's FPS change, interval, timing source and any
+`surfaceRgbMean`/`surfaceRgbRange` fields. It deliberately does not decide
+that a faster result has acceptable image quality; keep or roll back a
+candidate only after the visual, JPEG and lifecycle checks in
+`docs/VALIDATION.md`.
+
 The profile extra is diagnostic only. An unknown value safely falls back to
 `full`, and the default command remains the complete acceptance probe.
 

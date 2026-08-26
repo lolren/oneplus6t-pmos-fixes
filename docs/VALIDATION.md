@@ -1149,6 +1149,12 @@ build-tools 36.0.0. The host runner and full fixes test suite pass, including
 the new surface-profile command check. This is diagnostic instrumentation only;
 it does not change the native camera stack or Waydroid overlay.
 
+The host-side `pmos-compare-waydroid-camera-probes` helper is also covered by
+the fixes test suite. Given two saved results from the same profile, it checks
+camera identity and validity and reports per-camera FPS/interval changes plus
+surface RGB evidence. It does not turn performance alone into acceptance; the
+candidate still requires the image, JPEG and provider lifecycle checks above.
+
 ## Full I/O-pressure overlay guard
 
 Date: 2026-08-26. The original preflight considered only PSI `some` pressure,
