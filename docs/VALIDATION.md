@@ -1290,3 +1290,17 @@ initialisation workaround `console=ttyMSM0,115200`; this is a boot-race
 workaround, not a validated fix for brightness-triggered static. The phone is
 still physically wedged, so no new display-driver candidate has been installed
 and no static-line regression has been re-tested.
+
+## Waydroid location-provider capability boundary
+
+Date: 2026-08-26. The location bridge now creates a test provider with only
+the capabilities it can populate through Android's shell interface. It sends
+latitude/longitude and parsed accuracy, while leaving altitude, speed and
+bearing support unadvertised; no location field is fabricated. This keeps the
+mock-provider result honest for map applications and preserves the explicit
+warning that it is not a native GNSS HAL.
+
+The four location-bridge tests, Python compilation and complete `make test`
+suite pass. The change is still source-only: the phone's physical recovery
+gate prevents native GNSS, GeoClue, Waydroid location and map acceptance from
+being claimed.

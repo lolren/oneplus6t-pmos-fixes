@@ -80,6 +80,9 @@ class LocationBridgeTests(unittest.TestCase):
         self.assertIn("set-test-provider-location fused", result.stdout)
         self.assertIn("50.20965000,-2.23353333", result.stdout)
         self.assertIn("dry_run=True", result.stdout)
+        self.assertNotIn("--supportsAltitude", result.stdout)
+        self.assertNotIn("--supportsSpeed", result.stdout)
+        self.assertNotIn("--supportsBearing", result.stdout)
 
 
 if __name__ == "__main__":

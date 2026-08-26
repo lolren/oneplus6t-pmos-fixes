@@ -279,9 +279,6 @@ class WaydroidProvider:
         add = self._location_command(
             "add-test-provider",
             self.provider,
-            "--supportsAltitude",
-            "--supportsSpeed",
-            "--supportsBearing",
             "--powerRequirement",
             "1",
             "--accuracy",

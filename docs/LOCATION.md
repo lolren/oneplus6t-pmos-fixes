@@ -87,6 +87,12 @@ The default provider is `fused`; use `--provider gps` only when the Android
 image's location service explicitly requires that provider. The bridge cleans
 up a test provider that it created when it exits.
 
+The Android shell interface accepts latitude/longitude, accuracy and time for
+each injected location. The bridge therefore does not advertise or fabricate
+altitude, speed or bearing support; parsed altitude is retained only as source
+metadata. This prevents clients from being promised fields that this bridge
+cannot populate.
+
 This path is intentionally labeled a mock provider. Android exposes test
 locations as mock locations, and some Google Play or anti-spoofing clients may
 reject them. It can make Maps-like applications display a host fix, but it is
