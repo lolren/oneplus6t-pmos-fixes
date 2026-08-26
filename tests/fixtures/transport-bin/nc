@@ -1,0 +1,8 @@
+#!/bin/sh
+for argument in "$@"; do
+	[ "$argument" = -z ] && exit 0
+done
+if [ "${PMOS_TRANSPORT_FIXTURE_NC:-banner}" = missing ]; then
+	exit 0
+fi
+printf '%s\n' 'SSH-2.0-fixture'

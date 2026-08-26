@@ -1,0 +1,253 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+target_ip=${PMOS_TRANSPORT_IP:-172.16.42.1}
+sysfs_root=${PMOS_TRANSPORT_SYSFS_ROOT:-/sys}
+udevadm_cmd=${PMOS_TRANSPORT_UDEVADM:-udevadm}
+ip_cmd=${PMOS_TRANSPORT_IP_COMMAND:-ip}
+ping_cmd=${PMOS_TRANSPORT_PING:-ping}
+nc_cmd=${PMOS_TRANSPORT_NC:-nc}
+timeout_cmd=${PMOS_TRANSPORT_TIMEOUT_COMMAND:-timeout}
+adb_cmd=${PMOS_TRANSPORT_ADB:-adb}
+fastboot_cmd=${PMOS_TRANSPORT_FASTBOOT:-fastboot}
+probe_timeout=${PMOS_TRANSPORT_TIMEOUT:-4}
+requested_interface=${PMOS_TRANSPORT_INTERFACE:-}
+output=${PMOS_TRANSPORT_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Collect a read-only host-side report for the OnePlus 6T USB transport. It
+distinguishes postmarketOS CDC-NCM networking, ADB and USB fastboot, and tests
+the target SSH TCP port and banner without authenticating or changing state.
+
+Options:
+  --ip ADDRESS             target USB-network address (default: 172.16.42.1)
+  --interface NAME         USB-network interface to inspect
+  --sysfs-root DIRECTORY   sysfs fixture or alternate root
+  --output FILE            refuse to overwrite and write the report there
+  -h, --help               show this help
+
+The report never reboots, resets USB, invokes fastboot commands that write
+data, sends an ADB shell command, changes networking, or sends credentials.
+The host ADB client may start its local enumeration daemon when `adb devices`
+is used; no phone-side ADB command is executed.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--ip)
+		[ "$#" -ge 2 ] || die '--ip requires an address'
+		target_ip=$2
+		shift 2
+		;;
+	--interface)
+		[ "$#" -ge 2 ] || die '--interface requires a name'
+		requested_interface=$2
+		shift 2
+		;;
+	--sysfs-root)
+		[ "$#" -ge 2 ] || die '--sysfs-root requires a directory'
+		sysfs_root=$2
+		shift 2
+		;;
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		die "unknown argument: $1"
+		;;
+	esac
+done
+
+[ -n "$target_ip" ] || die 'target address must not be empty'
+case "$probe_timeout" in
+''|*[!0-9]*) die 'PMOS_TRANSPORT_TIMEOUT must be a non-negative integer' ;;
+esac
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+available() {
+	command -v "$1" >/dev/null 2>&1
+}
+
+property_value() {
+	key=$1
+	data=$2
+	printf '%s\n' "$data" | awk -F= -v wanted="$key" \
+		'$1 == wanted { print substr($0, length($1) + 2); exit }'
+}
+
+is_oneplus_properties() {
+	data=$1
+	printf '%s\n' "$data" | grep -Eq \
+		'(^|\n)(ID_VENDOR=OnePlus|ID_MODEL=OnePlus_6T)($|\n)'
+}
+
+udev_properties() {
+	path=$1
+	if available "$udevadm_cmd"; then
+		"$udevadm_cmd" info --query=property --path="$path" 2>/dev/null || true
+	else
+		printf '%s\n' ''
+	fi
+}
+
+usb_interface=none
+usb_driver=unavailable
+usb_result=unavailable
+if [ -d "$sysfs_root/class/net" ]; then
+	for net in "$sysfs_root"/class/net/*; do
+		[ -d "$net" ] || continue
+		interface=${net##*/}
+		properties=$(udev_properties "/class/net/$interface")
+		if is_oneplus_properties "$properties"; then
+			usb_interface=$interface
+			usb_driver=$(property_value ID_USB_DRIVER "$properties")
+			[ -n "$usb_driver" ] || usb_driver=unknown
+			usb_result=pass
+			break
+		fi
+	done
+fi
+
+if [ -n "$requested_interface" ]; then
+	interface=$requested_interface
+else
+	interface=$usb_interface
+fi
+
+network_link=unavailable
+network_address=unavailable
+if available "$ip_cmd" && [ "$interface" != none ] && [ -n "$interface" ]; then
+	link_output=$("$ip_cmd" -o link show dev "$interface" 2>/dev/null || true)
+	if printf '%s\n' "$link_output" | grep -Eq 'state[[:space:]]+UP|<[A-Z0-9_,]*UP[A-Z0-9_,]*>'; then
+		network_link=pass
+	else
+		network_link=fail
+	fi
+	address_output=$("$ip_cmd" -o -4 addr show dev "$interface" 2>/dev/null || true)
+	if printf '%s\n' "$address_output" | grep -Eq \
+		'[[:space:]]inet[[:space:]][0-9]+(\.[0-9]+){3}/'; then
+		network_address=pass
+	else
+		network_address=fail
+	fi
+fi
+
+ping_result=unavailable
+if available "$ping_cmd"; then
+	if "$ping_cmd" -c 1 -W 1 "$target_ip" >/dev/null 2>&1; then
+		ping_result=pass
+	else
+		ping_result=fail
+	fi
+fi
+
+ssh_tcp=unavailable
+ssh_banner=unavailable
+if available "$nc_cmd"; then
+	if "$nc_cmd" -z -w "$probe_timeout" "$target_ip" 22 >/dev/null 2>&1; then
+		ssh_tcp=pass
+		if available "$timeout_cmd"; then
+			banner=$("$timeout_cmd" "$probe_timeout" "$nc_cmd" \
+				-w "$probe_timeout" "$target_ip" 22 \
+				</dev/null 2>/dev/null | sed -n '1p') || true
+		else
+			banner=$("$nc_cmd" -w "$probe_timeout" "$target_ip" 22 \
+				</dev/null 2>/dev/null | sed -n '1p') || true
+		fi
+		case "$banner" in
+		SSH-2.0-*) ssh_banner=pass ;;
+		'') ssh_banner=missing ;;
+		*) ssh_banner=invalid ;;
+		esac
+	else
+		ssh_tcp=fail
+		ssh_banner=not-tested
+	fi
+fi
+
+adb_devices=unavailable
+adb_oneplus=unavailable
+if available "$adb_cmd" && available "$timeout_cmd"; then
+	adb_output=$("$timeout_cmd" "$probe_timeout" "$adb_cmd" devices -l 2>&1 || true)
+	adb_count=$(printf '%s\n' "$adb_output" | awk \
+		'NR > 1 && $2 ~ /^(device|unauthorized|offline)$/ { count++ }
+		END { print count + 0 }')
+	adb_devices=$adb_count
+	if printf '%s\n' "$adb_output" | grep -Eqi \
+		'(^|[[:space:]])(product:fajita|model:oneplus|oneplus[[:space:]])'; then
+		adb_oneplus=present
+	else
+		adb_oneplus=absent
+	fi
+fi
+
+fastboot_devices=unavailable
+if available "$fastboot_cmd" && available "$timeout_cmd"; then
+	fastboot_output=$("$timeout_cmd" "$probe_timeout" "$fastboot_cmd" devices 2>&1 || true)
+	fastboot_devices=$(printf '%s\n' "$fastboot_output" | awk \
+		'NF > 0 { count++ } END { print count + 0 }')
+fi
+
+transport_mode=unknown
+if [ "$usb_result" = pass ]; then
+	case "$usb_driver" in
+	cdc_ncm|cdc_ether|rndis_host) transport_mode=postmarketos-usb-network ;;
+	*) transport_mode=oneplus-usb-network-unknown-driver ;;
+	esac
+elif [ "$adb_oneplus" = present ]; then
+	transport_mode=adb
+elif [ "$fastboot_devices" != unavailable ] && [ "$fastboot_devices" -gt 0 ]; then
+	transport_mode=fastboot-or-other-fastboot-device
+fi
+
+if [ "$ssh_banner" = pass ]; then
+	assessment=ssh-usable
+elif [ "$ping_result" = pass ] && [ "$ssh_tcp" = pass ]; then
+	assessment=network-up-ssh-not-speaking
+elif [ "$fastboot_devices" != unavailable ] && [ "$fastboot_devices" -gt 0 ]; then
+	assessment=fastboot-device-present
+elif [ "$adb_oneplus" = present ]; then
+	assessment=adb-device-present
+else
+	assessment=transport-not-confirmed
+fi
+
+printf 'report=oneplus6t-device-transport\n'
+printf 'target_ip=%s\n' "$target_ip"
+printf 'oneplus_usb=%s\n' "$usb_result"
+printf 'oneplus_usb_interface=%s\n' "$usb_interface"
+printf 'oneplus_usb_driver=%s\n' "$usb_driver"
+printf 'transport_mode=%s\n' "$transport_mode"
+printf 'network_interface=%s\n' "$interface"
+printf 'network_link=%s\n' "$network_link"
+printf 'network_address=%s\n' "$network_address"
+printf 'ping=%s\n' "$ping_result"
+printf 'ssh_tcp=%s\n' "$ssh_tcp"
+printf 'ssh_banner=%s\n' "$ssh_banner"
+printf 'adb_devices=%s\n' "$adb_devices"
+printf 'adb_oneplus=%s\n' "$adb_oneplus"
+printf 'fastboot_devices=%s\n' "$fastboot_devices"
+printf 'assessment=%s\n' "$assessment"
+printf '%s\n' 'note=read-only transport report; no authentication, reboot, USB reset, fastboot write or network change was attempted'

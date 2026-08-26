@@ -1,0 +1,9 @@
+#!/bin/sh
+case "$*" in
+*'link show dev'*)
+	printf '%s\n' '50: enxfixture: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP'
+	;;
+*'-4 addr show dev'*)
+	printf '%s\n' '50: enxfixture inet 172.16.42.2/16 scope global enxfixture'
+	;;
+esac

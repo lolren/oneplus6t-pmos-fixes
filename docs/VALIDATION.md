@@ -1282,6 +1282,18 @@ only CDC-NCM control/data interfaces. No reboot, USB reset, overlay access or
 flash operation was attempted. The phone therefore still requires a physical
 power recovery before the health report or any runtime acceptance can resume.
 
+## Host transport-report checkpoint
+
+Date: 2026-08-26. The new host-side
+`scripts/check-device-transport` command reproduced the same boundary
+without authentication or device mutation. It identified the USB device as
+`OnePlus_6T` with driver `cdc_ncm`, confirmed the host address and ping,
+confirmed that TCP/22 accepted a connection, and classified the missing
+`SSH-2.0-*` banner as `network-up-ssh-not-speaking`. It counted no fastboot
+devices and did not classify the separately attached ADB device as the
+OnePlus. Fixture coverage, output-overwrite refusal, shell syntax and the
+complete `make test` suite passed.
+
 ## Waydroid GAPPS verifier
 
 Date: 2026-08-26. The fixes package now includes

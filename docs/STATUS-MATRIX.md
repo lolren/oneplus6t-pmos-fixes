@@ -27,6 +27,17 @@ Audit date: 2026-08-26.
 | Battery life | Read-only power report and timed sampler with documented acceptance sequence | Power report and sampler tests pass | Measure idle, screen-on, camera and suspend drain on the recovered phone before changing governors or suspend policy |
 | Update safety | Camera-critical package guard, immutable generation manifests, backups and retained rollback generations | Update-guard, generation-manager and VibeMarketOS tests pass | Re-run the health gate and complete a real-phone rollback/persistence test |
 
+## Transport evidence
+
+The host-side `scripts/check-device-transport` report is deliberately separate
+from phone runtime acceptance. On 2026-08-26 it confirmed the OnePlus as
+`ID_MODEL=OnePlus_6T` with a CDC-NCM interface, a working
+`172.16.42.2/16` host link and ping to `172.16.42.1`; TCP/22 accepted a
+connection but emitted no SSH banner. `fastboot devices` was empty and ADB
+showed only the separately attached Pixel. This means the phone was not in USB
+fastboot, and the NCM kernel path alone must not be treated as a usable SSH or
+installation session.
+
 ## Reproducibility entry points
 
 From a clean checkout of this repository:
@@ -68,4 +79,3 @@ change the display driver, or claim runtime acceptance. The host-side source,
 tests, package recipes and documentation can continue to be maintained, but
 the phone-side gates above cannot be completed remotely through the current
 interface.
-

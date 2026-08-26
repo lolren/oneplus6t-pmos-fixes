@@ -35,6 +35,9 @@ HOST_BUILD_SCRIPTS = \
 	scripts/package-waydroid-camera \
 	scripts/install-waydroid-camera
 
+HOST_DIAGNOSTIC_SCRIPTS = \
+	scripts/check-device-transport
+
 CAMERA_TEST_SCRIPTS = \
 	tests/camera/run-light-step.sh \
 	tests/camera/validate-pipewire-af.sh
@@ -50,7 +53,7 @@ CAMERA_TEST_PYTHON = \
 all: test
 
 test:
-	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
+	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(HOST_DIAGNOSTIC_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
 		 tests/fixtures/camera-generation-smoke \
 		 tests/test-apn-selection.sh tests/test-messages-check.sh \
@@ -79,6 +82,7 @@ test:
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
+	sh tests/test-device-transport.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py

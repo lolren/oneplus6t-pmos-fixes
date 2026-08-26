@@ -119,6 +119,22 @@ See [docs/DISPLAY.md](docs/DISPLAY.md). The display-driver fix is not yet
 claimed; physical recovery and timestamped before/after evidence are required
 before preparing a kernel candidate.
 
+## USB transport diagnostics
+
+When the phone is connected to the Linux host, distinguish its postmarketOS
+USB-network mode from ADB or fastboot with the read-only host command:
+
+```sh
+./scripts/check-device-transport \
+  --output /tmp/oneplus6t-device-transport.txt
+```
+
+In particular, `ping=pass` plus `ssh_tcp=pass` but
+`ssh_banner=missing` means the USB/network kernel path is alive while the
+phone-side SSH userspace is not responding. An empty `fastboot devices` result
+is normal while the phone is exposing CDC-NCM rather than fastboot endpoints.
+See [docs/TRANSPORT.md](docs/TRANSPORT.md) for the safe interpretation.
+
 ## Audio and microphone pairing
 
 The audio layer now re-enables WirePlumber's ALSA hardware monitor and exposes

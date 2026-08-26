@@ -1,0 +1,5 @@
+#!/bin/sh
+printf '%s\n' \
+	'ID_VENDOR=OnePlus' \
+	'ID_MODEL=OnePlus_6T' \
+	'ID_USB_DRIVER=cdc_ncm'

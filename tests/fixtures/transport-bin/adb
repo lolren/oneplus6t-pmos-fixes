@@ -1,0 +1,6 @@
+#!/bin/sh
+cat <<EOF
+List of devices attached
+FAKE123 device usb:1-1 product:fajita model:ONEPLUS_A6013 transport_id:1
+
+EOF
