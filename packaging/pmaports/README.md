@@ -54,11 +54,11 @@ Applying the integration patch to the reviewed base produces:
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
-The r26 libcamera revision is a source candidate only at this checkpoint. Its
-standalone manual-control patch has passed an isolated libcamera build and the
-full integration diff applies cleanly, but no r26 APK has been built or
-installed yet. Keep the signed r24/r25 APKs for rollback until a clean
-AArch64 build and live manual-exposure test pass.
+The r26 libcamera revision is now source- and package-validated. Its standalone
+manual-control patch and the full integration diff apply cleanly; the clean
+AArch64 runtime and IPA APKs are signed and verified below. They remain
+uninstalled until the phone transport is usable and the live manual-exposure
+test passes. Keep the signed r24/r25 APKs for rollback.
 
 ## Reference artifacts
 
@@ -70,6 +70,8 @@ AArch64 build and live manual-exposure test pass.
 | `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
 | `libcamera-99990.7.2-r25.apk` (AF reference candidate) | `ccdfaf820ba6362cfbb4dae3ded92eb9e18542afcdde1596eb8bed91e9e7323f` |
 | `libcamera-ipa-99990.7.2-r25.apk` (AF reference candidate) | `11efa3eaa05e00e0921cbf081fb1b1fe8fdd356a4fc1244cbbb13d90fc14608a` |
+| `libcamera-99990.7.2-r26.apk` (manual-exposure candidate) | `9d7f18701c19db365e981d0e6e741ce87232ccb7f022b47ac525fc90aac60552` |
+| `libcamera-ipa-99990.7.2-r26.apk` (manual-exposure candidate) | `1a2d6228ed4afe9ac5c90500caa92f7c7370799ebbe89c9770da747a615e18d3` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |

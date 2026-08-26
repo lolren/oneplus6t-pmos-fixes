@@ -1605,7 +1605,33 @@ public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
 ```
 
 The package pair is source/package validated but not installed or hardware-
-accepted. The matching libcamera r26 package has not yet been built, and the
-reference phone still has no usable SSH banner, ADB device or fastboot
-transport, so live camera, display, modem, audio, location, NFC, Waydroid,
-battery and rollback acceptance remain open.
+accepted. The matching libcamera r26 packages are recorded in the following
+checkpoint. The reference phone still has no usable SSH banner, ADB device or
+fastboot transport, so live camera, display, modem, audio, location, NFC,
+Waydroid, battery and rollback acceptance remain open.
+
+## Libcamera r26 and PipeWire r7 AArch64 package checkpoint
+
+Date: 2026-08-26. The reproducible pmaports overlay built the patched
+`libcamera-99990.7.2-r26` runtime and IPA packages for edge AArch64/musl with
+all 19 OnePlus/simple-IPA patch files present in the composed tree. The build
+completed 351 Meson/Ninja targets; the manual shutter/gain and continuous-AF
+changes were included. The matching PipeWire r7 and
+`pipewire-spa-libcamera` packages were already built in the same package
+workspace.
+
+The six relevant package signatures verified with the local pmaports APK key:
+
+```text
+libcamera-99990.7.2-r26.apk: 9d7f18701c19db365e981d0e6e741ce87232ccb7f022b47ac525fc90aac60552
+libcamera-ipa-99990.7.2-r26.apk: 1a2d6228ed4afe9ac5c90500caa92f7c7370799ebbe89c9770da747a615e18d3
+pipewire-1.6.8-r7.apk: ac971786a81c05b116e1ce8266b1fb5e317b37c3cdc30c023c1ebaf10ce8f894
+pipewire-spa-libcamera-1.6.8-r7.apk: cf96212aaaa9a98d16109408a1d8a2e6723222154c51a82ef97cee8a0f240898
+advanced-snapshot-0.1.0-r13.apk: 0c12ce8685afcadd1794e4a530f231d461647e41066965b307b2a43d5f121c81
+advanced-snapshot-lang-0.1.0-r13.apk: a03b0a561e4355a4da506e29f0d8b7f16173da694155391e465a3dbfeaab1bd3
+```
+
+Direct payload inspection confirmed AArch64 ELF objects for the libcamera
+runtime, simple IPA module and Advanced Snapshot executable. This is a
+source/package checkpoint only: no phone package was installed, and no live
+preview, focus, exposure, display, modem or rollback result is claimed.
