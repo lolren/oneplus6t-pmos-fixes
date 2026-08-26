@@ -1,0 +1,203 @@
+From f29a0c6a213048113e0decce6f1729ce5e7365d7 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Wed, 26 Aug 2026 04:30:14 +0100
+Subject: [PATCH] android: export native fences for RGB preview
+
+---
+ include/libcamera/internal/egl.h           |  5 +++
+ src/android/camera_request.h               |  2 +-
+ src/android/rgb/post_processor_rgb.cpp     | 25 +++++++++++-
+ src/libcamera/egl.cpp                      | 45 ++++++++++++++++++++++
+ src/libcamera/software_isp/debayer_egl.cpp | 13 +++++--
+ 5 files changed, 85 insertions(+), 5 deletions(-)
+
+diff --git a/include/libcamera/internal/egl.h b/include/libcamera/internal/egl.h
+index 2720ead..53084e9 100644
+--- a/include/libcamera/internal/egl.h
++++ b/include/libcamera/internal/egl.h
+@@ -14,6 +14,7 @@
+ 
+ #include <libcamera/base/log.h>
+ #include <libcamera/base/span.h>
++#include <libcamera/base/unique_fd.h>
+ #include <libcamera/base/utils.h>
+ 
+ /*
+@@ -132,6 +133,7 @@ public:
+ 	void deleteProgram(GLuint programId);
+ 	void syncOutput();
+ 	void flushOutput();
++	UniqueFD exportOutputFence();
+ 
+ private:
+ 	LIBCAMERA_DISABLE_COPY_AND_MOVE(eGL)
+@@ -151,6 +153,9 @@ private:
+ 	PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
+ 	PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
+ 	PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
++	PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR = nullptr;
++	PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR = nullptr;
++	PFNEGLDUPNATIVEFENCEFDANDROIDPROC eglDupNativeFenceFDANDROID = nullptr;
+ 	PFNGLGETSTRINGPROC glGetString;
+ };
+ } //namespace libcamera
+diff --git a/src/android/camera_request.h b/src/android/camera_request.h
+index 5b47918..6493c3c 100644
+--- a/src/android/camera_request.h
++++ b/src/android/camera_request.h
+@@ -49,7 +49,7 @@ public:
+ 		libcamera::UniqueFD fence;
+ 		Status status = Status::Success;
+ 		libcamera::FrameBuffer *internalBuffer = nullptr;
+-		const libcamera::FrameBuffer *srcBuffer = nullptr;
++		libcamera::FrameBuffer *srcBuffer = nullptr;
+ 		std::unique_ptr<CameraBuffer> dstBuffer;
+ 		Camera3RequestDescriptor *request;
+ 
+diff --git a/src/android/rgb/post_processor_rgb.cpp b/src/android/rgb/post_processor_rgb.cpp
+index 70d7e91..5cf7cda 100644
+--- a/src/android/rgb/post_processor_rgb.cpp
++++ b/src/android/rgb/post_processor_rgb.cpp
+@@ -9,6 +9,8 @@
+ 
+ #include <cerrno>
+ #include <cstring>
++#include <memory>
++#include <poll.h>
+ 
+ #include <libcamera/base/log.h>
+ #include <libcamera/formats.h>
+@@ -19,6 +21,21 @@ using namespace libcamera;
+ 
+ LOG_DEFINE_CATEGORY(RGB)
+ 
++static bool waitSourceFence(FrameBuffer &source)
++{
++	std::unique_ptr<Fence> fence = source.releaseFence();
++	if (!fence || !fence->isValid())
++		return true;
++
++	struct pollfd fds = { fence->fd().get(), POLLIN, 0 };
++	int ret;
++	do {
++		ret = poll(&fds, 1, -1);
++	} while (ret < 0 && errno == EINTR);
++
++	return ret == 1 && !(fds.revents & (POLLERR | POLLNVAL));
++}
++
+ int PostProcessorRgb::configure(const StreamConfiguration &inCfg,
+ 				const StreamConfiguration &outCfg)
+ {
+@@ -51,9 +68,15 @@ int PostProcessorRgb::configure(const StreamConfiguration &inCfg,
+ void PostProcessorRgb::process(
+ 	Camera3RequestDescriptor::StreamBuffer *streamBuffer)
+ {
+-	const FrameBuffer &source = *streamBuffer->srcBuffer;
++	FrameBuffer &source = *streamBuffer->srcBuffer;
+ 	CameraBuffer *destination = streamBuffer->dstBuffer.get();
+ 
++	if (!waitSourceFence(source)) {
++		LOG(RGB, Error) << "Failed waiting for RGB source fence";
++		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
++		return;
++	}
++
+ 	if (source.planes().size() != 1 || destination->numPlanes() != 1) {
+ 		LOG(RGB, Error) << "RGB stream does not have one plane";
+ 		processComplete.emit(streamBuffer, PostProcessor::Status::Error);
+diff --git a/src/libcamera/egl.cpp b/src/libcamera/egl.cpp
+index bb1feba..828fe6c 100644
+--- a/src/libcamera/egl.cpp
++++ b/src/libcamera/egl.cpp
+@@ -112,6 +112,43 @@ void eGL::flushOutput()
+ 	glFlush();
+ }
+ 
++/**
++ * \brief Export a native fence for the queued rendering output
++ *
++ * Create an Android native-fence sync object after flushing the current GL
++ * command stream. Callers can attach the returned descriptor to a framebuffer
++ * release fence and let the consumer wait asynchronously. An empty descriptor
++ * means that the EGL implementation does not provide the extension or that
++ * fence creation failed; callers must then use syncOutput().
++ */
++UniqueFD eGL::exportOutputFence()
++{
++	ASSERT(tid_ == Thread::currentId());
++
++	if (!eglCreateSyncKHR || !eglDestroySyncKHR ||
++	    !eglDupNativeFenceFDANDROID)
++		return {};
++
++	flushOutput();
++
++	const EGLint attributes[] = { EGL_NONE };
++	EGLSyncKHR sync = eglCreateSyncKHR(display_, EGL_SYNC_NATIVE_FENCE_ANDROID,
++					   attributes);
++	if (sync == EGL_NO_SYNC_KHR) {
++		LOG(eGL, Debug) << "eglCreateSyncKHR native fence failed";
++		return {};
++	}
++
++	EGLint fd = eglDupNativeFenceFDANDROID(display_, sync);
++	eglDestroySyncKHR(display_, sync);
++	if (fd == EGL_NO_NATIVE_FENCE_FD_ANDROID || fd < 0) {
++		LOG(eGL, Debug) << "eglDupNativeFenceFDANDROID failed";
++		return {};
++	}
++
++	return UniqueFD(fd);
++}
++
+ /**
+  * \brief Attach a texture to a frame-buffer-object
+  *
+@@ -435,6 +472,14 @@ int eGL::initEGLContext()
+ 		goto fail;
+ 	}
+ 
++	eglCreateSyncKHR = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
++	eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
++	eglDupNativeFenceFDANDROID = (PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
++		eglGetProcAddress("eglDupNativeFenceFDANDROID");
++	if (!eglCreateSyncKHR || !eglDestroySyncKHR ||
++	    !eglDupNativeFenceFDANDROID)
++		LOG(eGL, Info) << "EGL native-fence export unavailable; using glFinish";
++
+ 	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+ 	if (!glEGLImageTargetTexture2DOES) {
+ 		LOG(eGL, Error) << "glEGLImageTargetTexture2DOES not found";
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index b3e29a1..21f72c7 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -20,6 +20,7 @@
+ #include <libcamera/base/span.h>
+ #include <libcamera/base/utils.h>
+ 
++#include <libcamera/fence.h>
+ #include <libcamera/formats.h>
+ 
+ #include <libyuv/convert_from_argb.h>
+@@ -868,10 +869,16 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 	/*
+ 	 * convertRgbaToNv12() has already completed a synchronous glReadPixels()
+ 	 * and written the output from the CPU. A second full GPU wait is
+-	 * redundant for NV12, but remains required for direct RGB DMA-BUF output.
++	 * redundant for NV12. RGB output exports a native release fence when EGL
++	 * supports it; otherwise it retains the synchronous fallback.
+ 	 */
+-	if (!outputIsNv12_)
+-		egl_.syncOutput();
++	if (!outputIsNv12_) {
++		UniqueFD fence = egl_.exportOutputFence();
++		if (fence.isValid())
++			output->_d()->setFence(std::make_unique<Fence>(std::move(fence)));
++		else
++			egl_.syncOutput();
++	}
+ 	bench_.finishFrame();
+ 
+ 	outputBufferReady.emit(output);

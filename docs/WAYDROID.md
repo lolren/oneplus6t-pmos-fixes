@@ -21,6 +21,7 @@ separately; see [CAMERA.md](CAMERA.md).
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
 | RGB private-preview candidate | Texture-only `IMPLEMENTATION_DEFINED` streams can use Android RGBX/XBGR buffers, so the GPU output avoids the NV12 `glReadPixels()` and libyuv conversion; encoder and explicit YUV streams retain NV12. Phone acceptance is pending. |
+| Native RGB release-fence candidate | When Android's EGL native-fence extension is available, GPU-written RGB preview buffers carry a native release fence and mapped RGB consumers wait on it before CPU access; the older synchronous `glFinish()` path remains the safe fallback. Phone acceptance is pending. |
 | DMA-heap internal buffers | Falls back to CMA/system DMA heaps when the mainline image does not provide the legacy Android gralloc allocator. |
 | YUV, JPEG and private streams | Preview, analysis and still-capture paths used by ordinary Camera2 applications all return data. |
 | Logical JPEG BLOB sizing | Places the Camera3 JPEG footer at the logical buffer end expected by Android even when minigbm aligns the physical plane. |
@@ -50,7 +51,7 @@ camera UI by themselves; an Android camera application consumes them.
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
   software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
   conditional-mipmap, redundant-clear, NV12-fence and RGB-private-preview
-  patches (`0002`–`0010`).
+  patches (`0002`–`0011`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -116,7 +117,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's sixteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the ten Android patches in numeric order:
+the eleven Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -136,13 +137,15 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0007-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0008-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0009-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0010-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0011-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
 mismatch. The reviewed order ends with generic frame duration, generic
 autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion,
 robust buffer/JPEG handling, SIGPIPE-safe IPA socket teardown, the
-aspect-preserving reduced preview source and the RGB private-preview route.
+aspect-preserving reduced preview source, the RGB private-preview route and
+native RGB release-fence export.
 The seventh patch avoids mipmap
 generation for equal-size and upscaled previews while retaining it for true
 downscales. The eighth patch removes two redundant full-frame clears from the
@@ -151,14 +154,18 @@ unchanged. The ninth patch removes only the post-readback `glFinish()` for
 NV12 output; direct RGB DMA-BUF output retains synchronization. The fifth patch
 is deliberately small: it changes only the two
 libcamera IPC send calls that can otherwise deliver SIGPIPE after an IPA peer
-closes. The sixth through tenth patches are performance candidates; all five
+closes. The sixth through eleventh patches are performance candidates; all six
 must be accepted on the phone before they are treated as a runtime baseline.
 The ninth patch is limited to NV12 output, where `glReadPixels()` already
 provides the required GPU completion before the CPU writes the emitted buffer.
 The tenth patch selects RGBX/XBGR only for texture-like private streams. It
 keeps explicit YUV and encoder usage on NV12, imports the actual DMA-BUF
 fourcc for RGB output and retains the GPU fence for buffers still written by
-the GPU.
+the GPU. The eleventh patch exports that RGB completion as an Android native
+release fence when the EGL extension is available, and makes mapped RGB
+consumers wait on the source fence before CPU access. If the extension is not
+available, the existing synchronous `glFinish()` fallback remains in use; this
+patch is a phone-gated performance candidate, not a guarantee of higher FPS.
 
 ## Build a runtime bundle
 
@@ -333,7 +340,10 @@ multi-stream conversion load. This distinction is required before changing
 the GPU default: the accepted r35 path still reads an
 RGBA frame back to CPU memory and converts it to Android NV12. Patch 0010 adds
 a separate texture-only private RGB route that avoids that readback;
-explicit YUV and encoder streams keep the old path. This is why `preview`,
+explicit YUV and encoder streams keep the old path. Patch 0011 can replace the
+RGB path's blocking completion with an Android native release fence when the
+EGL extension is present; it leaves the synchronous fallback intact. This is
+why `preview`,
 `preview-yuv` and `surface` must all be compared before changing the runtime
 baseline: an RGB preview can be faster while a multi-stream video request
 remains NV12-bound.

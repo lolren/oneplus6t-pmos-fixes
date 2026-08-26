@@ -166,7 +166,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid conditional preview mipmaps candidate | Equal-size and upscaled previews avoid regenerating an unnecessary EGL mipmap chain; true downscales retain mipmaps; phone acceptance is pending. |
 | Waydroid redundant-clear candidate | The GPU ISP skips two full-frame clears that are immediately overwritten by full-screen Bayer/scaler passes; shaders, buffers and fallback paths are unchanged; phone acceptance is pending. |
 | Waydroid NV12 fence-elision candidate | The GPU ISP avoids a second full GPU wait after synchronous RGBA readback and CPU NV12 conversion; direct RGB output keeps its fence; phone acceptance is pending. |
-| Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12; phone acceptance is pending. |
+| Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12. The follow-on native-fence candidate exports GPU completion to Android when supported and keeps a synchronous fallback; phone acceptance is pending. |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7, Snapshot r3 and
@@ -346,9 +346,10 @@ tag. See [docs/NFC.md](docs/NFC.md).
   r6/r0 APKs remain the immediate rollback; the Waydroid r35 lower layer passes
   all three Camera2 stream/AF/EV probes and the GPU/JPEG acceptance capture.
 - Waydroid camera performance: an ARMv7/API-33 r37 RGB-private-preview bundle
-  is built and reproducibly documented, but remains uninstalled pending
-  physical recovery and before/after `preview`, `surface` and JPEG colour
-  acceptance. The r35 overlay remains the rollback baseline.
+  and r38 native-RGB-fence candidate are built and reproducibly documented,
+  but remain uninstalled pending physical recovery and before/after `preview`,
+  `surface` and JPEG colour acceptance. The r35 overlay remains the rollback
+  baseline.
 - Next priorities: complete Advanced Snapshot visual photo/video acceptance
   and UI work. The first immutable camera manifest and guarded generation
   manager plus the ordinary-update safety gate pass host simulation, while the

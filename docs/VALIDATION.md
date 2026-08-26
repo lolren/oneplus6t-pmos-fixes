@@ -1155,6 +1155,51 @@ camera identity and validity and reports per-camera FPS/interval changes plus
 surface RGB evidence. It does not turn performance alone into acceptance; the
 candidate still requires the image, JPEG and provider lifecycle checks above.
 
+## Waydroid RGB native-release-fence candidate
+
+Date: 2026-08-26. The RGB private-preview candidate still completed the GPU
+render with a synchronous `glFinish()`. Android can carry a native release
+fence for a GPU-written buffer, so patch `0011` exports an
+`EGL_SYNC_NATIVE_FENCE_ANDROID` fence when the EGL implementation exposes the
+required functions. The RGB `FrameBuffer` publishes that fence to Camera3;
+the mapped RGB post-processor consumes and waits for it before CPU access.
+When the extension is absent or cannot create a fence, the previous
+synchronous `glFinish()` path remains active. YUV and video-encoder streams
+are unchanged.
+
+The candidate was built from the r37 RGB source with the same clean ARMv7/API
+33 configuration, NDK, dependency prefix and `softisp-gpu=enabled` settings.
+The fresh build completed all 198 compile/link targets, regenerated and
+verified the software-IPA signature, and staged the runtime files. Patch
+`0010` followed by `0011` applies cleanly in a temporary worktree and
+`git diff --check` is clean. No device installation or FPS improvement is
+claimed: the extension and fence behavior must be checked on the phone.
+
+Reproduction identifiers and artifacts from this build are:
+
+```text
+libcamera source candidate commit: f29a0c6a213048113e0decce6f1729ce5e7365d7
+0010-android-route-private-preview-to-rgb.patch: 6bcc844d7330fbeb5d5f3c64abde788f22e58b0f17aba8057df58c3a90ceef72
+0011-android-export-native-rgb-fence.patch: c8ac2b72bf100d5a457c9fc8738ddd02fe46804733a4ef4ac2bd4e95c7f58b83
+waydroid-camera-rgb-r38-gpu.tar.gz: 045962846fa9bc21aedbf8e62b33c332aba1ba847f1f5c7aacd298e6f6055df6
+waydroid-camera-rgb-r38-gpu.sha256: 15c9f9ec2b1663dbf1a380b8ada4129305b097ae2bde86705dafa44a6049462e
+camera.libcamera.so: 3c65c40f7a3aea6ee5e7eb4116c492852a5783588f35b31650f1f11ac4d0acf7
+libcamera.so: 76b6db86d2a56eef4bd0c639af4bf167d186787e02c4378dce5eba0fc0470912
+libcamera-base.so: c2ba957c78e4f889699aae317571c7d0c93f67405a8b0e3ca2cff1b7b6e4f1ec
+libc++_shared.so: 7ce65fd0fdd49236bc2ee618f6968dbb3fca46434845f563f2bb4c994878853e
+ipa_soft_simple.so: 0b372cc7f0b47a5eb2a232d8c0ab26b5968693cd834bf4bc7d318101315941dd
+soft_ipa_proxy: ba0de00f5c4ca21abe281ce05d017dcd1259a140d5516debc7087b52f69d7a70
+```
+
+This is a new, uninstalled generation. After the health gate reports
+`rootfs_mounts=0` and `overlay_precondition=pass`, install it only with the
+backup-protected generation installer. Compare `preview`, `preview-yuv`,
+`surface` and `full` against r35/r37, verify all three cameras, saved JPEG
+colour/order, exposure and focus, and exercise provider stop/start. A missing
+EGL extension should be reported as the synchronous fallback; a stalled
+fence, corrupted buffer, colour swap or lifecycle regression requires rollback
+to the previous generation.
+
 ## Full I/O-pressure overlay guard
 
 Date: 2026-08-26. The original preflight considered only PSI `some` pressure,

@@ -27,11 +27,11 @@ location and Android-container failures cannot obscure one another.
    generations and retained public rollback generations remain.
 4. Broaden Android acceptance: the Waydroid r35 Camera3 lower layer now passes
    the clean all-camera YUV/JPEG/private, AF and EV probe, and its GPU path
-   produces a clean full-size JPEG. A separately built r37 RGB-private-preview
-   candidate is ready for physical comparison, but is not accepted yet. Test
-   real camera applications and lifecycle transitions, then add Play Store
-   support; Android computational HDR and vendor image-quality parity remain
-   unimplemented.
+   produces a clean full-size JPEG. Separately built r37 RGB-private-preview
+   and r38 native-RGB-fence candidates are ready for physical comparison, but
+   are not accepted yet. Test real camera applications and lifecycle
+   transitions, then add Play Store support; Android computational HDR and
+   vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. The reproducible dry-run-first NMEA/test-provider
    bridge and read-only native location report now exist; validate native
