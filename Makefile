@@ -4,6 +4,7 @@ SBINDIR ?= $(PREFIX)/sbin
 DOCDIR ?= $(PREFIX)/share/doc/oneplus6t-pmos-fixes
 WIREPLUMBER_DIR ?= $(PREFIX)/share/wireplumber/wireplumber.conf.d
 SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
+SYSTEMD_SYSTEM_DIR ?= $(PREFIX)/lib/systemd/system
 INSTALL ?= install
 
 SCRIPTS = \
@@ -66,6 +67,7 @@ test:
 		 tests/test-waydroid-gapps.sh \
 		tests/test-display-report.sh \
 		tests/test-device-acceptance.sh \
+		tests/test-location-service.sh \
 		tests/test-update-guard.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
@@ -85,6 +87,7 @@ test:
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
 	sh tests/test-device-acceptance.sh
+	sh tests/test-location-service.sh
 	sh tests/test-device-transport.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
@@ -105,6 +108,7 @@ install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/keys"
 	$(INSTALL) -d "$(DESTDIR)$(WIREPLUMBER_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_USER_DIR)"
+	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SBINDIR)"
 	$(INSTALL) -d "$(DESTDIR)$(DOCDIR)"
 	$(INSTALL) -m 0755 $(SCRIPTS) "$(DESTDIR)$(LIBEXECDIR)/scripts/"
@@ -123,6 +127,9 @@ install:
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 		config/systemd/user/oneplus6t-audio-route.service \
 		> "$(DESTDIR)$(SYSTEMD_USER_DIR)/oneplus6t-audio-route.service"
+	sed 's|@SBINDIR@|$(SBINDIR)|g' \
+		config/systemd/oneplus6t-waydroid-location.service \
+		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"

@@ -1,0 +1,19 @@
+[Unit]
+Description=Bridge OnePlus 6T ModemManager GNSS fixes into Waydroid
+Documentation=https://github.com/lolren/oneplus6t-pmos-fixes/blob/main/docs/LOCATION.md
+After=ModemManager.service waydroid-container.service
+Wants=ModemManager.service waydroid-container.service
+ConditionPathExists=@SBINDIR@/pmos-waydroid-location-bridge
+
+[Service]
+Type=simple
+ExecStart=@SBINDIR@/pmos-waydroid-location-bridge --source mmcli --enable-gps --provider fused --apply
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGINT
+TimeoutStopSec=10s
+
+# The bridge needs ModemManager and Waydroid system access. The unit is
+# installed disabled; enable it only after native GNSS and the Waydroid
+# health gate pass.
+NoNewPrivileges=no

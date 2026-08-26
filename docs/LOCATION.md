@@ -90,6 +90,26 @@ The default provider is `fused`; use `--provider gps` only when the Android
 image's location service explicitly requires that provider. The bridge cleans
 up a test provider that it created when it exits.
 
+For an optional continuous service, enable it only after the native GNSS and
+Waydroid health checks have passed:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now oneplus6t-waydroid-location.service
+```
+
+The unit runs the same ModemManager bridge with `--enable-gps` and the Android
+`fused` test provider. It is installed disabled, restarts after a temporary
+modem or container failure, and uses `SIGINT` on stop so the bridge can disable
+and remove a provider it created. Stop it before changing the Waydroid image:
+
+```sh
+sudo systemctl disable --now oneplus6t-waydroid-location.service
+```
+
+This remains a mock-provider integration. It does not provide a vendor GNSS
+HAL, and applications that reject mock locations may still refuse the fix.
+
 The Android shell interface accepts latitude/longitude, accuracy and time for
 each injected location. The bridge therefore does not advertise or fabricate
 altitude, speed or bearing support; parsed altitude is retained only as source

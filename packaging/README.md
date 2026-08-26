@@ -44,6 +44,11 @@ policy or access a Waydroid overlay; the sampler only records timed battery
 values, and the latter only reports whether stale mounts and I/O pressure make
 an overlay operation unsafe.
 
+The optional `oneplus6t-waydroid-location.service` is installed disabled. After
+native GNSS and Waydroid health acceptance, an administrator may enable it to
+run the documented ModemManager-to-Waydroid mock-provider bridge continuously.
+It is not enabled by the package and does not provide a vendor GNSS HAL.
+
 The package also installs `pmos-run-device-acceptance`, which combines the
 individual reports into a private evidence directory. Its camera, Messages,
 GAPPS and NFC-poll checks are opt-in; the default run does not mutate the
