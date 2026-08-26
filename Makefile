@@ -53,6 +53,7 @@ test:
 		 tests/test-apn-selection.sh tests/test-messages-check.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
+		tests/test-waydroid-gpu-sync.sh \
 		tests/test-update-guard.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
@@ -66,6 +67,7 @@ test:
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-probe-runner.sh
+	sh tests/test-waydroid-gpu-sync.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py

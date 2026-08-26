@@ -1056,6 +1056,38 @@ physical recovery, install this bundle only after
 candidate only if frame delivery, JPEG output and provider lifecycle remain
 healthy.
 
+## Waydroid NV12-fence candidate
+
+Date: 2026-08-26. Static review of the Android GPU software-ISP path found
+that the NV12 branch synchronously reads the rendered RGBA intermediate with
+`glReadPixels()`, converts it into the CPU-mapped Android buffer, and then
+unconditionally calls `glFinish()` a second time. Patch `0009` skips that
+post-readback finish only for NV12 output. Direct RGB DMA-BUF output retains
+the finish because its emitted buffer still contains GPU writes.
+
+The patch changes no shader, format, buffer ownership or CPU conversion code.
+It applies cleanly after `0001`–`0008`; the host fixture test in
+`tests/test-waydroid-gpu-sync.sh` verifies that the unconditional call is
+replaced by an `outputIsNv12_` guard. This is an incremental performance
+candidate, not a claim that Android preview has reached native-pMOS frame
+rates.
+
+The complete ARMv7/API-33 GPU build passed all 197 compile targets and the
+staging/signature pass. The exact candidate artifacts are:
+
+```text
+0009-android-skip-redundant-nv12-gl-finish.patch: 77386e4a76c4adbbeef5dae5498e25eef7c96904d11d600e0962961211a9df79
+waydroid-camera-nv12-finish-r36-gpu.tar.gz: f2d47df77998a489d51ccc66661882dbd6b844282a8475e7730076a2dd7d147a
+waydroid-camera-nv12-finish-r36-gpu.sha256: a8b25d69d09a069696e20caad44b135a67e038885e9c9a1be8cb207703ac0ab5
+libcamera.so: b97540dedfafe4319835a989452ac8ccc3786a7cc53159c7669fb127a7b60691
+```
+
+The patch has not been installed on the phone. Runtime acceptance requires a
+healthy Waydroid preflight, a fresh matched ARMv7 bundle, and before/after
+`preview` and `preview-yuv` measurements. Keep the candidate only if all
+three cameras, JPEG capture and provider lifecycle remain healthy; otherwise
+use the previously accepted r35 bundle.
+
 ## Full I/O-pressure overlay guard
 
 Date: 2026-08-26. The original preflight considered only PSI `some` pressure,

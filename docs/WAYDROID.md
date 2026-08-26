@@ -28,6 +28,7 @@ separately; see [CAMERA.md](CAMERA.md).
 | Reduced large preview source | For aspect-preserving 1600-wide private/YUV previews, the software ISP can debayer a supported 1280-wide source and scale into Android's requested buffer; JPEG capture remains full-size. |
 | Conditional preview mipmaps | The EGL scaler generates mipmaps only when it is actually downscaling; equal-size and upscaled previews avoid a full mipmap chain on every frame. |
 | Redundant full-frame clear removal | The Android GPU ISP avoids two clear operations whose full-screen Bayer and scaler draws overwrite every pixel; phone acceptance is pending. |
+| NV12 fence elision | After the GPU RGBA intermediate has been synchronously read back and converted by the CPU, the Android path skips a second full GPU wait; direct RGB output retains its fence. Phone acceptance is pending. |
 | Exposure compensation | Camera2 -1 to +1 EV requests reach libcamera and the applied value returns in capture results. |
 | Exposure result metadata | Exposure time, sensor sensitivity and frame duration let applications understand what automatic exposure actually selected. |
 | Rear autofocus bridge | Camera2 auto/continuous modes, triggers, states and one metering region reach both physical rear actuators. |
@@ -47,7 +48,7 @@ camera UI by themselves; an Android camera application consumes them.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
   software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
-  conditional-mipmap and redundant-clear patches (`0002`–`0008`).
+  conditional-mipmap, redundant-clear and NV12-fence patches (`0002`–`0009`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -109,7 +110,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's sixteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the seven Android patches in numeric order:
+the nine Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -127,6 +128,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0005-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0006-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0007-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0008-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0009-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -137,11 +139,14 @@ aspect-preserving reduced preview source. The seventh patch avoids mipmap
 generation for equal-size and upscaled previews while retaining it for true
 downscales. The eighth patch removes two redundant full-frame clears from the
 Android EGL path while leaving the shaders, buffers and fallback paths
-unchanged. The fifth patch is deliberately small: it changes only the two
+unchanged. The ninth patch removes only the post-readback `glFinish()` for
+NV12 output; direct RGB DMA-BUF output retains synchronization. The fifth patch
+is deliberately small: it changes only the two
 libcamera IPC send calls that can otherwise deliver SIGPIPE after an IPA peer
-closes. The sixth, seventh and eighth patches are performance candidates; all
-three must be accepted on the phone before they are treated as a runtime
-baseline.
+closes. The sixth through ninth patches are performance candidates; all four
+must be accepted on the phone before they are treated as a runtime baseline.
+The ninth patch is limited to NV12 output, where `glReadPixels()` already
+provides the required GPU completion before the CPU writes the emitted buffer.
 
 ## Build a runtime bundle
 

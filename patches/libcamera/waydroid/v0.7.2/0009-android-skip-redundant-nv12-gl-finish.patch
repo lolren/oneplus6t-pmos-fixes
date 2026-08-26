@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Wed, 26 Aug 2026 00:00:00 +0100
+Subject: [PATCH] android: skip redundant NV12 GPU finish after readback
+
+The Android GPU software-ISP path reads the rendered RGBA intermediate with
+glReadPixels() before converting it into the CPU-mapped NV12 output buffer.
+glReadPixels() is synchronous and cannot return until the preceding draw is
+complete, so the unconditional glFinish() afterwards repeats a full GPU
+wait on every NV12 frame. Keep the finish for direct RGB DMA-BUF output,
+where the emitted buffer still contains GPU writes.
+
+This is an Android-only performance candidate. It does not change stream
+formats, shaders, buffer ownership or the CPU conversion path.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index fed24f8..22b09e2 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -872,7 +872,13 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 	}
+ 	inDmaSyncer.reset();
+ 
+-	egl_.syncOutput();
++	/*
++	 * convertRgbaToNv12() has already completed a synchronous glReadPixels()
++	 * and written the output from the CPU. A second full GPU wait is
++	 * redundant for NV12, but remains required for direct RGB DMA-BUF output.
++	 */
++	if (!outputIsNv12_)
++		egl_.syncOutput();
+ 	bench_.finishFrame();
+ 
+ 	outputBufferReady.emit(output);
+-- 
+2.49.0

@@ -150,6 +150,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid reduced preview source candidate | Large 4:3/16:9 Android preview requests can use a smaller aspect-preserving software-ISP source while retaining full-size JPEG capture; phone acceptance is pending. |
 | Waydroid conditional preview mipmaps candidate | Equal-size and upscaled previews avoid regenerating an unnecessary EGL mipmap chain; true downscales retain mipmaps; phone acceptance is pending. |
 | Waydroid redundant-clear candidate | The GPU ISP skips two full-frame clears that are immediately overwritten by full-screen Bayer/scaler passes; shaders, buffers and fallback paths are unchanged; phone acceptance is pending. |
+| Waydroid NV12 fence-elision candidate | The GPU ISP avoids a second full GPU wait after synchronous RGBA readback and CPU NV12 conversion; direct RGB output keeps its fence; phone acceptance is pending. |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7, Snapshot r3 and
