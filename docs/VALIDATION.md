@@ -1555,6 +1555,28 @@ reference phone still has no usable SSH banner, ADB device or fastboot
 transport, so physical display, reboot-persistence and rollback acceptance are
 open.
 
+## Display kernel r9 fresh local package checkpoint
+
+Date: 2026-08-26. After the first build host lost the remote source download,
+the build was repeated using the already downloaded Linux archive whose
+SHA-512 is
+`94da173aaf74dd33ef8ff9015e92759481cd0da5bd8a1e52c8664fd372d48a1155655001ad2e9d26557733c71ae8bc448e4ebdf1372b8f32159907a35f0306a`.
+The pinned source and brightness-serialization patch were unchanged. A clean
+pmbootstrap AArch64 build completed and the resulting local APK was signed
+and independently verified:
+
+```text
+integration patch SHA-256: 144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51
+linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk: 488a11f8a473a869a6caa1f5d20c179088018bc531be0848db40f43cc9093efe
+linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk (SHA-512): f63bcf8309bf012a667075c2128c60a6b68588deeb23debfa21e21aa8b96127cac967365fde0530b2a4311dbd4775d9050e7fe597bbd9a36d7818f66f9a14769
+```
+
+This is a fresh local build artifact, not a replacement for the published
+`display-r8-r9` release referenced by `data/display-kernel-r8-r9.psv`; the
+installer manifest therefore continues to pin the published APK hash. No
+phone package was installed and no physical display, reboot-persistence or
+rollback result is claimed.
+
 ## Libcamera r26 manual-exposure source checkpoint
 
 Date: 2026-08-26. The standalone

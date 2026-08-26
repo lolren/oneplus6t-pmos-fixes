@@ -168,6 +168,15 @@ prerelease. It remains uninstalled and unhardware-tested until the phone's
 transport is recovered; use `pmos-manage-display-kernel` for its
 simulation-first transition and rollback.
 
+A clean local rebuild on 2026-08-26, using the checksum-verified Linux source
+archive and the same pinned integration patch, produced a newly signed APK
+with SHA-256
+`488a11f8a473a869a6caa1f5d20c179088018bc531be0848db40f43cc9093efe` and
+SHA-512
+`f63bcf8309bf012a667075c2128c60a6b68588deeb23debfa21e21aa8b96127cac967365fde0530b2a4311dbd4775d9050e7fe597bbd9a36d7818f66f9a14769`.
+The release manifest intentionally remains pinned to the published artifact;
+use the release archive for the documented installer flow.
+
 ## Current installation and rollback baseline
 
 The reference phone currently runs:
