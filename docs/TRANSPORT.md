@@ -48,3 +48,36 @@ The important SSH combinations are:
 Use the report together with the phone-side recovery procedure. A surviving
 ping or open TCP socket is not sufficient evidence to install packages,
 modify a Waydroid overlay or flash anything.
+
+## Phone-side recovery
+
+The OnePlus 6T device guide documents SSH over USB networking for a booted
+system. On newer postmarketOS mobile images, USB access may also be disabled
+until the phone's USB-mode notification is used to select USB networking; this
+is part of the postmarketOS USB-stack change described in the
+[official USB-stack announcement](https://postmarketos.org/edge/2025/12/28/USB-framework-rework/).
+
+Once USB networking is selected, use the phone's local terminal. For an OpenRC
+image, which is the command form in the
+[OnePlus 6T device guide](https://wiki.postmarketos.org/wiki/OnePlus_6T_%28oneplus-fajita%29),
+run:
+
+```sh
+sudo service sshd start
+sudo rc-update add sshd default
+ss -lnt | grep ':22 '
+```
+
+For a systemd image, use the equivalent:
+
+```sh
+sudo systemctl enable --now sshd.service
+ss -lnt | grep ':22 '
+```
+
+If the service is missing, install the image's OpenSSH server package from its
+normal postmarketOS repository before retrying. Do not change firewall rules
+blindly: first record `sudo nft list ruleset` (or `sudo iptables -S`) and the
+service status. A successful `ss` listener plus the host report's
+`ssh_probe=accepted` and `ssh_banner=pass` is the minimum management gate;
+ping alone is not enough.
