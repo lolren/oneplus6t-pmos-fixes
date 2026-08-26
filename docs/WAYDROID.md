@@ -337,10 +337,14 @@ result below the camera application's visible frame rate points to
 provider/software-ISP or Waydroid compositor work; compare it with `surface`
 to locate the boundary. The `record` profile uses Camera2's
 `TEMPLATE_RECORD` with the same displayed `TextureView`, so a rate drop only in
-that profile points to the recording template or its negotiated stream; it is
-diagnostic and does not invoke an encoder or save a file. A large drop only
-when YUV/JPEG is added points to multi-stream conversion load. This distinction
-is required before changing
+that profile points to the recording template or its negotiated stream. It
+prefers an advertised fixed 30 FPS range and reports the chosen fallback when
+30 FPS is unavailable; it never invents a range. Surface update callbacks are
+coalesced before timing samples are dispatched to the camera worker, so a UI
+callback backlog does not inflate the measured rate. The profile is diagnostic
+and does not invoke an encoder or save a file. A large drop only when YUV/JPEG
+is added points to multi-stream conversion load. This distinction is required
+before changing
 the GPU default: the accepted r35 path still reads an
 RGBA frame back to CPU memory and converts it to Android NV12. Patch 0010 adds
 a separate texture-only private RGB route that avoids that readback;

@@ -1170,7 +1170,11 @@ ARGB_8888 bitmap and records `surfaceRgbMean` and `surfaceRgbRange`. This is
 colour-order and blank-surface evidence only; it is deliberately outside the
 repeating capture path and is not an image-quality acceptance test. The
 `record` profile uses Camera2's `TEMPLATE_RECORD` with the same `TextureView`,
-but does not invoke an encoder or create a file.
+prefers an advertised fixed 30 FPS range when available, records the selected
+range, and falls back only to another advertised range; it does not invoke an
+encoder or create a file. Surface timing callbacks are coalesced before their
+samples are dispatched to the camera worker, preventing a UI callback backlog
+from inflating the reported rate.
 
 The updated APK compiled and verified with Android SDK platform 34 and
 build-tools 36.0.0. The host runner and full fixes test suite pass, including

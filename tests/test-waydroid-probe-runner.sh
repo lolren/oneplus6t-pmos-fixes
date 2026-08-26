@@ -3,8 +3,13 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 RUNNER=$ROOT/scripts/run-waydroid-camera-probe
+PROBE_SOURCE=$ROOT/tests/waydroid-camera-probe/src/dev/lolren/waydroidcameraprobe/CameraProbeActivity.java
 TEST_DIR=$(mktemp -d /tmp/waydroid-probe-runner-test.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
+
+grep -q 'CameraDevice.TEMPLATE_RECORD' "$PROBE_SOURCE"
+grep -q 'chooseRecordFpsRange' "$PROBE_SOURCE"
+grep -q 'surfaceSamplePending.compareAndSet(false, true)' "$PROBE_SOURCE"
 
 mkdir -p "$TEST_DIR/bin"
 apk=$TEST_DIR/probe.apk

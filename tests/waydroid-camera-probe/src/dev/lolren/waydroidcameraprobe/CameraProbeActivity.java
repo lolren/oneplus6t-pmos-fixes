@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class CameraProbeActivity extends Activity {
     private static final String TAG = "WaydroidCameraProbe";
@@ -121,6 +122,7 @@ public final class CameraProbeActivity extends Activity {
     private TextureView textureView;
     private SurfaceTexture previewTexture;
     private Surface previewSurface;
+    private final AtomicBoolean surfaceSamplePending = new AtomicBoolean();
     private Runnable timeout;
 
     @Override
@@ -151,6 +153,7 @@ public final class CameraProbeActivity extends Activity {
                 @Override
                 public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
                     surfaceReady = false;
+                    surfaceSamplePending.set(false);
                     previewTexture = null;
                     if (previewSurface != null) {
                         previewSurface.release();
@@ -163,7 +166,8 @@ public final class CameraProbeActivity extends Activity {
                 public void onSurfaceTextureUpdated(SurfaceTexture surface) {
                     final int token = surfaceToken;
                     final long timestamp = System.nanoTime();
-                    if (handler != null && token != 0)
+                    if (handler != null && token != 0
+                            && surfaceSamplePending.compareAndSet(false, true))
                         handler.post(() -> onSurfaceFrame(token, timestamp));
                 }
             });
@@ -322,7 +326,9 @@ public final class CameraProbeActivity extends Activity {
             }
             Range<Integer>[] fpsRanges = characteristics.get(
                     CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-            selectedFpsRange = choosePreviewFpsRange(fpsRanges);
+            selectedFpsRange = needsRecordTemplate()
+                    ? chooseRecordFpsRange(fpsRanges)
+                    : choosePreviewFpsRange(fpsRanges);
             sensorExposureRange = characteristics.get(
                     CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             sensorSensitivityRange = characteristics.get(
@@ -541,6 +547,7 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private void onSurfaceFrame(int token, long timestamp) {
+        surfaceSamplePending.set(false);
         if (!isCurrent(token))
             return;
 
@@ -712,6 +719,46 @@ public final class CameraProbeActivity extends Activity {
                 best = candidate;
         }
         return best;
+    }
+
+    /**
+     * Prefer a stable 30 FPS target for the recording-template comparison.
+     * Never invent a range that the camera did not advertise: if 30 FPS is
+     * unavailable, use the narrowest advertised range containing 30, then a
+     * fixed range at or below 30, and finally the ordinary preview choice.
+     */
+    private static Range<Integer> chooseRecordFpsRange(Range<Integer>[] ranges) {
+        if (ranges == null || ranges.length == 0)
+            return null;
+
+        Range<Integer> fixedAtOrBelow30 = null;
+        Range<Integer> around30 = null;
+        for (Range<Integer> candidate : ranges) {
+            if (candidate == null || candidate.getLower() <= 0
+                    || candidate.getUpper() < candidate.getLower())
+                continue;
+
+            int lower = candidate.getLower();
+            int upper = candidate.getUpper();
+            if (lower == 30 && upper == 30)
+                return candidate;
+
+            if (lower == upper && upper <= 30
+                    && (fixedAtOrBelow30 == null
+                            || upper > fixedAtOrBelow30.getUpper()))
+                fixedAtOrBelow30 = candidate;
+
+            if (lower <= 30 && upper >= 30
+                    && (around30 == null
+                            || upper - lower < around30.getUpper() - around30.getLower()))
+                around30 = candidate;
+        }
+
+        if (around30 != null)
+            return around30;
+        if (fixedAtOrBelow30 != null)
+            return fixedAtOrBelow30;
+        return choosePreviewFpsRange(ranges);
     }
 
     private void requestJpeg(int token, String id) {
@@ -1084,6 +1131,7 @@ public final class CameraProbeActivity extends Activity {
             privateReader.close();
             privateReader = null;
         }
+        surfaceSamplePending.set(false);
         surfaceToken = 0;
     }
 
