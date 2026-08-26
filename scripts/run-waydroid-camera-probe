@@ -6,7 +6,7 @@ timeout_seconds=${PMOS_WAYDROID_PROBE_TIMEOUT:-300}
 
 usage() {
 	printf '%s\n' \
-		"usage: $program APK [full|preview|preview-yuv] [OUTPUT_FILE]" \
+		"usage: $program APK [full|preview|preview-yuv|surface] [OUTPUT_FILE]" \
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
 		'An output file is optional and must not already exist.'
@@ -37,7 +37,7 @@ output=${3:-}
 
 [ -f "$apk" ] || die "APK does not exist: $apk"
 case "$profile" in
-full|preview|preview-yuv)
+full|preview|preview-yuv|surface)
 	;;
 *)
 	die "unsupported profile: $profile"

@@ -1088,6 +1088,21 @@ healthy Waydroid preflight, a fresh matched ARMv7 bundle, and before/after
 three cameras, JPEG capture and provider lifecycle remain healthy; otherwise
 use the previously accepted r35 bundle.
 
+## Waydroid display-path probe
+
+Date: 2026-08-26. The Camera2 probe now accepts a `surface` profile in addition
+to `preview`, `preview-yuv` and `full`. It presents the implementation-defined
+stream on a real Android `TextureView` and counts `onSurfaceTextureUpdated`
+callbacks. Results identify this with `privateTimingSource=surface`; the
+existing profiles continue to report `ImageReader` delivery. This separates a
+slow Camera3/software-ISP provider from a slow Waydroid surface/compositor path
+without depending on a third-party camera application.
+
+The updated APK compiled and verified with Android SDK platform 34 and
+build-tools 36.0.0. The host runner and full fixes test suite pass, including
+the new surface-profile command check. This is diagnostic instrumentation only;
+it does not change the native camera stack or Waydroid overlay.
+
 ## Full I/O-pressure overlay guard
 
 Date: 2026-08-26. The original preflight considered only PSI `some` pressure,

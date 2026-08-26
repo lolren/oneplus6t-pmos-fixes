@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
@@ -24,6 +25,8 @@ import android.util.Log;
 import android.util.Range;
 import android.util.Rational;
 import android.util.Size;
+import android.view.Surface;
+import android.view.TextureView;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -42,6 +45,7 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_FULL = "full";
     private static final String PROFILE_PREVIEW = "preview";
     private static final String PROFILE_PREVIEW_YUV = "preview-yuv";
+    private static final String PROFILE_SURFACE = "surface";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
@@ -60,6 +64,10 @@ public final class CameraProbeActivity extends Activity {
     private String[] cameraIds = new String[0];
     private int cameraIndex;
     private int generation;
+    private boolean enumerationComplete;
+    private boolean cameraSequenceStarted;
+    private boolean surfaceReady;
+    private volatile int surfaceToken;
     private int frameCount;
     private int privateFrames;
     private int privateTimedFrames;
@@ -104,6 +112,9 @@ public final class CameraProbeActivity extends Activity {
     private ImageReader yuvReader;
     private ImageReader jpegReader;
     private ImageReader privateReader;
+    private TextureView textureView;
+    private SurfaceTexture previewTexture;
+    private Surface previewSurface;
     private Runnable timeout;
 
     @Override
@@ -112,6 +123,46 @@ public final class CameraProbeActivity extends Activity {
 
         profile = normalizeProfile(getIntent().getStringExtra("profile"));
         Log.i(TAG, "PROBE_PROFILE " + profile);
+
+        if (needsSurface()) {
+            textureView = new TextureView(this);
+            textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+                @Override
+                public void onSurfaceTextureAvailable(SurfaceTexture surface, int width,
+                        int height) {
+                    previewTexture = surface;
+                    previewSurface = new Surface(surface);
+                    surfaceReady = true;
+                    if (handler != null)
+                        handler.post(CameraProbeActivity.this::maybeStartCameras);
+                }
+
+                @Override
+                public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width,
+                        int height) {
+                }
+
+                @Override
+                public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+                    surfaceReady = false;
+                    previewTexture = null;
+                    if (previewSurface != null) {
+                        previewSurface.release();
+                        previewSurface = null;
+                    }
+                    return true;
+                }
+
+                @Override
+                public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+                    final int token = surfaceToken;
+                    final long timestamp = System.nanoTime();
+                    if (handler != null && token != 0)
+                        handler.post(() -> onSurfaceFrame(token, timestamp));
+                }
+            });
+            setContentView(textureView);
+        }
 
         cameraThread = new HandlerThread("waydroid-camera-probe");
         cameraThread.start();
@@ -126,12 +177,21 @@ public final class CameraProbeActivity extends Activity {
         handler.post(() -> {
             try {
                 cameraIds = manager.getCameraIdList();
+                enumerationComplete = true;
                 Log.i(TAG, "PROBE_START cameras=" + cameraIds.length);
-                startNextCamera();
+                maybeStartCameras();
             } catch (Throwable e) {
                 finishProbe("enumeration failed: " + compactError(e));
             }
         });
+    }
+
+    private void maybeStartCameras() {
+        if (!enumerationComplete || cameraSequenceStarted
+                || (needsSurface() && !surfaceReady))
+            return;
+        cameraSequenceStarted = true;
+        startNextCamera();
     }
 
     private void startNextCamera() {
@@ -143,6 +203,7 @@ public final class CameraProbeActivity extends Activity {
 
         final int token = ++generation;
         final String id = cameraIds[cameraIndex];
+        surfaceToken = token;
         frameCount = 0;
         privateFrames = 0;
         privateTimedFrames = 0;
@@ -206,6 +267,14 @@ public final class CameraProbeActivity extends Activity {
                 return;
             }
             privateStreamSize = privateSize;
+            if (needsSurface()) {
+                if (!surfaceReady || previewTexture == null || previewSurface == null) {
+                    failCamera(token, id, "preview surface is unavailable");
+                    return;
+                }
+                previewTexture.setDefaultBufferSize(
+                        privateSize.getWidth(), privateSize.getHeight());
+            }
             if (needsJpeg() && !containsSize(map.getOutputSizes(ImageFormat.JPEG), size)) {
                 failCamera(token, id, "matching JPEG output size is unavailable");
                 return;
@@ -282,10 +351,12 @@ public final class CameraProbeActivity extends Activity {
                         size.getWidth(), size.getHeight(), ImageFormat.JPEG, 2);
                 jpegReader.setOnImageAvailableListener(r -> onJpegImage(token, id, r), handler);
             }
-            privateReader = ImageReader.newInstance(
-                    privateSize.getWidth(), privateSize.getHeight(),
-                    ImageFormat.PRIVATE, 3);
-            privateReader.setOnImageAvailableListener(r -> onPrivateImage(token, r), handler);
+            if (!needsSurface()) {
+                privateReader = ImageReader.newInstance(
+                        privateSize.getWidth(), privateSize.getHeight(),
+                        ImageFormat.PRIVATE, 3);
+                privateReader.setOnImageAvailableListener(r -> onPrivateImage(token, r), handler);
+            }
 
             timeout = () -> failCamera(token, id,
                     "timed out: yuv=" + yuvAccepted + " jpeg=" + jpegAccepted
@@ -309,7 +380,7 @@ public final class CameraProbeActivity extends Activity {
                 camera = opened;
                 try {
                     List<android.view.Surface> surfaces = new ArrayList<>();
-                    surfaces.add(privateReader.getSurface());
+                    surfaces.add(needsSurface() ? previewSurface : privateReader.getSurface());
                     if (yuvReader != null)
                         surfaces.add(yuvReader.getSurface());
                     if (jpegReader != null)
@@ -347,7 +418,8 @@ public final class CameraProbeActivity extends Activity {
                 try {
                     previewRequest = opened.createCaptureRequest(
                             CameraDevice.TEMPLATE_PREVIEW);
-                    previewRequest.addTarget(privateReader.getSurface());
+                    previewRequest.addTarget(needsSurface()
+                            ? previewSurface : privateReader.getSurface());
                     if (yuvReader != null)
                         previewRequest.addTarget(yuvReader.getSurface());
                     applyAutomaticControls(previewRequest, false);
@@ -357,7 +429,8 @@ public final class CameraProbeActivity extends Activity {
                     if (selectedAfMode == CaptureRequest.CONTROL_AF_MODE_AUTO) {
                         CaptureRequest.Builder trigger = opened.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
-                        trigger.addTarget(privateReader.getSurface());
+                        trigger.addTarget(needsSurface()
+                                ? previewSurface : privateReader.getSurface());
                         if (yuvReader != null)
                             trigger.addTarget(yuvReader.getSurface());
                         applyAutomaticControls(trigger, true);
@@ -458,6 +531,20 @@ public final class CameraProbeActivity extends Activity {
         } finally {
             image.close();
         }
+    }
+
+    private void onSurfaceFrame(int token, long timestamp) {
+        if (!isCurrent(token))
+            return;
+
+        privateFrames++;
+        if (privateFirstTimestamp == 0)
+            privateFirstTimestamp = timestamp;
+        if (privateLastTimestamp > 0 && timestamp > privateLastTimestamp)
+            privateTimedFrames++;
+        privateLastTimestamp = timestamp;
+        privateAccepted = true;
+        maybeCompleteCamera(token);
     }
 
     private void onYuvImage(int token, String id, ImageReader source) {
@@ -884,6 +971,7 @@ public final class CameraProbeActivity extends Activity {
             privateReader.close();
             privateReader = null;
         }
+        surfaceToken = 0;
     }
 
     @Override
@@ -894,6 +982,10 @@ public final class CameraProbeActivity extends Activity {
         if (cameraThread != null) {
             cameraThread.quitSafely();
             cameraThread = null;
+        }
+        if (previewSurface != null) {
+            previewSurface.release();
+            previewSurface = null;
         }
         super.onDestroy();
     }
@@ -941,7 +1033,8 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private static String normalizeProfile(String requested) {
-        if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested))
+        if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested)
+                || PROFILE_SURFACE.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
@@ -952,6 +1045,10 @@ public final class CameraProbeActivity extends Activity {
 
     private boolean needsYuv() {
         return needsFullValidation() || PROFILE_PREVIEW_YUV.equals(profile);
+    }
+
+    private boolean needsSurface() {
+        return PROFILE_SURFACE.equals(profile);
     }
 
     private boolean needsJpeg() {
@@ -969,8 +1066,10 @@ public final class CameraProbeActivity extends Activity {
         double spanSeconds = (privateLastTimestamp - privateFirstTimestamp) / 1_000_000_000.0;
         double fps = privateTimedFrames / spanSeconds;
         double intervalMs = (spanSeconds * 1000.0) / privateTimedFrames;
-        return String.format(Locale.US, "privateFps=%.2f privateIntervalMs=%.2f",
-                fps, intervalMs);
+        String source = needsSurface() ? "surface" : "imagereader";
+        return String.format(Locale.US,
+                "privateFps=%.2f privateIntervalMs=%.2f privateTimingSource=%s",
+                fps, intervalMs, source);
     }
 
     private static boolean containsSize(Size[] sizes, Size wanted) {

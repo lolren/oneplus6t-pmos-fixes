@@ -308,13 +308,16 @@ The default `full` profile keeps the complete acceptance coverage. To separate
 preview throughput from the cost of additional Camera2 streams, run the same
 APK with `--es profile preview` for private preview only or
 `--es profile preview-yuv` for private plus YUV, as documented in the probe
-README. A private-only result below the camera application's visible frame
-rate points to provider/software-ISP or Waydroid compositor work; a large drop
-only when YUV/JPEG is added points to multi-stream conversion load. This
-distinction is required before changing the GPU default: the GPU path still
-has to read an RGBA frame back to CPU memory and convert it to Android NV12,
-so enabling EGL is not proof that it will outperform the CPU path on every
-SDM845 image.
+README. The additional `surface` profile renders the private stream to a real
+Android `TextureView` and reports `privateTimingSource=surface`, so it measures
+updates reaching the displayed viewfinder rather than only buffers delivered
+to an `ImageReader`. A private-only result below the camera application's
+visible frame rate points to provider/software-ISP or Waydroid compositor
+work; compare it with `surface` to locate the boundary. A large drop only when
+YUV/JPEG is added points to multi-stream conversion load. This distinction is
+required before changing the GPU default: the GPU path still has to read an
+RGBA frame back to CPU memory and convert it to Android NV12, so enabling EGL
+is not proof that it will outperform the CPU path on every SDM845 image.
 
 The final r35 run on 25 August 2026 verified all three YUV/JPEG/private stream
 sets. Camera 0 reported rear autofocus states `[3, 4]`, camera 2 reported

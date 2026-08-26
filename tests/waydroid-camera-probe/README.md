@@ -14,6 +14,9 @@ For every camera reported by Android, the probe checks:
   common large size (preferably 1600x1200, then 1920x1080); and
 - private-preview frame timestamps are reported so before/after source-mode
   performance can be compared without treating FPS as a pass/fail claim;
+- a `TextureView` surface-only run counts frames reaching the displayed Android
+  viewfinder, separating presentation/compositor throughput from provider
+  delivery; and
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
@@ -74,10 +77,12 @@ PROBE_DONE valid=3 total=3
 
 The preceding `CAMERA` records contain per-camera stream, private-preview
 size, `privateFps`, `privateIntervalMs`, autofocus, exposure and SHA-256
-evidence. The timing fields describe frames delivered to the Camera2 reader;
-they are not a display-latency measurement and do not claim image-quality
-parity. Generated JPEGs remain in the application's private directory. Do not
-add them to Git.
+evidence. The normal preview profiles report timestamps from an `ImageReader`
+and describe provider-delivered buffers; they are not a display-latency
+measurement. The `surface` profile reports `privateTimingSource=surface` and
+counts `TextureView` update callbacks instead, so it includes the Android
+surface/compositor path. Neither profile claims image-quality parity. Generated
+JPEGs remain in the application's private directory. Do not add them to Git.
 
 ## Performance profiles
 
@@ -100,6 +105,12 @@ waydroid shell am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile preview-yuv
+
+# Real Android TextureView presentation path, without ImageReader analysis
+waydroid shell am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile surface
 ```
 
 After installing this repository, the same operation can be run and saved
@@ -111,6 +122,7 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
 ```
 
 Use `preview-yuv` or `full` as the second argument for the other profiles.
+Use `surface` to measure updates reaching a real Android `TextureView`.
 The runner installs the APK, grants its camera permission, stops any previous
 probe instance, clears only the probe's old generated result, waits for
 `PROBE_DONE`, and refuses to overwrite an existing host result file. Set
@@ -126,10 +138,11 @@ PROBE_DONE profile=preview valid=3 total=3
 Compare `privateFps` and `privateIntervalMs` between `preview` and
 `preview-yuv`, then compare both with `full`. If `preview` is fast but `full`
 is slow, the extra stream/conversion load is the limiting factor. If `preview`
-is already slow, the bottleneck is in the Camera3 provider, software ISP,
-Waydroid compositor or device mode rather than JPEG validation. These profiles
-measure buffers delivered by Camera2, not the number of frames visible on the
-screen; use a camera-app recording or screen capture for display latency.
+is already slow, compare it with `surface`: a lower surface rate points to
+Waydroid's surface/compositor path, while both being slow points to the
+Camera3 provider, software ISP or device mode. These measurements do not
+replace visual latency review, but they make the Android preview boundary
+repeatable without relying on a particular camera application.
 
 The profile extra is diagnostic only. An unknown value safely falls back to
 `full`, and the default command remains the complete acceptance probe.
