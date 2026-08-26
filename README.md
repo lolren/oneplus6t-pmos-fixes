@@ -236,14 +236,15 @@ userspace, ADB and fastboot endpoints are not currently usable. Therefore the
 current audit does not claim that any candidate is installed or that the
 earlier physical acceptance still describes the phone's present state.
 
-Advanced Snapshot r13 and the matching libcamera/IPA r26 and PipeWire r7
-packages are available as a signed, hash-pinned candidate with a retained
+Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
+packages are now pinned as a source candidate; its AArch64 APK pair still needs
+rebuilding. The signed r13 pair remains the retained package checkpoint with a
 r24/r11 rollback. The candidate has not been hardware-accepted yet. The
 earlier r7/r1 focus result and stability evidence remains in
 [docs/VALIDATION.md](docs/VALIDATION.md) as historical evidence, not a current
 installation claim.
 
-The current native UI exposes a visible tap reticle plus Exposure, Colour,
+The current native UI source exposes a visible tap reticle plus Exposure, Colour,
 Contrast, Detail, Zoom, Reset and an opt-in rear **Hardware flash** switch when
 the helper is installed. The lower-layer focus instability is fixed:
 both rear cameras now use bounded progressive tap-focus and return to

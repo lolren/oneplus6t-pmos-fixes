@@ -497,7 +497,7 @@ index d0a1016..025cf3b 100644
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000..8a6682a
+index 0000000..de08ffa
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -505,9 +505,9 @@ index 0000000..8a6682a
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=13
-+_commit="eef98bbb16a5af6cdb21150811a4ea33d6543daf"
-+pkgdesc="Mobile-first camera application with truthful manual controls"
++pkgrel=14
++_commit="af69a7151b8fcba1d0650fd911f42e340279e8d0"
++pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
 +license="GPL-3.0-or-later"
@@ -567,15 +567,15 @@ index 0000000..8a6682a
 +}
 +
 +sha512sums="
-+66a74459d9277e3cf9759c94a7e76c31f9466977b84f0ed20b949da5bc7888963c9149507646ed827a0830a062da6998f0a3aff27de5c9c626c6720ecfaca17f  advanced-snapshot-0.1.0.tar.gz
++e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a  advanced-snapshot-0.1.0.tar.gz
 +7f729fa3797bce8f2088d3b6aa72057cd6c3d5cd3cebca2b001d92cb9c0ffd9375a98e16db949717d32a608ccd7d11a31552f8192e8b48df61d482d61fe9f931  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
 new file mode 100644
-index 0000000..302c85b
+index 0000000..bfffaf8
 --- /dev/null
 +++ b/temp/advanced-snapshot/cargo-auditable.patch
-@@ -0,0 +1,10 @@
+@@ -0,0 +1,12 @@
 +diff --git a/meson.build b/meson.build
 +--- a/meson.build
 ++++ b/meson.build
@@ -585,6 +585,8 @@ index 0000000..302c85b
 +--- a/src/meson.build
 ++++ b/src/meson.build
 +@@ -54,0 +55 @@
+++    'auditable',
++@@ -70,0 +71 @@
 ++    'auditable',
 diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 new file mode 100644

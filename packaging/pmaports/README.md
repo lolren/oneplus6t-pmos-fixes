@@ -5,8 +5,9 @@ pmaports: six SDM845 kernel patches, seventeen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r13 Advanced Snapshot
-source recipe, the libcamera r26 manual-exposure source candidate and the r25
+device-specific identifier. The current patch carries the r14 Advanced Snapshot
+source recipe (the r14 APK still needs a clean AArch64 package rebuild), the
+libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
 It also carries the opt-in Samsung panel brightness-serialization patch as
@@ -19,7 +20,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`144f69cbe3c4b37d44fe0e03fe32c777c25f99ca7d42170e60003cbf05a7ad51`.
+`87d36448f7eb8c5364860f016a5c37ea54a7b734e8cbeaed60076b4c9c0a5860`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -48,11 +49,20 @@ Applying the integration patch to the reviewed base produces:
   the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r13` plus
-  `advanced-snapshot-lang-0.1.0-r13` (manual-exposure and rear-flash candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r14` plus
+  `advanced-snapshot-lang-0.1.0-r14` (Software HDR source/package candidate;
+  the exact AArch64 APK pair still needs rebuilding and is not yet installed);
+  the signed r13 pair remains the retained package checkpoint until then.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
+
+The r14 application recipe is pinned to Advanced Snapshot commit
+`af69a7151b8fcba1d0650fd911f42e340279e8d0`. Its GitHub source archive SHA-512
+is
+`e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a`.
+The source build passed the pinned GTK compilation, 22 unit tests and clippy;
+build the signed AArch64 pair before adding it to a generation manifest.
 
 The r26 libcamera revision is now source- and package-validated. Its standalone
 manual-control patch and the full integration diff apply cleanly; the clean

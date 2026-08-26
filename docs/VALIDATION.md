@@ -1694,3 +1694,23 @@ The bundle contains five signed candidate packages and five signed rollback
 packages, including the r24/r11 runtime/UI baseline. It is intentionally
 opt-in and must pass the native camera smoke test on the reference phone
 before being treated as a supported generation.
+
+## Advanced Snapshot r14 Software HDR source checkpoint
+
+Date: 2026-08-26. The overlay recipe now pins Advanced Snapshot source commit
+`af69a7151b8fcba1d0650fd911f42e340279e8d0` and recipe revision r14. The
+immutable GitHub source archive SHA-512 is
+`e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a`.
+The updated pmaports integration patch SHA-256 is
+`87d36448f7eb8c5364860f016a5c37ea54a7b734e8cbeaed60076b4c9c0a5860`.
+
+The source adds an opt-in Software HDR switch and the packaged
+`advanced-snapshot-hdr` helper. It captures three exposure-bracketed JPEGs,
+merges non-clipped samples in linear light, atomically installs one output and
+cleans temporary frames on every completion or abort path. It explicitly does
+not claim vendor ISP tuning or motion alignment. The pinned GTK build passed
+Meson, formatting, 8 application tests, 5 HDR-helper tests, 9 Aperture tests,
+clippy with `--deny warnings` and staged installation checks. A clean signed
+AArch64 r14 package and generation manifest are still pending; r13 remains
+the retained signed package checkpoint and no phone installation or image-
+quality acceptance is claimed.
