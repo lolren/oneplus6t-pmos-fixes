@@ -1,0 +1,169 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+sysfs_root=${PMOS_DISPLAY_SYSFS_ROOT:-/sys}
+proc_root=${PMOS_DISPLAY_PROC_ROOT:-/proc}
+dmesg_cmd=${PMOS_DISPLAY_DMESG:-dmesg}
+timeout_seconds=${PMOS_DISPLAY_TIMEOUT:-5}
+output=${PMOS_DISPLAY_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--output FILE]
+
+Collect a read-only DRM connector, backlight and filtered kernel-display
+report. It does not change brightness, modes, power state or the compositor.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		printf '%s: unknown argument: %s\n' "$PROGRAM" "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+case "$timeout_seconds" in
+''|*[!0-9]*) die 'PMOS_DISPLAY_TIMEOUT must be a positive integer' ;;
+esac
+[ "$timeout_seconds" -gt 0 ] || die 'PMOS_DISPLAY_TIMEOUT must be a positive integer'
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+print_file() {
+	label=$1
+	path=$2
+	if [ -r "$path" ]; then
+		printf '%s=' "$label"
+		tr '\n' ' ' <"$path"
+		printf '\n'
+	else
+		printf '%s=unavailable\n' "$label"
+	fi
+}
+
+printf 'report=oneplus6t-display\n'
+printf 'sysfs_root=%s\n' "$sysfs_root"
+print_file kernel_cmdline "$proc_root/cmdline"
+
+connector_count=0
+connected_count=0
+active_connector_count=0
+printf '\n[drm-connectors]\n'
+for connector in "$sysfs_root"/class/drm/card*-*; do
+	[ -d "$connector" ] || continue
+	connector_count=$((connector_count + 1))
+	name=${connector##*/}
+	printf 'connector=%s\n' "$name"
+	print_file status "$connector/status"
+	print_file enabled "$connector/enabled"
+	print_file mode "$connector/mode"
+	print_file modes "$connector/modes"
+	print_file dpms "$connector/dpms"
+	status_value=unavailable
+	enabled_value=unavailable
+	mode_value=
+	if [ -r "$connector/status" ]; then
+		status_value=$(tr -d '\r\n' <"$connector/status")
+	fi
+	if [ -r "$connector/enabled" ]; then
+		enabled_value=$(tr -d '\r\n' <"$connector/enabled")
+	fi
+	if [ -r "$connector/mode" ]; then
+		mode_value=$(tr -d '\r\n' <"$connector/mode")
+	fi
+	[ "$status_value" = connected ] && connected_count=$((connected_count + 1))
+	if [ "$enabled_value" = enabled ] ||
+		{ [ "$status_value" = connected ] && [ -n "$mode_value" ]; }; then
+		active_connector_count=$((active_connector_count + 1))
+	fi
+done
+[ "$connector_count" -gt 0 ] || printf '%s\n' 'connectors=none'
+
+backlight_count=0
+brightness_value_count=0
+printf '\n[backlights]\n'
+for backlight in "$sysfs_root"/class/backlight/*; do
+	[ -d "$backlight" ] || continue
+	backlight_count=$((backlight_count + 1))
+	name=${backlight##*/}
+	printf 'backlight=%s\n' "$name"
+	print_file type "$backlight/type"
+	print_file brightness "$backlight/brightness"
+	print_file actual_brightness "$backlight/actual_brightness"
+	print_file max_brightness "$backlight/max_brightness"
+	print_file power_control "$backlight/power/control"
+	if [ -r "$backlight/brightness" ] &&
+		[ -r "$backlight/actual_brightness" ] &&
+		[ -r "$backlight/max_brightness" ]; then
+		brightness_value_count=$((brightness_value_count + 1))
+	fi
+done
+[ "$backlight_count" -gt 0 ] || printf '%s\n' 'backlights=none'
+
+printf '\n[kernel-display-log]\n'
+if command -v "$dmesg_cmd" >/dev/null 2>&1; then
+	printf '%s\n' 'dmesg=available'
+	dmesg_lines=
+	if command -v timeout >/dev/null 2>&1; then
+		dmesg_lines=$(timeout "$timeout_seconds" "$dmesg_cmd" 2>&1 |
+			awk 'tolower($0) ~ /(drm|dpu|msm|mdp|panel|backlight|s6e3|mipi|atomic|encoder|connector|display)/') || true
+	else
+		dmesg_lines=$("$dmesg_cmd" 2>&1 |
+			awk 'tolower($0) ~ /(drm|dpu|msm|mdp|panel|backlight|s6e3|mipi|atomic|encoder|connector|display)/') || true
+	fi
+	printf '%s\n' 'filtered_begin'
+	if [ -n "$dmesg_lines" ]; then
+		printf '%s\n' "$dmesg_lines"
+	else
+		printf '%s\n' 'none'
+	fi
+	printf '%s\n' 'filtered_end'
+else
+	printf '%s\n' 'dmesg=unavailable'
+fi
+
+printf '\n[assessment]\n'
+printf 'connector_count=%s\n' "$connector_count"
+printf 'connected_count=%s\n' "$connected_count"
+printf 'active_connector_count=%s\n' "$active_connector_count"
+if [ "$connector_count" -eq 0 ]; then
+	display_state=no-connectors
+elif [ "$connected_count" -eq 0 ]; then
+	display_state=disconnected-or-unknown
+elif [ "$active_connector_count" -gt 0 ]; then
+	display_state=connected-active
+else
+	display_state=connected-no-active-mode
+fi
+printf 'display_state=%s\n' "$display_state"
+if [ "$brightness_value_count" -gt 0 ]; then
+	printf '%s\n' 'brightness_control=available'
+else
+	printf '%s\n' 'brightness_control=not-confirmed'
+fi
+printf 'backlight_count=%s\n' "$backlight_count"
+printf '%s\n' 'note=read-only report; it does not move the brightness slider or alter DRM, panel, backlight, power or compositor state'
+printf '%s\n' 'note=filtered kernel lines are diagnostic evidence only; reproduce a static-line failure with the screen awake and collect this report immediately afterward'

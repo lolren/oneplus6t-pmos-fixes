@@ -1144,3 +1144,19 @@ procedure, hash-recording requirements and post-initialization camera
 reinstallation gate are documented in docs/WAYDROID-GAPPS.md. The current
 phone remains blocked at the physical-recovery gate, so no GAPPS image was
 initialized and no runtime package result is claimed.
+
+## Display and brightness diagnostic
+
+Date: 2026-08-26. The fixes package now includes
+`scripts/check-display` and the `pmos-check-display` installation symlink. It
+collects DRM connector/mode state, backlight values, the kernel command line
+and filtered display-related kernel messages without writing sysfs, changing
+brightness or restarting the compositor. Fixture tests cover an active
+1080x2340 connector, readable WLED backlight values, display error lines,
+missing hardware and refusal to overwrite an existing report.
+
+The pinned OnePlus device definition already contains the SDM845 panel
+initialisation workaround `console=ttyMSM0,115200`; this is a boot-race
+workaround, not a validated fix for brightness-triggered static. The phone is
+still physically wedged, so no new display-driver candidate has been installed
+and no static-line regression has been re-tested.

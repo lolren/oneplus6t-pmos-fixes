@@ -1,0 +1,4 @@
+#!/bin/sh
+printf '%s\n' '[    0.100000] msm-dpu 1c00000.display: DRM atomic commit failed: Resource busy'
+printf '%s\n' '[    0.200000] panel-samsung-s6e3fc2x01: panel prepare complete'
+printf '%s\n' '[    0.300000] unrelated modem line'

@@ -104,6 +104,21 @@ privacy-safe diagnostic or request a fallback activation as the login user:
 See [docs/MESSAGES.md](docs/MESSAGES.md) for the measured result, display-driver
 evidence and the completed touchscreen confirmation.
 
+## Display diagnostics
+
+The read-only display report records DRM connector/mode state, backlight
+values, kernel command-line data and filtered DRM/panel/DPU messages. It is
+intended to capture the horizontal-static and brightness-crash symptom without
+changing the display:
+
+```sh
+./scripts/check-display --output /tmp/oneplus6t-display-report.txt
+```
+
+See [docs/DISPLAY.md](docs/DISPLAY.md). The display-driver fix is not yet
+claimed; physical recovery and timestamped before/after evidence are required
+before preparing a kernel candidate.
+
 ## Audio and microphone pairing
 
 The audio layer now re-enables WirePlumber's ALSA hardware monitor and exposes
@@ -323,6 +338,8 @@ tag. See [docs/NFC.md](docs/NFC.md).
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
+- Display: a read-only DRM/backlight diagnostic is packaged; the static-line
+  and brightness-crash fix remains pending physical recovery and evidence.
 - Cameras: installed native r8/r24/r7/r3 plus Advanced Snapshot r1 passed
   coherent package, D-Bus launch and all-sensor non-image acceptance. Exact
   r6/r0 APKs remain the immediate rollback; the Waydroid r35 lower layer passes

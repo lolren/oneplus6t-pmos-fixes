@@ -18,6 +18,7 @@ SCRIPTS = \
 	scripts/measure-power \
 	scripts/check-nfc \
 	scripts/check-location \
+	scripts/check-display \
 	scripts/check-waydroid-health \
 	scripts/check-waydroid-gapps \
 	scripts/run-waydroid-camera-probe \
@@ -56,6 +57,7 @@ test:
 		tests/test-waydroid-probe-runner.sh \
 		tests/test-waydroid-gpu-sync.sh \
 		tests/test-waydroid-gapps.sh \
+		tests/test-display-report.sh \
 		tests/test-update-guard.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
@@ -71,6 +73,7 @@ test:
 	sh tests/test-waydroid-probe-runner.sh
 	sh tests/test-waydroid-gpu-sync.sh
 	sh tests/test-waydroid-gapps.sh
+	sh tests/test-display-report.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py
@@ -136,6 +139,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-nfc"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-location" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-location"
+	ln -sfn "$(LIBEXECDIR)/scripts/check-display" \
+		"$(DESTDIR)$(SBINDIR)/pmos-check-display"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-health" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-health"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-gapps" \
