@@ -247,19 +247,20 @@ commands without stopping services or writing storage. The installer repeats
 the mount and I/O checks itself, so it refuses access even when this report is
 not run.
 
-To reproduce the current r7/r1-to-r7/r2 UI update, stage the unchanged r7
-PipeWire SPA, the r2 app packages and the exact r7/r1 rollback in isolated
+To reproduce the current r7/r4-to-r7/r5 UI update, stage the unchanged r7
+PipeWire SPA, the r7 app packages and the exact r7/r4 rollback in isolated
 repositories:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r2 \
+  --stage /absolute/path/to/camera-r7-r5 \
   install
 ```
 
 That command is simulation-only by default. It verifies the device, immutable
-six-APK manifest, pinned public key, hashes, signatures, installed baseline and
-exact two-app-package solver result while requiring PipeWire to remain at r7.
+six-APK manifest, pinned public key, package and repository-index signatures,
+hashes, installed baseline and exact two-app-package solver result while
+requiring PipeWire to remain at r7.
 After reviewing its evidence, repeat it with `--apply` to use the guarded
 service/world-file checks and all-sensor health test. Use the `rollback`
 operation for the exact reverse transition. See
@@ -268,15 +269,15 @@ operation for the exact reverse transition. See
 The equivalent low-level simulation is:
 
 ```sh
-stage=/absolute/path/to/camera-r7-r2
+stage=/absolute/path/to/camera-r7-r5
 sudo apk add --simulate --upgrade --allow-untrusted --network=no \
   --interactive=no --repository "$stage/candidate" \
-  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r2.apk" \
-  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r2.apk"
+  "$stage/candidate/aarch64/advanced-snapshot-0.1.0-r7.apk" \
+  "$stage/candidate/noarch/advanced-snapshot-lang-0.1.0-r7.apk"
 ```
 
 Use `--allow-untrusted` only for locally built APKs whose source, version,
-signature and hashes you verified. Require exactly both r1-to-r2 app upgrades,
+signature and hashes you verified. Require exactly both r4-to-r7 app upgrades,
 no PipeWire operation and no removal, then rerun the same command without
 `--simulate`. The complete guide records repository indexing, service handling,
 the expected two-line world-file diff and guarded rollback cleanup. Reproduce

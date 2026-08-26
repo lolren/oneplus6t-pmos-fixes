@@ -1,10 +1,10 @@
 # Camera generation manager
 
 `scripts/manage-camera-generation` is the guarded installer for the current
-OnePlus 6T PipeWire r7 plus Advanced Snapshot r2 generation and its exact r7/r1
+OnePlus 6T PipeWire r7 plus Advanced Snapshot r7 generation and its exact r7/r4
 rollback. It is deliberately narrower than a general package updater. The
 legacy `camera-generation-r7-r1.psv` remains available for the earlier
-r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r2.
+r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5.
 
 ## Requirements
 
@@ -23,21 +23,21 @@ SHA-256 of the public signing key. The public key is kept under
 ## Stage layout
 
 ```text
-camera-r7-r2/
+camera-r7-r5/
 ├── candidate/
 │   ├── aarch64/
 │   │   ├── APKINDEX.tar.gz
-│   │   ├── advanced-snapshot-0.1.0-r2.apk
+│   │   ├── advanced-snapshot-0.1.0-r7.apk
 │   │   └── pipewire-spa-libcamera-1.6.8-r7.apk
 │   └── noarch/
-│       └── advanced-snapshot-lang-0.1.0-r2.apk
+│       └── advanced-snapshot-lang-0.1.0-r7.apk
 └── rollback/
     ├── aarch64/
     │   ├── APKINDEX.tar.gz
-    │   ├── advanced-snapshot-0.1.0-r1.apk
+    │   ├── advanced-snapshot-0.1.0-r4.apk
     │   └── pipewire-spa-libcamera-1.6.8-r7.apk
     └── noarch/
-        └── advanced-snapshot-lang-0.1.0-r1.apk
+        └── advanced-snapshot-lang-0.1.0-r4.apk
 ```
 
 Each repository must contain exactly its three APKs. Extra APK files are a
@@ -57,13 +57,14 @@ contents and exact apk transaction, without changing installed state:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r2 \
+  --stage /absolute/path/to/camera-r7-r5 \
   install
 ```
 
-Simulation is the default. The current manifest requires exactly the two r1-to-r2
+Simulation is the default. The current manifest requires exactly the two r4-to-r7
 app upgrades while proving that PipeWire remains at r7 and that both package
-versions and `/etc/apk/world` are unchanged afterward.
+versions and `/etc/apk/world` are unchanged afterward. It also verifies both
+offline repository-index signatures before invoking apk.
 All logs and trust hashes are written to a new dated directory under
 `STAGE/evidence/`; use `--evidence EMPTY_DIR` to choose another location.
 
@@ -73,7 +74,7 @@ Run as the graphical login user, not root:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r2 \
+  --stage /absolute/path/to/camera-r7-r5 \
   --apply install
 ```
 
@@ -95,19 +96,19 @@ Preview the exact reverse transition first:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r2 \
+  --stage /absolute/path/to/camera-r7-r5 \
   rollback
 ```
 
-Apply only after that simulation lists the three expected downgrades:
+Apply only after that simulation lists the two expected app downgrades:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r7-r2 \
+  --stage /absolute/path/to/camera-r7-r5 \
   --apply rollback
 ```
 
-The current rollback changes only r2 to r1 and leaves PipeWire r7 untouched,
+The current rollback changes only r7 to r4 and leaves PipeWire r7 untouched,
 so it creates no PipeWire world identity and performs no unpin transaction.
 When the legacy r7/r1 manifest changes PipeWire to r6, the manager still
 simulates removing the temporary identity constraint, requires installed
@@ -117,8 +118,9 @@ It never replaces the whole world file.
 ## Refusal conditions
 
 The manager stops before mutation for a wrong device, wrong or missing key,
-bad package hash/signature, missing or extra APK, missing index, mixed package
-versions, unexpected install/remove operation, simulation side effect, active
+bad package hash/signature, bad repository-index signature, missing or extra APK,
+missing index, mixed package versions, unexpected install/remove operation,
+simulation side effect, active
 camera client, unavailable media service or root `--apply`. After mutation it
 rejects an unrelated world-file change, a missing service, wrong final version
 or failed camera smoke test and preserves the complete evidence directory for

@@ -133,6 +133,18 @@ if run_manager --evidence "$TEST_ROOT/unexpected" install >/dev/null 2>&1; then
 fi
 unset PMOS_MOCK_UNEXPECTED_OPERATION
 
+set_rollback_state
+PMOS_MOCK_INDEX_SIGNATURE_FAILURE=yes
+export PMOS_MOCK_INDEX_SIGNATURE_FAILURE
+if run_manager --evidence "$TEST_ROOT/index-signature" install \
+	>"$TEST_ROOT/index-signature-report" 2>&1; then
+	printf '%s\n' 'repository index signature failure unexpectedly passed' >&2
+	exit 1
+fi
+grep -Fq 'repository index signature verification failed' \
+	"$TEST_ROOT/index-signature-report"
+unset PMOS_MOCK_INDEX_SIGNATURE_FAILURE
+
 PMOS_MOCK_MUTATE_INDEX=yes; export PMOS_MOCK_MUTATE_INDEX
 if run_manager --evidence "$TEST_ROOT/index-race" install >/dev/null 2>&1; then
 	printf '%s\n' 'repository index race unexpectedly passed' >&2

@@ -119,7 +119,7 @@ esac
 	usage_error '--apply is not valid with status'
 
 if [ -z "$manifest" ]; then
-	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r4.psv
+	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r5.psv
 fi
 [ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
 manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
@@ -298,6 +298,20 @@ candidate_lang=$(package_path candidate advanced-snapshot-lang)
 rollback_pipewire=$(package_path rollback pipewire-spa-libcamera)
 rollback_app=$(package_path rollback advanced-snapshot)
 rollback_lang=$(package_path rollback advanced-snapshot-lang)
+
+repository_signature_log=$evidence/repository-signatures.log
+verify_repository_index() {
+	index_channel=$1
+	index_path=$stage/$index_channel/aarch64/APKINDEX.tar.gz
+	printf '[%s]\n' "$index_path" >>"$repository_signature_log"
+	apk --keys-dir "$keys_dir" verify "$index_path" \
+		>>"$repository_signature_log" 2>&1 || \
+		die "repository index signature verification failed: $index_path"
+}
+
+: >"$repository_signature_log"
+verify_repository_index candidate
+verify_repository_index rollback
 
 package_hash_log=$evidence/package-hashes.sha256
 package_signature_log=$evidence/package-signatures.log

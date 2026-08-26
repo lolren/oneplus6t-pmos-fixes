@@ -838,6 +838,26 @@ test` suite passes. This is a transaction-text safety gate, not a substitute
 for a signed repository or the manifest/health-gated camera generation
 manager; no update was applied to the phone during this validation.
 
+## Advanced Snapshot r7 camera generation
+
+Date: 2026-08-26. The synchronized Advanced Snapshot source was built for
+AArch64 with pmbootstrap 3.11.1 from recipe release `0.1.0-r7`. The package
+was signed with the persistent development key whose public-key SHA-256 is
+`31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6`.
+Artifact validation passed for both the main and language packages, including
+signature, AArch64 ELF, file ownership, D-Bus, AppStream, GSettings and
+resource-namespace checks.
+
+The new generation is `camera-r7-r5`: it keeps PipeWire SPA r7, upgrades
+Advanced Snapshot r4 to r7, and retains r4 plus the language package as the
+rollback. Both candidate and rollback repository indexes are signed and the
+manager now verifies those index signatures before invoking apk. The exact
+package hashes are recorded in `data/camera-generation-r7-r5.psv`.
+
+This generation is staged in the local ignored artifact directory and has not
+been installed on the reference phone. Physical health-gate, launch, preview,
+photo, video, rollback and reboot acceptance remain pending recovery.
+
 ## Remaining validation
 
 A normal reboot test has not yet been performed for this repository revision.

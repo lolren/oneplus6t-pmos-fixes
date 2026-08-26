@@ -18,6 +18,11 @@ shift
 case "$command_name" in
 verify)
 	[ "${PMOS_MOCK_SIGNATURE_FAILURE:-no}" = no ] || exit 1
+	case "$1" in
+	*/APKINDEX.tar.gz)
+		[ "${PMOS_MOCK_INDEX_SIGNATURE_FAILURE:-no}" = no ] || exit 1
+		;;
+	esac
 	printf '%s: OK\n' "$1"
 	;;
 list)

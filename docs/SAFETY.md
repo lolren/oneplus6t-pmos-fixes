@@ -14,8 +14,9 @@ The current scripts may:
 - inspect Waydroid mounts, load and I/O pressure with
   `pmos-check-waydroid-health` without changing services or storage;
 - build kernel or userspace packages on the host without installing them;
-- simulate or explicitly apply the exact manifest-verified native r7/r2,
-  r7/r1 and r6/r0 camera generations through `manage-camera-generation`;
+- simulate or explicitly apply the exact manifest-verified native r7/r5,
+  r7/r4, r7/r1 and r6/r0 camera generations through
+  `manage-camera-generation`;
 - run `pmos-safe-upgrade`, which simulates an ordinary `apk upgrade` and blocks
   camera-critical package changes before activation; and
 - stop and start the Waydroid container/session; and
@@ -37,10 +38,10 @@ These scripts must never:
 Do not unload live camera sensor or actuator modules for testing. On the tested
 kernel the IMX371 remove path warned in the Qualcomm camera-clock driver, and
 lockdown rejects unsigned trial modules. Test kernel changes through a normal,
-signed postmarketOS package. Installing that package and rebooting into it each
-require fresh explicit approval after the current r8/r24/r7/r3 plus Advanced
-Snapshot r1 state, retained r6/r0 and r20/r6/r2 APKs, and exact rollback
-commands have been recorded.
+signed postmarketOS package. Installing that package and rebooting into it
+requires the exact installed generation and rollback commands to be recorded
+first; the current native camera release is r7/r5 with the manifest-verified
+r7/r4 rollback.
 
 Do not use `apk upgrade --available` with a partial local rollback repository.
 For ordinary updates use `pmos-safe-upgrade`; it blocks transactions touching
@@ -50,12 +51,12 @@ or userspace update is camera-compatible.
 
 On apk-tools 3, `apk upgrade --available` can reconcile the whole installed
 system against a partial local rollback repository and remove unrelated
-packages. The immediate userspace-camera rollback uses exact version
-constraints and must list only the two documented r24-to-r23 downgrades in
-simulation.
+packages. A camera rollback must use exact manifest version constraints and
+must list only the documented generation transition in simulation.
 
-The separate Advanced Snapshot/PipeWire rollback must list exactly the three
-r7/r1-to-r6/r0 downgrades. Supplying the local PipeWire APK temporarily adds a
+The historical Advanced Snapshot/PipeWire rollback must list exactly the three
+r7/r1-to-r6/r0 downgrades. The current r7/r5-to-r7/r4 rollback lists only the
+two app downgrades. Supplying the local PipeWire APK temporarily adds a
 world identity constraint; simulate its removal and require reverse dependencies
 to retain the installed plugin before removing only that constraint. The guarded
 commands are in `packaging/pmaports/README.md`.
