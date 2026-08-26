@@ -140,9 +140,12 @@ changing the display:
 ./scripts/check-display --output /tmp/oneplus6t-display-report.txt
 ```
 
-See [docs/DISPLAY.md](docs/DISPLAY.md). The display-driver fix is not yet
-claimed; physical recovery and timestamped before/after evidence are required
-before preparing a kernel candidate.
+See [docs/DISPLAY.md](docs/DISPLAY.md). An opt-in, source/package-validated
+serialized-brightness kernel candidate is available from the
+[display-r8-r9 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/display-r8-r9).
+It is guarded by `pmos-manage-display-kernel`, retains r8 for rollback and is
+not claimed as fixed until the recovered phone passes timestamped before/after
+reports and the full display acceptance sequence.
 
 ## USB transport diagnostics
 
@@ -424,8 +427,9 @@ recovered phone can detect a real tag. See [docs/NFC.md](docs/NFC.md).
 - Network time: enabled and synchronized; persistent systemd clock state is
   present.
 - Messages: package, daemon, automated activation and touchscreen launch pass.
-- Display: a read-only DRM/backlight diagnostic is packaged; the static-line
-  and brightness-crash fix remains pending physical recovery and evidence.
+- Display: a serialized-brightness kernel r9 candidate is compiled, signed and
+  published with an r8 rollback; static-line and brightness-crash runtime
+  acceptance remains pending physical recovery and evidence.
 - Cameras: installed native r8/r24/r7/r3 plus Advanced Snapshot r1 passed
   coherent package, D-Bus launch and all-sensor non-image acceptance. Exact
   r6/r0 APKs remain the immediate rollback; the Waydroid r35 lower layer passes

@@ -1,13 +1,15 @@
 # Reproducible OnePlus 6T camera packages
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
-pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
+pmaports: six SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r11 Advanced Snapshot
 source recipe and the libcamera r25 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
+It also carries the opt-in Samsung panel brightness-serialization patch as
+kernel r9, with kernel r8 retained as its rollback package.
 The phone's accepted runtime baseline remains Advanced Snapshot r1 and
 libcamera r24 until recovery and a fresh device check.
 
@@ -16,7 +18,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`df39e156c3eeb09f4493a2d3a7c46fc3f18264c83703c7d3256f9b3cfb49f9cf`.
+`6259e171500508a515c71d38fdf2d270221fa8be53196e0d7f4f4724fe50536d`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -38,7 +40,8 @@ completed for aarch64.
 
 Applying the integration patch to the reviewed base produces:
 
-- `linux-postmarketos-qcom-sdm845-7.1_rc1-r8`;
+- `linux-postmarketos-qcom-sdm845-7.1_rc1-r9` (display brightness-serialization
+  candidate; r8 remains the rollback package);
 - `libcamera-99990.7.2-r25` and `libcamera-ipa-99990.7.2-r25` (AF reference
   candidate; r24 remains the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
@@ -54,6 +57,7 @@ during live diagnosis. They do not imply that many public releases.
 | Package | SHA-256 |
 | --- | --- |
 | `linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk` | `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e` |
+| `linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk` (display candidate) | `6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957` |
 | `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
 | `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
 | `libcamera-99990.7.2-r25.apk` (AF reference candidate) | `ccdfaf820ba6362cfbb4dae3ded92eb9e18542afcdde1596eb8bed91e9e7323f` |
@@ -141,6 +145,16 @@ produced the two signed packages above; pmbootstrap also reported pre-existing
 untrusted staged candidate APKs while refreshing its local index, so the
 artifact hashes—not that index warning—are the package evidence. The candidate
 is not installed or hardware-accepted. Keep the r24 APK pair for rollback.
+
+The display r9 candidate is built from the pinned sdm845 source with
+`0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch`. It serializes
+the panel brightness DCS transaction and restores the original DSI mode flags
+on errors. Its signed APK SHA-512 is
+`eede250d35ef4ed27309e87d2251c0c73388bbc020ffef493ba9c469bf940acd4531c1e8b5bd2765913e758b906fb1d5277d921b19e5c2eaa30bfe64b470c038`.
+The signed r8/r9 offline stage is published as the `display-r8-r9`
+prerelease. It remains uninstalled and unhardware-tested until the phone's
+transport is recovered; use `pmos-manage-display-kernel` for its
+simulation-first transition and rollback.
 
 ## Current installation and rollback baseline
 

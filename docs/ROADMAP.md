@@ -13,9 +13,10 @@ location and Android-container failures cannot obscure one another.
    implemented by the lower stack. The independent package and correlated
    focus-state source passed native r7/r1 acceptance; visual photo/video,
    control-surface and lifecycle acceptance are the current gates. The
-   read-only display/brightness report is packaged alongside this work so the
-   static-line regression can be measured after recovery. Do not advertise
-   fake HDR, flash behavior or uncalibrated manual values.
+   read-only display/brightness report is packaged alongside this work, and a
+   serialized Samsung panel-brightness kernel r9 candidate with an r8 rollback
+   is now published for guarded physical testing after recovery. Do not
+   advertise fake HDR, flash behavior or uncalibrated manual values.
 3. Create the VibeMarketOS product layer: a small pmaports overlay, signed APK
    repository, versioned Waydroid bundle, known-good manifest, pre-activation
    camera health checks and retained rollback generations. Upstream

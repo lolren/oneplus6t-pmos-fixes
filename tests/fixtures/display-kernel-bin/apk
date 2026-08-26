@@ -1,0 +1,77 @@
+#!/bin/sh
+set -eu
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--keys-dir|--root|--arch|--repository)
+		shift 2
+		;;
+	--no-network|--no-interactive|--allow-untrusted|--simulate|--upgrade)
+		shift
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+command_name=${1:?missing apk command}
+shift
+state_file=${PMOS_DISPLAY_MOCK_STATE:?missing mock state file}
+
+case "$command_name" in
+list)
+	[ "${1:-}" = --installed ]
+	package=${2:-}
+	[ "$package" = linux-postmarketos-qcom-sdm845 ]
+	version=$(cat "$state_file")
+	printf '%s-%s aarch64 {mock} (MIT) [installed]\n' "$package" "$version"
+	;;
+add)
+	for argument in "$@"; do
+		[ "$argument" != --initdb ] || {
+			printf '%s\n' 'OK: mock initdb'
+			exit 0
+		}
+	done
+
+	target=
+	simulate=no
+	for argument in "$@"; do
+		case "$argument" in
+		--simulate) simulate=yes ;;
+		*-7.1_rc1-r9.apk) target=candidate ;;
+		*-7.1_rc1-r8.apk) target=rollback ;;
+		esac
+	done
+	[ -n "$target" ] || {
+		printf '%s\n' 'mock could not select display target' >&2
+		exit 1
+	}
+	if [ "$target" = candidate ]; then
+		action=Upgrading
+		from=7.1_rc1-r8
+		to=7.1_rc1-r9
+	else
+		action=Downgrading
+		from=7.1_rc1-r9
+		to=7.1_rc1-r8
+	fi
+	printf '%s\n' "$action linux-postmarketos-qcom-sdm845 ($from -> $to)"
+	printf '%s\n' 'OK: mock transaction'
+	if [ "$simulate" = no ]; then
+		printf '%s\n' "$to" >"$state_file"
+	fi
+	;;
+search)
+	printf '%s\n' 'linux-postmarketos-qcom-sdm845-7.1_rc1-r9'
+	;;
+verify)
+	[ "${PMOS_DISPLAY_MOCK_SIGNATURE_FAILURE:-no}" = no ] || exit 1
+	printf '%s: OK\n' "$1"
+	;;
+*)
+	printf 'unsupported mock apk command: %s\n' "$command_name" >&2
+	exit 1
+	;;
+esac

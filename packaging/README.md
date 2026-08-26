@@ -43,6 +43,15 @@ manager does not contain APKs or a private key and does nothing without an
 explicit operation. Install/rollback are simulation-only unless the graphical
 login user passes `--apply`; see `docs/CAMERA_GENERATIONS.md`.
 
+The package also installs `pmos-manage-display-kernel` and the immutable
+`display-kernel-r8-r9.psv` manifest. It verifies the OnePlus compatibility
+string, pinned public-key hash, signed repository indexes, APK hashes and the
+exact one-package upgrade or downgrade before changing the installed kernel.
+It is simulation-only unless the graphical login user passes `--apply`, never
+reboots, and retains the r8 package as the explicit rollback. The r9 panel
+change is source/package validated but still requires physical display
+acceptance; see `docs/DISPLAY.md`.
+
 The read-only `pmos-check-location`, `pmos-check-nfc`, `pmos-check-power`,
 `pmos-measure-power` and `pmos-check-waydroid-health` reports are packaged as
 well. They do not enable radios, change GPS state, poll NFC, modify power

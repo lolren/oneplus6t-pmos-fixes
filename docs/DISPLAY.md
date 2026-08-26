@@ -68,3 +68,66 @@ testing an isolated panel or DRM candidate. Any future kernel change must be
 built as a versioned, rollbackable package and accepted only after cold boot,
 screen lock/unlock, brightness sweeps, camera preview and suspend/resume all
 remain stable.
+
+## Serialized brightness candidate (kernel r9)
+
+The first display candidate adds a mutex around the Samsung S6E3FC2X01
+backlight transaction. It snapshots the current MIPI-DSI mode flags while
+holding that mutex, temporarily clears low-power mode for the brightness DCS
+write, restores the flags even when the write fails, and initializes the lock
+when the panel is probed. This specifically targets overlapping rapid slider
+writes and prevents one update from observing another update's temporary DSI
+flags. It does not claim to solve every DPU, DRM atomic, compositor or panel
+fault.
+
+The source patch is
+`patches/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch`.
+Its SHA-512 is:
+
+```text
+c5fe9e034cfa358930dbe35bfa562d6556f46c58b692893113ea51a0909c5e78847dda433032412b46288640968d281ce9ad01c77e6711c641e9c3ffa2b7773e
+```
+
+The patch applies with no fuzz to the pinned sdm845 source and is embedded in
+the pmaports integration patch. Reproduce the candidate package from the
+documented pmaports base:
+
+```sh
+git checkout 875bddba6538818f2c3c9849e184f40688ad5140
+git apply --check --whitespace=nowarn \
+  /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
+git apply --whitespace=nowarn \
+  /path/to/oneplus6t-pmos-fixes/packaging/pmaports/0001-oneplus6t-camera-stack.patch
+pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
+```
+
+The resulting `linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk` has SHA-256
+`6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957` and is
+signed by the repository's pinned development key. The retained r8 rollback
+APK has SHA-256
+`232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e`.
+
+An opt-in signed stage is published in the
+[display-r8-r9 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/display-r8-r9).
+Extract it, keep `data/display-kernel-r8-r9.psv` and the public key from this
+checkout, and run the simulation as the normal graphical login user:
+
+```sh
+pmos-manage-display-kernel \
+  --stage /absolute/path/to/display-r8-r9 \
+  --manifest /path/to/oneplus6t-pmos-fixes/data/display-kernel-r8-r9.psv \
+  install
+```
+
+Review the evidence directory and the one-package `apk` operation. Only then
+repeat with `--apply`; the manager never reboots. After a manual reboot,
+collect a display report and test cold boot, lock/unlock, repeated brightness
+sweeps, camera preview and suspend/resume. If the candidate fails, run the
+same simulation with `rollback`, then repeat it with `--apply` and reboot
+manually. Do not mix this kernel stage with a different manifest or copy its
+kernel files directly into `/boot`.
+
+The package was compiled and signature-checked on the host, but the reference
+phone has not accepted r9: its current CDC-NCM link has no SSH banner and no
+usable ADB or fastboot transport. Until that gate is cleared, r9 is a
+rollback-safe candidate, not a proven display fix.

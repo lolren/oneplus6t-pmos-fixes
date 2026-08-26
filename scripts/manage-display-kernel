@@ -1,0 +1,446 @@
+#!/bin/sh
+set -eu
+
+# Keep apk's operation output deterministic for the transaction gate.
+export LC_ALL=C
+
+PROGRAM=${0##*/}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PACKAGE=linux-postmarketos-qcom-sdm845
+ARCH=aarch64
+operation=
+apply=no
+stage=
+evidence=
+manifest=
+keys_dir=
+world_file=${PMOS_DISPLAY_WORLD:-/etc/apk/world}
+compatible_file=${PMOS_DISPLAY_COMPATIBLE_FILE:-/proc/device-tree/compatible}
+sudo_command=${PMOS_DISPLAY_SUDO:-sudo}
+apk_command=${PMOS_DISPLAY_APK:-apk}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options] status|install|rollback
+
+Manage the reviewed OnePlus 6T display-kernel candidate.
+
+Options:
+  --stage DIR       offline repository containing candidate/rollback
+  --manifest FILE   display manifest (defaults to the bundled manifest)
+  --keys-dir DIR    directory containing the manifest's public key
+  --evidence DIR    empty directory for transaction evidence
+  --apply           apply the already simulated transaction
+  -h, --help        show this help
+
+status is read-only. install and rollback always verify the manifest, package
+hashes, APK signatures, repository-index signatures and exact apk operation
+before changing anything. --apply is required to change the installed kernel.
+The script never reboots, changes firmware or writes a partition.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+usage_error() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	usage >&2
+	exit 2
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--stage)
+		[ "$#" -ge 2 ] || usage_error '--stage requires a directory'
+		stage=$2
+		shift 2
+		;;
+	--manifest)
+		[ "$#" -ge 2 ] || usage_error '--manifest requires a file'
+		manifest=$2
+		shift 2
+		;;
+	--keys-dir)
+		[ "$#" -ge 2 ] || usage_error '--keys-dir requires a directory'
+		keys_dir=$2
+		shift 2
+		;;
+	--evidence)
+		[ "$#" -ge 2 ] || usage_error '--evidence requires a directory'
+		evidence=$2
+		shift 2
+		;;
+	--apply)
+		apply=yes
+		shift
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	status|install|rollback)
+		[ -z "$operation" ] || usage_error 'only one operation may be selected'
+		operation=$1
+		shift
+		;;
+	*)
+		usage_error "unknown argument: $1"
+		;;
+	esac
+done
+
+[ -n "$operation" ] || usage_error 'select status, install or rollback'
+[ "$operation" != status ] || [ "$apply" = no ] || \
+	usage_error '--apply is not valid with status'
+
+if [ -z "$manifest" ]; then
+	manifest=$SCRIPT_DIR/../data/display-kernel-r8-r9.psv
+fi
+[ -r "$manifest" ] || die "display manifest is not readable: $manifest"
+manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
+
+for required_command in apk awk cmp cp date find grep id mkdir mktemp rm sha256sum tr wc; do
+	command -v "$required_command" >/dev/null 2>&1 || \
+		die "missing required command: $required_command"
+done
+[ -x "$apk_command" ] || command -v "$apk_command" >/dev/null 2>&1 || \
+	die "apk command not found: $apk_command"
+
+manifest_header() {
+	awk -F '|' -v wanted="$1" \
+		'$1 == wanted { value=$2; count++ } END { if (count == 1) print value; else exit 1 }' \
+		"$manifest"
+}
+
+manifest_field() {
+	awk -F '|' -v channel="$1" -v field="$2" \
+		'$1 == channel { value=$field; count++ } END { if (count == 1) print value; else exit 1 }' \
+		"$manifest"
+}
+
+[ "$(manifest_header schema)" = 1 ] || die 'unsupported display manifest schema'
+manifest_generation=$(manifest_header generation)
+manifest_compatible=$(manifest_header compatible)
+manifest_rows=$(awk -F '|' '$1 == "candidate" || $1 == "rollback" { count++ } END { print count + 0 }' "$manifest")
+[ "$manifest_rows" -eq 2 ] || die 'display manifest must contain exactly two package rows'
+
+for manifest_channel in candidate rollback; do
+	manifest_count=$(awk -F '|' -v channel="$manifest_channel" \
+		'$1 == channel { count++ } END { print count + 0 }' "$manifest")
+	[ "$manifest_count" -eq 1 ] || \
+		die "display manifest needs one $manifest_channel row"
+	manifest_name=$(manifest_field "$manifest_channel" 2)
+	manifest_version=$(manifest_field "$manifest_channel" 3)
+	manifest_arch=$(manifest_field "$manifest_channel" 4)
+	manifest_filename=$(manifest_field "$manifest_channel" 5)
+	manifest_hash=$(manifest_field "$manifest_channel" 6)
+	[ "$manifest_name" = "$PACKAGE" ] || die "unexpected package: $manifest_name"
+	[ -n "$manifest_version" ] || die 'display manifest contains an empty version'
+	[ "$manifest_arch" = "$ARCH" ] || die "invalid architecture: $manifest_arch"
+	case "$manifest_filename" in
+	''|*/*|*' '*|*'|'*) die "invalid package filename: $manifest_filename" ;;
+	esac
+	printf '%s\n' "$manifest_hash" | grep -Eq '^[0-9a-f]{64}$' || \
+		die "invalid SHA-256 for $manifest_filename"
+done
+
+candidate_version=$(manifest_field candidate 3)
+rollback_version=$(manifest_field rollback 3)
+[ "$candidate_version" != "$rollback_version" ] || \
+	die 'candidate and rollback kernel versions are identical'
+
+signing_key_name=$(awk -F '|' \
+	'$1 == "signing-key" { value=$2; count++ } END { if (count == 1) print value; else exit 1 }' \
+	"$manifest")
+signing_key_hash=$(awk -F '|' \
+	'$1 == "signing-key" { value=$3; count++ } END { if (count == 1) print value; else exit 1 }' \
+	"$manifest")
+case "$signing_key_name" in
+''|*/*|*' '*|*'|'*) die 'invalid signing-key filename' ;;
+esac
+printf '%s\n' "$signing_key_hash" | grep -Eq '^[0-9a-f]{64}$' || \
+	die 'invalid signing-key SHA-256'
+
+[ -r "$compatible_file" ] || die "device compatibility data is not readable: $compatible_file"
+tr '\000' '\n' <"$compatible_file" | grep -Fxq "$manifest_compatible" || \
+	die "this kernel generation targets $manifest_compatible only"
+
+installed_version() {
+	state_token=$($apk_command list --installed "$PACKAGE" 2>/dev/null | awk 'NR == 1 { print $1 }')
+	[ -n "$state_token" ] || { printf '%s\n' absent; return; }
+	state_prefix=$PACKAGE-
+	case "$state_token" in
+	"$state_prefix"*) printf '%s\n' "${state_token#$state_prefix}" ;;
+	*) printf '%s\n' unknown ;;
+	esac
+}
+
+current_channel() {
+	current_version=$(installed_version)
+	if [ "$current_version" = "$candidate_version" ]; then
+		printf '%s\n' candidate
+	elif [ "$current_version" = "$rollback_version" ]; then
+		printf '%s\n' rollback
+	else
+		printf '%s\n' mixed
+	fi
+}
+
+print_status() {
+	printf 'generation=%s\n' "$manifest_generation"
+	printf 'device=%s\n' "$manifest_compatible"
+	printf 'package=%s\n' "$PACKAGE"
+	printf 'installed_version=%s\n' "$(installed_version)"
+	printf 'state=%s\n' "$(current_channel)"
+	if [ -r "$world_file" ]; then
+		printf 'world_sha256=%s\n' "$(sha256sum "$world_file" | awk '{ print $1 }')"
+	else
+		printf 'world_sha256=unavailable\n'
+	fi
+}
+
+if [ "$operation" = status ]; then
+	print_status
+	exit 0
+fi
+
+[ -n "$stage" ] || usage_error '--stage is required for install and rollback'
+[ -d "$stage" ] || die "stage directory does not exist: $stage"
+stage=$(CDPATH= cd -- "$stage" && pwd)
+[ -r "$world_file" ] || die "apk world file is not readable: $world_file"
+
+if [ -z "$keys_dir" ]; then
+	for key_candidate in \
+		"$SCRIPT_DIR/../packaging/keys" \
+		"$SCRIPT_DIR/../keys" \
+		/etc/apk/keys; do
+		if [ -r "$key_candidate/$signing_key_name" ]; then
+			keys_dir=$key_candidate
+			break
+		fi
+	done
+fi
+[ -n "$keys_dir" ] && [ -r "$keys_dir/$signing_key_name" ] || \
+	die "signing key not found: $signing_key_name"
+keys_dir=$(CDPATH= cd -- "$keys_dir" && pwd)
+actual_key_hash=$(sha256sum "$keys_dir/$signing_key_name" | awk '{ print $1 }')
+[ "$actual_key_hash" = "$signing_key_hash" ] || die 'signing key hash mismatch'
+
+if [ -z "$evidence" ]; then
+	evidence=$stage/evidence/manage-display-kernel-$operation-$(date -u +%Y%m%dT%H%M%SZ)-$$
+fi
+if [ -e "$evidence" ]; then
+	[ -d "$evidence" ] || die "evidence path is not a directory: $evidence"
+	[ -z "$(find "$evidence" -mindepth 1 -maxdepth 1 -print -quit)" ] || \
+		die "evidence directory is not empty: $evidence"
+fi
+mkdir -p "$evidence"
+evidence=$(CDPATH= cd -- "$evidence" && pwd)
+
+candidate_root=$stage/candidate
+rollback_root=$stage/rollback
+for repository_root in "$candidate_root" "$rollback_root"; do
+	[ -r "$repository_root/$ARCH/APKINDEX.tar.gz" ] || \
+		die "missing repository index: $repository_root/$ARCH/APKINDEX.tar.gz"
+	repository_apks=$(find "$repository_root" -type f -name '*.apk' -print | wc -l | tr -d ' ')
+	[ "$repository_apks" -eq 1 ] || \
+		die "$repository_root must contain exactly one APK file"
+done
+
+package_path() {
+	path_channel=$1
+	path_arch=$(manifest_field "$path_channel" 4)
+	path_filename=$(manifest_field "$path_channel" 5)
+	printf '%s/%s/%s/%s\n' "$stage" "$path_channel" "$path_arch" "$path_filename"
+}
+
+candidate_path=$(package_path candidate)
+rollback_path=$(package_path rollback)
+[ -f "$candidate_path" ] && [ ! -L "$candidate_path" ] || die "missing candidate APK: $candidate_path"
+[ -f "$rollback_path" ] && [ ! -L "$rollback_path" ] || die "missing rollback APK: $rollback_path"
+
+repository_signature_log=$evidence/repository-signatures.log
+verify_repository_index() {
+	index_channel=$1
+	index_path=$stage/$index_channel/$ARCH/APKINDEX.tar.gz
+	printf '[%s]\n' "$index_path" >>"$repository_signature_log"
+	index_check_root=$(mktemp -d "${TMPDIR:-/tmp}/oneplus6t-display-index-check.XXXXXX") || \
+		die 'could not create temporary index-check root'
+	index_check_failed=no
+	if ! mkdir -p "$index_check_root/etc/apk/keys" || \
+		! cp "$keys_dir/$signing_key_name" \
+			"$index_check_root/etc/apk/keys/$signing_key_name" || \
+		! "$apk_command" --root "$index_check_root" add --initdb --usermode \
+			--no-network --no-interactive >>"$repository_signature_log" 2>&1 || \
+		! "$apk_command" --root "$index_check_root" --arch "$ARCH" \
+			--no-network --no-interactive \
+			--repository "$stage/$index_channel" search "$PACKAGE" \
+			>>"$repository_signature_log" 2>&1; then
+		index_check_failed=yes
+	fi
+	rm -rf -- "$index_check_root"
+	[ "$index_check_failed" = no ] || \
+		die "repository index signature verification failed: $index_path"
+}
+
+: >"$repository_signature_log"
+verify_repository_index candidate
+verify_repository_index rollback
+
+package_hash_log=$evidence/package-hashes.sha256
+package_signature_log=$evidence/package-signatures.log
+verify_package() {
+	verify_channel=$1
+	verify_path=$2
+	verify_hash=$(manifest_field "$verify_channel" 6)
+	verify_actual=$(sha256sum "$verify_path" | awk '{ print $1 }')
+	[ "$verify_actual" = "$verify_hash" ] || die "package hash mismatch: $verify_path"
+	printf '%s  %s\n' "$verify_actual" "$verify_path" >>"$package_hash_log"
+	printf '[%s]\n' "$verify_path" >>"$package_signature_log"
+	"$apk_command" --keys-dir "$keys_dir" verify "$verify_path" \
+		>>"$package_signature_log" 2>&1 || \
+		die "package signature verification failed: $verify_path"
+}
+
+: >"$package_hash_log"
+: >"$package_signature_log"
+verify_package candidate "$candidate_path"
+verify_package rollback "$rollback_path"
+sha256sum "$manifest" "$keys_dir/$signing_key_name" >"$evidence/trust.sha256"
+sha256sum "$candidate_root/$ARCH/APKINDEX.tar.gz" \
+	"$rollback_root/$ARCH/APKINDEX.tar.gz" >"$evidence/repository-indexes.before.sha256"
+
+if [ "$(id -u)" -ne 0 ]; then
+	command -v "$sudo_command" >/dev/null 2>&1 || die "root helper not found: $sudo_command"
+fi
+[ "$apply" = no ] || [ "$(id -u)" -ne 0 ] || \
+	die '--apply must run as the graphical login user, not root'
+
+root_run() {
+	if [ "$(id -u)" -eq 0 ]; then
+		"$@"
+	else
+		"$sudo_command" "$@"
+	fi
+}
+
+starting_channel=$(current_channel)
+case "$operation:$starting_channel" in
+install:rollback) target_channel=candidate; target_path=$candidate_path; target_version=$candidate_version; expected_action=Upgrading ;;
+rollback:candidate) target_channel=rollback; target_path=$rollback_path; target_version=$rollback_version; expected_action=Downgrading ;;
+install:candidate|rollback:rollback)
+		printf 'result=already-%s\n' "$starting_channel"
+		printf 'evidence=%s\n' "$evidence"
+		exit 0
+		;;
+*)
+		print_status >&2
+		die "refusing mixed or unsupported starting package state: $starting_channel"
+		;;
+esac
+
+record_state() {
+	record_path=$1
+	printf 'package|%s\nversion|%s\nstate|%s\n' \
+		"$PACKAGE" "$(installed_version)" "$(current_channel)" >"$record_path"
+}
+
+cp "$world_file" "$evidence/world.before"
+record_state "$evidence/state.before.psv"
+world_before_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
+
+run_transaction() {
+	transaction_mode=$1
+	if [ "$transaction_mode" = simulate ]; then
+		root_run "$apk_command" add --simulate --allow-untrusted --network=no \
+			--interactive=no --repository "$stage/$target_channel" "$target_path"
+	else
+		root_run "$apk_command" add --allow-untrusted --network=no \
+			--interactive=no --repository "$stage/$target_channel" "$target_path"
+	fi
+}
+
+validate_transaction_log() {
+	log_path=$1
+	transition_line="$expected_action $PACKAGE ("
+	grep -F "$transition_line" "$log_path" >/dev/null || \
+		die "expected $expected_action operation missing from apk output"
+	operation_count=$(grep -Ec \
+		'(^|[[:space:]])(Installing|Upgrading|Downgrading|Removing|Purging)([[:space:]])' \
+		"$log_path" || true)
+	[ "$operation_count" -eq 1 ] || \
+		die 'apk output contains more than the one reviewed kernel operation'
+	grep -Eq \
+		'(^|[[:space:]])(Installing|Removing|Purging)([[:space:]])' "$log_path" && \
+		die 'apk output contains an unexpected package operation'
+	if [ "$expected_action" = Upgrading ]; then
+		grep -F "$candidate_version)" "$log_path" >/dev/null || \
+			die 'apk output does not end at the candidate version'
+	else
+		grep -F "$rollback_version)" "$log_path" >/dev/null || \
+			die 'apk output does not end at the rollback version'
+	fi
+}
+
+simulation_log=$evidence/$operation.simulation.log
+if ! run_transaction simulate >"$simulation_log" 2>&1; then
+	cat "$simulation_log" >&2
+	die 'apk simulation failed'
+fi
+validate_transaction_log "$simulation_log"
+cmp -s "$evidence/world.before" "$world_file" || die 'apk simulation changed the world file'
+[ "$(current_channel)" = "$starting_channel" ] || \
+	die 'apk simulation changed installed-package state'
+sha256sum "$candidate_root/$ARCH/APKINDEX.tar.gz" \
+	"$rollback_root/$ARCH/APKINDEX.tar.gz" >"$evidence/repository-indexes.after-simulation.sha256"
+cmp -s "$evidence/repository-indexes.before.sha256" \
+	"$evidence/repository-indexes.after-simulation.sha256" || \
+	die 'a repository index changed during simulation'
+
+if [ "$apply" = no ]; then
+	cp "$world_file" "$evidence/world.after-simulation"
+	record_state "$evidence/state.after-simulation.psv"
+	printf 'mode=simulation\n'
+	printf 'operation=%s\n' "$operation"
+	printf 'target_version=%s\n' "$target_version"
+	printf 'world_sha256=%s\n' "$world_before_hash"
+	printf 'evidence=%s\n' "$evidence"
+	exit 0
+fi
+
+cp "$evidence/world.before" "$evidence/world.pre-apply"
+[ "$(sha256sum "$world_file" | awk '{ print $1 }')" = "$world_before_hash" ] || \
+	die 'world changed between simulation and apply'
+[ "$(current_channel)" = "$starting_channel" ] || \
+	die 'installed package changed between simulation and apply'
+[ "$(sha256sum "$keys_dir/$signing_key_name" | awk '{ print $1 }')" = \
+	"$signing_key_hash" ] || die 'signing key changed before apply'
+verify_repository_index candidate
+verify_repository_index rollback
+: >"$evidence/package-signatures.pre-apply.log"
+verify_package candidate "$candidate_path"
+verify_package rollback "$rollback_path"
+
+actual_log=$evidence/$operation.actual.log
+if ! run_transaction apply >"$actual_log" 2>&1; then
+	cat "$actual_log" >&2
+	die 'apk transaction failed; use the documented rollback package'
+fi
+validate_transaction_log "$actual_log"
+
+[ "$(current_channel)" = "$target_channel" ] || \
+	die "installed kernel did not reach $target_channel state"
+cp "$world_file" "$evidence/world.after"
+record_state "$evidence/state.after.psv"
+world_after_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
+printf 'mode=applied\n'
+printf 'operation=%s\n' "$operation"
+printf 'state=%s\n' "$target_channel"
+printf 'world_before_sha256=%s\n' "$world_before_hash"
+printf 'world_after_sha256=%s\n' "$world_after_hash"
+printf 'evidence=%s\n' "$evidence"
+printf '%s\n' 'manual_reboot_required=yes'
+printf '%s\n' 'Reboot manually after reviewing the evidence; the manager never reboots.'

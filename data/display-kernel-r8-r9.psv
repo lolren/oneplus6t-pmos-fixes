@@ -1,0 +1,6 @@
+schema|1
+generation|oneplus6t-display-r8-r9
+compatible|oneplus,fajita
+signing-key|pmos@local-6a8b0868.rsa.pub|31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+candidate|linux-postmarketos-qcom-sdm845|7.1_rc1-r9|aarch64|linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk|6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957
+rollback|linux-postmarketos-qcom-sdm845|7.1_rc1-r8|aarch64|linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk|232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e

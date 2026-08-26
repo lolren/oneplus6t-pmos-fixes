@@ -20,6 +20,7 @@ SCRIPTS = \
 	scripts/check-nfc \
 	scripts/check-location \
 	scripts/check-display \
+	scripts/manage-display-kernel \
 	scripts/check-waydroid-health \
 	scripts/check-waydroid-gapps \
 	scripts/camera-flash \
@@ -72,6 +73,7 @@ test:
 		tests/test-device-acceptance.sh \
 		tests/test-location-service.sh \
 		tests/test-update-guard.sh \
+		tests/test-display-kernel-manager.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-messages-check.sh
@@ -89,6 +91,7 @@ test:
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
+	sh tests/test-display-kernel-manager.sh
 	./tests/test-camera-flash.sh
 	sh tests/test-device-acceptance.sh
 	sh tests/test-location-service.sh
@@ -137,6 +140,8 @@ install:
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"
+	$(INSTALL) -m 0644 data/display-kernel-r8-r9.psv \
+		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 data/camera-generation-r7-r1.psv \
 		data/camera-generation-r7-r2.psv \
 		data/camera-generation-r7-r3.psv \
@@ -170,6 +175,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-location"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-display" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-display"
+	ln -sfn "$(LIBEXECDIR)/scripts/manage-display-kernel" \
+		"$(DESTDIR)$(SBINDIR)/pmos-manage-display-kernel"
 	ln -sfn "$(LIBEXECDIR)/scripts/camera-flash" \
 		"$(DESTDIR)$(SBINDIR)/pmos-camera-flash"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-health" \

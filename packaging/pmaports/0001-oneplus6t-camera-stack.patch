@@ -387,11 +387,11 @@ index d0a1016..b38ed5a 100644
  pkgname=linux-$_flavor
  pkgver=7.1_rc1
 -pkgrel=4
-+pkgrel=8
++pkgrel=9
  pkgdesc="Mainline Kernel fork for SDM845 devices"
  arch="aarch64"
  _carch="arm64"
-@@ -44,6 +44,11 @@ source="
+@@ -44,6 +44,12 @@ source="
  	config-postmarketos-qcom-sdm845.aarch64
  	libbpf-Fix-UAF-in-strset__add_str.patch
  	enable-dynamic-ftrace.patch
@@ -400,10 +400,11 @@ index d0a1016..b38ed5a 100644
 +	0003-media-i2c-imx371-correct-analogue-gain-range.patch
 +	0004-media-i2c-imx376-correct-analogue-gain-range.patch
 +	0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
++	0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
  "
  builddir="$srcdir/linux-$_tag"
  
-@@ -96,4 +101,9 @@ sha512sums="
+@@ -96,4 +101,10 @@ sha512sums="
  0da9864ae972e81db443b58e990f62bb84bcd721f073c0b947725a7d7c1e630bde1395fa9108ce8264e6b88a6c92f3f52b551b0cd373e6bde54ea56a13a48e9b  config-postmarketos-qcom-sdm845.aarch64
  e2555390d48cbbdc32a7d3f0c27599ff88f2fe3e786d1d0086caaa5b092cc3edcb6e95e2fb07034edb3793f6dc954da0662c723202eb7e2c4956c99b50919b12  libbpf-Fix-UAF-in-strset__add_str.patch
  e8b595f3e076896dc38f249c8908d58e2e6a858eaa77fe1e680f27db0e76d3d74c0b5dfebb7a4c57d546fee0b0f6eb81a38b20dfd72f985c9d02f28d79a5eceb  enable-dynamic-ftrace.patch
@@ -412,7 +413,88 @@ index d0a1016..b38ed5a 100644
 +f0cfcdf2f8e8dc00f54c2d5e581bbf897613b533f85bee1469371410fff34401a5f6093edaff6b2e7eecd77c57d29c2f08b99fc08cbd672dd3d1b4283f0ec5c3  0003-media-i2c-imx371-correct-analogue-gain-range.patch
 +3f7b466fff0febc7a0e467ce5b44de23c7e27f3c32beaaa256aebee8c0cc8b2062f58ec218e0cff4476e247ecffe00e9a322d30fe3a33d11269f666802826765  0004-media-i2c-imx376-correct-analogue-gain-range.patch
 +898faaab8040dbfe40ea20250d9907276376a59d7275b648ce67b5a53a1667fd36ec58d1a17f99b514155f7e8d9cac7942fd5663901f2961ed0207c0da5c8c84  0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
++c5fe9e034cfa358930dbe35bfa562d6556f46c58b692893113ea51a0909c5e78847dda433032412b46288640968d281ce9ad01c77e6711c641e9c3ffa2b7773e  0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
  "
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch b/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
+new file mode 100644
+index 0000000..370f6fc
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
+@@ -0,0 +1,74 @@
++From fc8106e5dfa2bdce092e5f17d637fe6ecfb6fade Mon Sep 17 00:00:00 2001
++From: Loren Bufanu <loren.bufanu@gmail.com>
++Date: Wed, 26 Aug 2026 15:30:25 +0100
++Subject: [PATCH] drm/panel: s6e3fc2x01: serialize brightness writes
++
++The panel backlight callback temporarily changes the DSI mode flags before
++sending a brightness command. Rapid backlight updates can overlap, which can
++interleave DSI writes and leave the mode flags in the wrong state after an
++error. Serialize the transaction and restore the original flags on both
++success and failure.
++
++This is intentionally limited to the panel backlight transaction; it does
++not change brightness values, panel timings, or the default mode.
++
++Signed-off-by: Loren Bufanu <loren.bufanu@gmail.com>
++
++diff --git a/drivers/gpu/drm/panel/panel-samsung-s6e3fc2x01.c b/drivers/gpu/drm/panel/panel-samsung-s6e3fc2x01.c
++index e630802..69a0e24 100644
++--- a/drivers/gpu/drm/panel/panel-samsung-s6e3fc2x01.c
+++++ b/drivers/gpu/drm/panel/panel-samsung-s6e3fc2x01.c
++@@ -7,6 +7,7 @@
++ #include <linux/delay.h>
++ #include <linux/gpio/consumer.h>
++ #include <linux/module.h>
+++#include <linux/mutex.h>
++ #include <linux/of.h>
++ #include <linux/of_device.h>
++ #include <linux/regulator/consumer.h>
++@@ -27,6 +28,7 @@ struct samsung_s6e3fc2x01 {
++ 	struct mipi_dsi_device *dsi;
++ 	struct regulator_bulk_data *supplies;
++ 	struct gpio_desc *reset_gpio;
+++	struct mutex brightness_lock;
++ };
++ 
++ static const struct regulator_bulk_data s6e3fc2x01_supplies[] = {
++@@ -267,18 +269,21 @@ static const struct drm_panel_funcs samsung_s6e3fc2x01_panel_funcs = {
++ static int s6e3fc2x01_panel_bl_update_status(struct backlight_device *bl)
++ {
++ 	struct mipi_dsi_device *dsi = bl_get_data(bl);
+++	struct samsung_s6e3fc2x01 *ctx = mipi_dsi_get_drvdata(dsi);
+++	unsigned long mode_flags;
++ 	u16 brightness = backlight_get_brightness(bl);
++ 	int err;
++ 
++-	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
+++	mutex_lock(&ctx->brightness_lock);
++ 
+++	mode_flags = dsi->mode_flags;
+++	dsi->mode_flags = mode_flags & ~MIPI_DSI_MODE_LPM;
++ 	err = mipi_dsi_dcs_set_display_brightness_large(dsi, brightness);
++-	if (err < 0)
++-		return err;
++ 
++-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+++	dsi->mode_flags = mode_flags;
+++	mutex_unlock(&ctx->brightness_lock);
++ 
++-	return 0;
+++	return err;
++ }
++ 
++ static const struct backlight_ops s6e3fc2x01_panel_bl_ops = {
++@@ -325,6 +330,8 @@ static int s6e3fc2x01_probe(struct mipi_dsi_device *dsi)
++ 		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
++ 				     "Failed to get reset-gpios\n");
++ 
+++	mutex_init(&ctx->brightness_lock);
+++
++ 	ctx->dsi = dsi;
++ 	mipi_dsi_set_drvdata(dsi, ctx);
++ 
++-- 
++2.49.0
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
 index 0000000..6589fe1

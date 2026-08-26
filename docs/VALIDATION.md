@@ -1515,3 +1515,42 @@ The signed candidate stage keeps PipeWire r7 and retains the exact r10 app
 pair for rollback. It is source/package validated but remains uninstalled and
 unhardware-tested while the reference phone exposes CDC-NCM without a usable
 SSH banner, ADB device or fastboot transport.
+
+## Display kernel r9 serialized-brightness candidate
+
+Date: 2026-08-26. The Samsung S6E3FC2X01 panel candidate serializes each
+brightness DCS write with a mutex, saves the DSI mode flags inside that critical
+section, clears low-power mode only for the write and restores the flags on
+success or error. The mutex is initialized during panel probe. This is a
+targeted race fix for rapid brightness-slider updates; it is not evidence that
+all DRM atomic, DPU, compositor or panel corruption is solved.
+
+The source patch applies without fuzz to the pinned
+`sdm845-7.1-rc1-r0` Linux tree. Its SHA-512 is:
+
+```text
+c5fe9e034cfa358930dbe35bfa562d6556f46c58b692893113ea51a0909c5e78847dda433032412b46288640968d281ce9ad01c77e6711c641e9c3ffa2b7773e
+```
+
+The updated pmaports integration patch applies cleanly to base
+`875bddba6538818f2c3c9849e184f40688ad5140` and has SHA-256
+`6259e171500508a515c71d38fdf2d270221fa8be53196e0d7f4f4724fe50536d`.
+A clean AArch64 kernel package build completed through compilation and
+produced:
+
+```text
+linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk: 6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957
+linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk (SHA-512): eede250d35ef4ed27309e87d2251c0c73388bbc020ffef493ba9c469bf940acd4531c1e8b5bd2765913e758b906fb1d5277d921b19e5c2eaa30bfe64b470c038
+linux-postmarketos-qcom-sdm845-7.1_rc8 rollback.apk: 232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e
+display-r8-r9 archive: 231807afab660e91ad433f8ac9a8a1e284b5d8191b784d57e8890eb9cfd3b6fe
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The APK and both repository indexes were independently verified with the
+development public key. The archive contains only the candidate/rollback APKs,
+their signed `APKINDEX.tar.gz` files and `SHA256SUMS`; no private key is
+included. `make test`, shell syntax validation and a fresh pmaports
+`git apply --check` passed. The candidate remains uninstalled because the
+reference phone still has no usable SSH banner, ADB device or fastboot
+transport, so physical display, reboot-persistence and rollback acceptance are
+open.
