@@ -115,9 +115,12 @@ if [ -n "$output" ]; then
 	exec >"$output"
 fi
 
-for command_path in "$mobile_command" "$time_command"; do
-	[ -x "$command_path" ] || die "helper is not executable: $command_path"
-done
+if [ "$mobile" = yes ]; then
+	[ -x "$mobile_command" ] || die "helper is not executable: $mobile_command"
+fi
+if [ "$time_sync" = yes ]; then
+	[ -x "$time_command" ] || die "helper is not executable: $time_command"
+fi
 if [ "$audio" = yes ]; then
 	command -v "$systemctl_command" >/dev/null 2>&1 || \
 		die "systemctl is required for the audio user service"

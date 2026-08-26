@@ -58,4 +58,11 @@ if PMOS_DAILY_MOBILE_COMMAND=$TEST_DIR/mobile \
 	exit 1
 fi
 
+audio_only=$(PMOS_DAILY_MOBILE_COMMAND=$TEST_DIR/not-present \
+	PMOS_DAILY_TIME_COMMAND=$TEST_DIR/not-present \
+	PMOS_DAILY_SYSTEMCTL=$TEST_DIR/systemctl \
+	PMOS_DAILY_TEST_LOG=$TEST_DIR/audio-only.log \
+	"$SCRIPT" --dry-run --skip-mobile-data --skip-time-sync)
+printf '%s\n' "$audio_only" | grep -q '^result=pass$'
+
 printf '%s\n' 'daily-use setup tests passed'
