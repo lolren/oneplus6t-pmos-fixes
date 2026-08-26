@@ -11,6 +11,14 @@ the Mesa EGL software-ISP path, a DMA-heap allocator fallback and the
 Camera3 logical-JPEG-size fix. The native postmarketOS stack is packaged
 separately; see [CAMERA.md](CAMERA.md).
 
+The unaccepted r37 RGB-private-preview and r38 native-RGB-release-fence
+bundles are published in the
+[Waydroid camera r37/r38 development release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38).
+Download both the archive and its matching `.sha256` manifest. Verify the
+manifest after extraction, then use `scripts/install-waydroid-camera` only
+after the read-only rootfs/I/O health gate passes. These remain comparison
+candidates; r35 is the rollback baseline until a real phone test accepts one.
+
 ## Features and their benefit
 
 | Feature | What it brings |

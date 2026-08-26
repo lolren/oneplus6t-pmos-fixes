@@ -1180,6 +1180,14 @@ Rollback to the r35 bundle if RGB import fails, colours are swapped, buffers
 are corrupted or lifecycle stability regresses. Do not replace the accepted
 baseline merely because a host build succeeded.
 
+The archive and its matching manifest are published in the
+[Waydroid camera r37/r38 development release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38).
+The release assets were downloaded again and compared byte-for-byte with the
+locally verified artifacts; the r37 archive hash is
+`88a9f2be8ac90f58c0428d82bd71ca4751636a56cc883bd8ecdd22ca87d14b3e` and the
+r38 archive hash is
+`045962846fa9bc21aedbf8e62b33c332aba1ba847f1f5c7aacd298e6f6055df6`.
+
 ## Waydroid display and recording-template probe
 
 Date: 2026-08-26. The Camera2 probe now accepts `surface` and `record` profiles
@@ -1257,6 +1265,9 @@ colour/order, exposure and focus, and exercise provider stop/start. A missing
 EGL extension should be reported as the synchronous fallback; a stalled
 fence, corrupted buffer, colour swap or lifecycle regression requires rollback
 to the previous generation.
+
+The archive and matching manifest are published alongside r37 in the
+[Waydroid camera r37/r38 development release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38).
 
 ## Full I/O-pressure overlay guard
 
