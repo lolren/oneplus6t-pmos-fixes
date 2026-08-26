@@ -46,8 +46,11 @@ r7/r4 rollback.
 Do not use `apk upgrade --available` with a partial local rollback repository.
 For ordinary updates use `pmos-safe-upgrade`; it blocks transactions touching
 the camera-critical package set and directs those changes through the signed
-generation manager. The safe wrapper does not claim that an arbitrary kernel
-or userspace update is camera-compatible.
+generation manager. It also records normalized simulation and apply operation
+lists and refuses to report success if apk applies a different transaction.
+That is an alarm after an unexpected apply, not an automatic rollback. The
+safe wrapper does not claim that an arbitrary kernel or userspace update is
+camera-compatible.
 
 On apk-tools 3, `apk upgrade --available` can reconcile the whole installed
 system against a partial local rollback repository and remove unrelated

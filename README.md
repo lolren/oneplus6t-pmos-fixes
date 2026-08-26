@@ -364,8 +364,9 @@ pmos-safe-upgrade --apply
 Simulation is the default. The guard refuses any transaction that touches
 libcamera, PipeWire, WirePlumber, Snapshot, Advanced Snapshot or the OnePlus 6T
 kernel, then points to the signed generation manager. Safe non-camera updates
-use the cached package index after the gate; `apk upgrade --available` remains
-outside this workflow.
+use the cached package index after the gate, and the applied operation list is
+compared with the successful simulation before the command is reported as
+successful. `apk upgrade --available` remains outside this workflow.
 
 ### Location
 

@@ -829,14 +829,15 @@ stability check regresses.
 
 ## Ordinary update safety gate
 
-Date: 2026-08-25. `scripts/pmos-safe-upgrade` was added as the first
+Date: 2026-08-25/26. `scripts/pmos-safe-upgrade` was added as the first
 VibeMarketOS update layer. Its default simulation allows an unrelated mock
 `busybox` upgrade, applies that same safe transaction with the cached index,
-and refuses a simulated `libcamera` upgrade before the apply phase. The
-regression is covered by `tests/test-update-guard.sh` and the complete `make
-test` suite passes. This is a transaction-text safety gate, not a substitute
-for a signed repository or the manifest/health-gated camera generation
-manager; no update was applied to the phone during this validation.
+refuses a simulated `libcamera` upgrade before the apply phase, and alarms if
+the apply operation list drifts from the simulation. The regressions are
+covered by `tests/test-update-guard.sh` and the complete `make test` suite
+passes. This is a transaction-text safety gate, not a substitute for a signed
+repository or the manifest/health-gated camera generation manager; no update
+was applied to the phone during this validation.
 
 ## Advanced Snapshot r7 camera generation
 

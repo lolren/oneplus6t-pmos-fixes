@@ -75,7 +75,7 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
-for required_command in awk date grep id mkdir mktemp sed sha256sum sort tr; do
+for required_command in awk cmp date grep id mkdir mktemp sed sha256sum sort tr; do
 	command -v "$required_command" >/dev/null 2>&1 || \
 		die "missing required command: $required_command"
 done
@@ -94,6 +94,8 @@ fi
 
 simulation_log=$evidence_dir/simulation.log
 actual_log=$evidence_dir/actual.log
+simulation_operations=$evidence_dir/simulation.operations
+actual_operations=$evidence_dir/actual.operations
 
 root_run() {
 	if [ "$(id -u)" -eq 0 ]; then
@@ -110,12 +112,24 @@ run_simulation() {
 }
 
 operation_lines() {
+	log_file=$1
 	grep -E '(^|[[:space:]:])(Installing|Upgrading|Downgrading|Removing|Purging)(:|[[:space:]])' \
-		"$simulation_log" || true
+		"$log_file" || true
+}
+
+normalized_operation_lines() {
+	# apk may add a progress counter to one invocation but not the other.
+	# Compare the actual operation records, including versions, after removing
+	# that presentation-only prefix. Sorting tolerates harmless ordering
+	# changes while duplicate records remain significant.
+	operation_lines "$1" |
+		sed -E 's/^[[:space:]]*\([0-9]+\/[0-9]+\)[[:space:]]*//' |
+		sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' |
+		sort
 }
 
 critical_changes() {
-	lines=$(operation_lines)
+	lines=$(operation_lines "$simulation_log")
 	[ -n "$lines" ] || return 0
 	for package in $critical_packages; do
 		if printf '%s\n' "$lines" | grep -Eq \
@@ -131,6 +145,7 @@ if ! run_simulation >"$simulation_log" 2>&1; then
 	cat "$simulation_log" >&2
 	die 'apk upgrade simulation failed'
 fi
+normalized_operation_lines "$simulation_log" >"$simulation_operations"
 
 critical=$(critical_changes | sort -u)
 if [ -n "$critical" ]; then
@@ -175,6 +190,12 @@ for package in $critical_packages; do
 		die "apk changed camera-critical package after the gate: $package"
 	fi
 done
+
+normalized_operation_lines "$actual_log" >"$actual_operations"
+if ! cmp -s "$simulation_operations" "$actual_operations"; then
+	cat "$actual_log" >&2
+	die 'apk transaction differed from the simulation; inspect the recorded operation lists'
+fi
 
 if [ -r "$world_file" ]; then
 	world_after=$(sha256sum "$world_file" | awk '{ print $1 }')

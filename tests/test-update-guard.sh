@@ -38,6 +38,18 @@ grep -q '^blocked-critical-packages=libcamera$' "$TEST_DIR/blocked.out"
 grep -q 'refusing this upgrade' "$TEST_DIR/blocked.err"
 [ ! -e "$TEST_DIR/blocked" ]
 
+# The package manager must not silently apply a transaction that differs from
+# the successful simulation, even when the unexpected operation is unrelated
+# to the camera stack. The mock marker proves the apply phase was reached;
+# this is a post-transaction alarm, not a rollback claim.
+if PMOS_MOCK_UPDATE_UNEXPECTED_OPERATION=yes run_guard no "$TEST_DIR/drifted" --apply \
+	>"$TEST_DIR/drifted.out" 2>"$TEST_DIR/drifted.err"; then
+	printf '%s\n' 'safe upgrade allowed a transaction that drifted from simulation' >&2
+	exit 1
+fi
+grep -q 'apk transaction differed from the simulation' "$TEST_DIR/drifted.err"
+[ -f "$TEST_DIR/drifted" ]
+
 # Simulation remains the default and never applies the mock transaction.
 run_guard no "$TEST_DIR/simulated" >"$TEST_DIR/simulate.out"
 grep -q '^result=simulation-only$' "$TEST_DIR/simulate.out"
