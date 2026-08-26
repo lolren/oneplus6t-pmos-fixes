@@ -13,6 +13,7 @@ SCRIPTS = \
 	scripts/check-mobile-data \
 	scripts/configure-daily-use \
 	scripts/configure-time-sync \
+	scripts/enable-ssh \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
 	scripts/pmos-safe-upgrade \
@@ -62,7 +63,8 @@ test:
 		tests/fixtures/camera-generation-bin/* \
 		 tests/fixtures/camera-generation-smoke \
 		tests/fixtures/nfctool \
-		 tests/test-apn-selection.sh tests/test-messages-check.sh \
+			 tests/test-apn-selection.sh tests/test-messages-check.sh \
+			tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
 		tests/test-waydroid-probe-compare.sh \
@@ -79,6 +81,7 @@ test:
 	./tests/test-apn-selection.sh
 	./tests/test-daily-use.sh
 	./tests/test-messages-check.sh
+	./tests/test-ssh-recovery.sh
 	./tests/test-audio-route-policy.sh
 	./tests/test-power-report.sh
 	./tests/test-power-sampler.sh
@@ -167,6 +170,7 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/check-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-check-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-daily-use" "$(DESTDIR)$(SBINDIR)/pmos-configure-daily-use"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-time-sync" "$(DESTDIR)$(SBINDIR)/pmos-configure-time-sync"
+	ln -sfn "$(LIBEXECDIR)/scripts/enable-ssh" "$(DESTDIR)$(SBINDIR)/pmos-enable-ssh"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-messages" "$(DESTDIR)$(SBINDIR)/pmos-check-messages"
 	ln -sfn "$(LIBEXECDIR)/scripts/manage-camera-generation" \
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"

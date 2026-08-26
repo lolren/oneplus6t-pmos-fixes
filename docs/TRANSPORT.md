@@ -57,8 +57,17 @@ until the phone's USB-mode notification is used to select USB networking; this
 is part of the postmarketOS USB-stack change described in the
 [official USB-stack announcement](https://postmarketos.org/edge/2025/12/28/USB-framework-rework/).
 
-Once USB networking is selected, use the phone's local terminal. For an OpenRC
-image, which is the command form in the
+Once USB networking is selected, use the phone's local terminal. If the fixes
+package is installed, the reproducible recovery command is:
+
+```sh
+sudo pmos-enable-ssh --apply
+```
+
+It detects systemd or OpenRC, starts `sshd`, enables it for the next boot and
+verifies a TCP/22 listener. It does not change firewall rules. If the helper is
+not installed, use the init-specific fallback below. For an OpenRC image,
+which is the command form in the
 [OnePlus 6T device guide](https://wiki.postmarketos.org/wiki/OnePlus_6T_%28oneplus-fajita%29),
 run:
 

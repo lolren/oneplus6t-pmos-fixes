@@ -17,6 +17,12 @@ Mobile Broadband Provider database. `curl`, `resolvectl` and systemd time
 tools remain optional: diagnostics degrade safely when they are absent, and the
 time helper reports an explicit error outside a systemd installation.
 
+`pmos-enable-ssh --apply` is an explicit, idempotent recovery helper for a
+phone whose postmarketOS USB developer-mode NCM link answers ping but has no
+usable SSH listener. It supports systemd and OpenRC, persists the `sshd`
+service and verifies TCP/22. It intentionally does not modify nftables or
+iptables; firewall changes remain a separately reviewed administrator action.
+
 The Messages diagnostic is optional and does not make Chatty a package
 dependency. When Chatty is installed, its GLib utilities provide
 `gapplication`; `busctl` enables window verification on systemd images. The

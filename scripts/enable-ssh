@@ -1,0 +1,139 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+set -eu
+
+PROGRAM=${0##*/}
+apply=no
+init_system=${PMOS_SSH_INIT:-}
+systemctl_command=${PMOS_SSH_SYSTEMCTL:-systemctl}
+rc_update_command=${PMOS_SSH_RC_UPDATE:-rc-update}
+service_command=${PMOS_SSH_SERVICE:-service}
+ss_command=${PMOS_SSH_SS:-ss}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--apply | --dry-run]
+
+Start the postmarketOS SSH server for USB-network management and enable it at
+boot. Dry-run is the default; --apply is required before changing service
+state. The helper never changes nftables or iptables rules.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--apply)
+		[ "$apply" = no ] || die '--apply and --dry-run are mutually exclusive'
+		apply=yes
+		shift
+		;;
+	--dry-run)
+		[ "$apply" = no ] || die '--apply and --dry-run are mutually exclusive'
+		shift
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		die "unknown option: $1"
+		;;
+	esac
+done
+
+if [ -z "$init_system" ]; then
+	if [ -d /run/systemd/system ] && command -v "$systemctl_command" >/dev/null 2>&1; then
+		init_system=systemd
+	elif command -v "$rc_update_command" >/dev/null 2>&1 &&
+		command -v "$service_command" >/dev/null 2>&1; then
+		init_system=openrc
+	else
+		die 'could not identify a supported init system (systemd or OpenRC)'
+	fi
+fi
+
+case "$init_system" in
+systemd)
+	command -v "$systemctl_command" >/dev/null 2>&1 ||
+		die "systemctl is required for systemd recovery: $systemctl_command"
+	service_description='systemctl enable --now sshd.service'
+	;;
+openrc)
+	command -v "$rc_update_command" >/dev/null 2>&1 ||
+		die "rc-update is required for OpenRC recovery: $rc_update_command"
+	command -v "$service_command" >/dev/null 2>&1 ||
+		die "service is required for OpenRC recovery: $service_command"
+	service_description='rc-update add sshd default; service sshd start'
+	;;
+*)
+	die "unsupported init system: $init_system"
+	;;
+esac
+
+sshd_path=
+for candidate in sshd.pam sshd; do
+	if command -v "$candidate" >/dev/null 2>&1; then
+		sshd_path=$(command -v "$candidate")
+		break
+	fi
+done
+
+printf 'report=oneplus6t-ssh-recovery\n'
+printf 'init=%s\n' "$init_system"
+if [ -n "$sshd_path" ]; then
+	printf 'sshd=present\n'
+else
+	printf 'sshd=missing\n'
+fi
+printf 'mode=%s\n' "$([ "$apply" = yes ] && printf apply || printf dry-run)"
+
+if [ "$apply" = no ]; then
+	printf 'would-run=%s\n' "$service_description"
+	printf '%s\n' 'result=dry-run'
+	exit 0
+fi
+
+[ "$(id -u)" -eq 0 ] || die 'run --apply as root (usually: sudo pmos-enable-ssh --apply)'
+[ -n "$sshd_path" ] ||
+	die 'the SSH server is not installed; install openssh-server-pam first'
+
+case "$init_system" in
+systemd)
+	"$systemctl_command" enable --now sshd.service
+	;;
+openrc)
+	"$rc_update_command" add sshd default
+	"$service_command" sshd start
+	;;
+esac
+
+command -v "$ss_command" >/dev/null 2>&1 ||
+	die "ss is required to verify the SSH listener: $ss_command"
+
+listener=no
+attempt=1
+while [ "$attempt" -le 20 ]; do
+	if "$ss_command" -H -lnt 2>/dev/null | awk '$4 ~ /(^|:)22$/ { found = 1 } END { exit(found ? 0 : 1) }'; then
+		listener=yes
+		break
+	fi
+	# Busybox sleep is available on every supported postmarketOS base.
+	sleep 0.1
+	attempt=$((attempt + 1))
+done
+
+if [ "$listener" = yes ]; then
+	printf '%s\n' 'listener=pass'
+	printf '%s\n' 'firewall=unchanged'
+	printf '%s\n' 'result=pass'
+else
+	printf '%s\n' 'listener=missing'
+	printf '%s\n' 'hint=inspect systemctl status sshd.service or rc-service sshd status'
+	die 'sshd was started but no TCP/22 listener was observed'
+fi

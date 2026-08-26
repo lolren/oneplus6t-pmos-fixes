@@ -83,3 +83,9 @@ change the display driver, or claim runtime acceptance. The host-side source,
 tests, package recipes and documentation can continue to be maintained, but
 the phone-side gates above cannot be completed remotely through the current
 interface.
+
+The fixes package now includes `pmos-enable-ssh --apply`, an idempotent
+systemd/OpenRC recovery helper that starts and persists `sshd` and verifies a
+TCP/22 listener without changing firewall rules. It must still be run from the
+phone's local terminal once because the current NCM endpoint does not expose a
+remote execution service.

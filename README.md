@@ -67,6 +67,17 @@ sudo pmos-configure-mobile-data --dry-run
 `make install DESTDIR=... PREFIX=/usr` is supported for package builders. No
 service is silently enabled by the Makefile.
 
+If USB networking answers ping but port 22 is unavailable, recover the
+phone-side SSH service from its local terminal with the packaged helper:
+
+```sh
+sudo pmos-enable-ssh --apply
+```
+
+It supports both systemd and OpenRC, persists `sshd`, verifies the listener and
+does not alter firewall rules. The recovery procedure and direct fallback
+commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
+
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
 and Waydroid health acceptance, enable it explicitly with:
