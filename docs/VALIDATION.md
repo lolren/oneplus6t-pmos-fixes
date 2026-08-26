@@ -1455,3 +1455,20 @@ libcamera-ipa-99990.7.2-r25.apk: 11efa3eaa05e00e0921cbf081fb1b1fe8fdd356a4fc1244
 No physical claim is made: the phone still has no usable SSH/ADB/fastboot
 runtime transport, so r25 remains uninstalled pending recovery and live
 actuator validation.
+
+## ModemManager formatted location parser
+
+Date: 2026-08-26. The Waydroid location bridge now accepts the two location
+formats that a live ModemManager monitor can expose: raw NMEA sentences and
+human-readable decimal GPS fields. `ModemLocationParser` joins separate
+latitude/longitude lines, carries optional accuracy and altitude metadata, and
+resets on a new GPS block or repeated coordinate so a transient partial record
+cannot silently combine coordinates from different updates. Out-of-range and
+non-finite values are ignored.
+
+The eight fixture-driven bridge tests cover GGA, invalid NMEA, gpsd TPV,
+formatted ModemManager records, repeated-coordinate boundaries, invalid
+coordinates and both dry-run input paths. Python compilation, `git diff
+--check`, and the complete `make test` suite passed. This is a source-only
+improvement: no native GNSS fix, GeoClue result, Waydroid injection or map
+behavior is claimed until the phone's physical recovery gate is cleared.

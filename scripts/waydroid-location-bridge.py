@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shlex
 import shutil
@@ -157,12 +158,111 @@ def parse_gpsd(line: str) -> Optional[LocationFix]:
 
 
 def parse_location_line(line: str) -> Optional[LocationFix]:
+    """Parse one raw NMEA or gpsd JSON line.
+
+    ModemManager's human-readable decimal output is handled by
+    :class:`ModemLocationParser`, because its latitude and longitude fields
+    are normally printed on separate lines.
+    """
+
     stripped = line.strip()
     if not stripped:
         return None
     if stripped.startswith("{"):
         return parse_gpsd(stripped)
     return parse_nmea(stripped)
+
+
+_MODEM_LOCATION_FIELD_RE = re.compile(
+    r"\b(?P<key>latitude|longitude|altitude|horizontal[\s_-]+accuracy|accuracy)"
+    r"\s*:\s*(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)",
+    re.IGNORECASE,
+)
+
+
+class ModemLocationParser:
+    """Parse raw or formatted records emitted by ModemManager.
+
+    ``mmcli --location-monitor`` can emit raw NMEA sentences, but its
+    formatted location records expose decimal latitude and longitude as
+    separate ``key: value`` fields.  Keeping the small amount of state here
+    lets the live bridge consume either form without making assumptions about
+    the modem number or the exact indentation used by ``mmcli``.
+    """
+
+    def __init__(self) -> None:
+        self._latitude: Optional[float] = None
+        self._longitude: Optional[float] = None
+        self._accuracy: Optional[float] = None
+        self._altitude: Optional[float] = None
+        self._seen_coordinates: set[str] = set()
+
+    def _reset(self) -> None:
+        self._latitude = None
+        self._longitude = None
+        self._accuracy = None
+        self._altitude = None
+        self._seen_coordinates.clear()
+
+    def _field_boundary(self, line: str) -> None:
+        """Drop an incomplete record when mmcli starts a new location block."""
+
+        lower = line.lower()
+        if re.search(
+            r"\b(?:gps|3gpp|cdma)\s+location\b|\blocation\s+updated\b",
+            lower,
+        ):
+            self._reset()
+
+    def feed(self, line: str) -> Optional[LocationFix]:
+        """Consume one monitor line and return a complete fix when available."""
+
+        raw_fix = parse_location_line(line)
+        if raw_fix is not None:
+            self._reset()
+            return raw_fix
+
+        self._field_boundary(line)
+        matches = list(_MODEM_LOCATION_FIELD_RE.finditer(line))
+        if not matches:
+            return None
+
+        for match in matches:
+            key = re.sub(r"[\s-]+", "_", match.group("key").lower())
+            try:
+                value = float(match.group("value"))
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(value):
+                continue
+
+            if key in ("latitude", "longitude"):
+                # A repeated coordinate normally marks the next formatted
+                # record.  Do not combine a new latitude with an old longitude
+                # when a modem omits a field in a transient update.
+                if key in self._seen_coordinates:
+                    self._reset()
+                self._seen_coordinates.add(key)
+                if key == "latitude" and -90.0 <= value <= 90.0:
+                    self._latitude = value
+                elif key == "longitude" and -180.0 <= value <= 180.0:
+                    self._longitude = value
+            elif key == "altitude":
+                self._altitude = value
+            elif key in ("accuracy", "horizontal_accuracy") and value > 0:
+                self._accuracy = value
+
+        if self._latitude is None or self._longitude is None:
+            return None
+        fix = LocationFix(
+            self._latitude,
+            self._longitude,
+            self._accuracy,
+            self._altitude,
+            "modemmanager-gps",
+        )
+        self._reset()
+        return fix
 
 
 def _run(
@@ -377,6 +477,7 @@ def run(arguments: argparse.Namespace) -> int:
     provider = WaydroidProvider(arguments.provider, dry_run)
     last_injected = 0.0
     fixes = 0
+    location_parser = ModemLocationParser()
     lines: TextIO | Iterator[str] | None = None
     try:
         provider.start()
@@ -391,7 +492,7 @@ def run(arguments: argparse.Namespace) -> int:
             lines = _gpsd_lines(dry_run)
 
         for line in lines:
-            fix = parse_location_line(line)
+            fix = location_parser.feed(line)
             if fix is None:
                 continue
             now = time.monotonic()

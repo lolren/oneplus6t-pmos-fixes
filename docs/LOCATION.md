@@ -54,8 +54,11 @@ should Wi-Fi fallback be disabled for a “GNSS-only” test.
 
 Waydroid does not provide a native host-GNSS bridge in the reference image.
 `waydroid-location-bridge.py` is therefore an explicit diagnostic bridge. It
-accepts ModemManager NMEA or gpsd JSON TPV fixes and injects them into Android's
-documented test-provider API.
+accepts raw ModemManager NMEA, ModemManager's formatted decimal GPS records, or
+gpsd JSON TPV fixes and injects them into Android's documented test-provider
+API. The ModemManager parser keeps latitude and longitude from the same
+formatted update together, so the separate `mmcli` output lines are usable in
+live mode as well as in a fixture.
 
 The default is harmless dry-run mode. It prints the exact commands and never
 changes the modem or Waydroid:
@@ -113,9 +116,9 @@ Record all of the following privately after recovery:
 No coordinates, modem identifiers or location logs belong in Git.
 
 The report is installed by the project Makefile as
-`/usr/sbin/pmos-check-location`. Its fixture-driven test runs without a modem
-and verifies that coordinate fields are distinguished from a missing native
-fix.
+`/usr/sbin/pmos-check-location`. The bridge's fixture-driven tests run without
+a modem and verify raw NMEA, gpsd JSON, formatted ModemManager coordinates,
+record-boundary handling, and the missing-fix path.
 
 Background: the [OnePlus 6T postmarketOS status page](https://wiki.postmarketos.org/wiki/OnePlus_6T_%28oneplus-fajita%29)
 currently lists GPS as partial, and Waydroid's upstream

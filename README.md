@@ -379,11 +379,12 @@ successful. `apk upgrade --available` remains outside this workflow.
 ### Location
 
 Native GeoClue/ModemManager GNSS checks and the dry-run-first Waydroid location
-bridge are documented in [docs/LOCATION.md](docs/LOCATION.md). The bridge is
-explicitly a mock-provider diagnostic until the phone's native GNSS and an
-Android map application have been tested; it does not pretend to provide a
-vendor GNSS HAL. `pmos-check-location` now provides the read-only native
-ModemManager/GeoClue report needed before using the bridge.
+bridge are documented in [docs/LOCATION.md](docs/LOCATION.md). It accepts raw
+NMEA, formatted decimal fields from `mmcli --location-monitor`, or gpsd JSON;
+the bridge is explicitly a mock-provider diagnostic until the phone's native
+GNSS and an Android map application have been tested. It does not pretend to
+provide a vendor GNSS HAL. `pmos-check-location` now provides the read-only
+native ModemManager/GeoClue report needed before using the bridge.
 
 ### NFC
 
