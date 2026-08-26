@@ -7,7 +7,8 @@ legacy `camera-generation-r7-r1.psv` remains available for the earlier
 r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5. The
 opt-in r7/r7 manifest carries the r9 save-feedback app pair and r8 rollback;
 the newer opt-in r7/r10 manifest carries the r10 adjustment-serialization pair
-and r9 rollback.
+and r9 rollback, and r7/r11 carries the bounded rear-flash pair with r10
+rollback.
 
 ## Requirements
 
@@ -80,6 +81,30 @@ transport and physical camera gates reopen.
 ./scripts/manage-camera-generation \
   --stage /absolute/path/to/camera-r7-r10 \
   --manifest data/camera-generation-r7-r10.psv \
+  install
+```
+
+`data/camera-generation-r7-r11.psv` is the current opt-in userspace
+candidate. It keeps PipeWire r7 unchanged, upgrades the Advanced Snapshot and
+language packages from r10 to r11, and retains the exact r10 pair for rollback.
+The r11 app adds an off-by-default Hardware flash switch. On a rear camera it
+starts a bounded level-32 pulse through `pmos-camera-flash`; the helper saves
+and restores every writable `*:flash` channel, including when capture fails or
+the camera page is closed. The switch is unavailable without the helper and
+never fires for the fixed-focus front camera. HDR, automatic flash metering,
+manual ISO and manual shutter remain unavailable.
+
+The signed AArch64 stage is published as the
+[`camera-r7-r11` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r11).
+Its archive SHA-256 is
+`840fb638260d979ede9f3b86eea048e6b66948f8c8df9ff97326cb90eb5b572f`.
+It passed source/package validation but remains uninstalled until the phone's
+transport and physical camera gates reopen.
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r7-r11 \
+  --manifest data/camera-generation-r7-r11.psv \
   install
 ```
 

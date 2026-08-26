@@ -5,7 +5,7 @@ pmaports: five SDM845 kernel patches, sixteen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r10 Advanced Snapshot
+device-specific identifier. The current patch carries the r11 Advanced Snapshot
 source recipe and the libcamera r25 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
 The phone's accepted runtime baseline remains Advanced Snapshot r1 and
@@ -16,7 +16,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`e6dfec0857c7d0b74d3b64747ce3ad199b618f0d84b32885c586a602b34ab16b`.
+`df39e156c3eeb09f4493a2d3a7c46fc3f18264c83703c7d3256f9b3cfb49f9cf`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -43,8 +43,8 @@ Applying the integration patch to the reviewed base produces:
   candidate; r24 remains the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r10` plus
-  `advanced-snapshot-lang-0.1.0-r10` (adjustment-serialization candidate; not yet installed).
+- `advanced-snapshot-0.1.0-r11` plus
+  `advanced-snapshot-lang-0.1.0-r11` (bounded rear-flash candidate; not yet installed).
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
@@ -69,8 +69,8 @@ during live diagnosis. They do not imply that many public releases.
 | `advanced-snapshot-lang-0.1.0-r8.apk` (capture-safety candidate) | `f615e75c29579bf877e611a10178021936ab5f63388e9d0f9d041d39b0e56c77` |
 | `advanced-snapshot-0.1.0-r9.apk` (save-feedback candidate) | `9583bfe6e286cbcb6bcda397d817554d09726f9cf29ad505a901803c3d35a555` |
 | `advanced-snapshot-lang-0.1.0-r9.apk` (save-feedback candidate) | `59c60305a08d352ddc3fc70c881939e54c05c8e329aa6d6ba1339b5ecfdb6bfa` |
-| `advanced-snapshot-0.1.0-r10.apk` (adjustment-serialization candidate) | `f832c5b3ae4e96969fccba8c8f563e7ff8a7372e3fef7d9b32dc7d5fb9828eb9` |
-| `advanced-snapshot-lang-0.1.0-r10.apk` (adjustment-serialization candidate) | `2756823e3cb3ad68575bbe96d88a20cc99ecdc7440c405ba143baf43fdf99fb9` |
+| `advanced-snapshot-0.1.0-r11.apk` (bounded rear-flash candidate) | `f4dafe29a4682df10b4649fee3110dac419c8179098e0a9762f48a2251cf7c1b` |
+| `advanced-snapshot-lang-0.1.0-r11.apk` (bounded rear-flash candidate) | `40a9a822421d5640ce14f1046006bbb5b92b022862d977de0d7d14cf30f2c95a` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -122,6 +122,16 @@ requests and page or camera teardown. Its r10 APK hashes are
 The signed `camera-r7-r10` stage keeps PipeWire r7 unchanged and retains the
 r9 app pair for rollback. It is source/package validated but not installed or
 hardware-accepted.
+
+The r11 bounded rear-flash candidate is pinned to Advanced Snapshot commit
+`0512a75b1419db5621e4e65c7c4ea5b3446aeeac`. Its GitHub source archive has
+SHA-512
+`84b4849ebd8b46e8473a1cea2c8197cb54a9fed54435cac44528c4575b285b3c1f8341b52e9639d7da1eb5b928eee1568efb525a48ec36462feab96e4e79bb37`.
+The clean pmbootstrap edge AArch64/musl build passed all 15 cross-compiled
+tests and the independent package validator. The signed package hashes are
+recorded above. The matching `camera-r7-r11` stage keeps PipeWire r7 and
+retains the r10 app pair for rollback; it remains uninstalled and
+unhardware-tested until the phone transport is restored.
 
 The libcamera r25 candidate is built from the same v0.7.2 source and the
 updated generic AF patch. It requires three consecutive high-contrast monitor

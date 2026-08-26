@@ -145,6 +145,7 @@ install:
 		data/camera-generation-r7-r6.psv \
 		data/camera-generation-r7-r7.psv \
 		data/camera-generation-r7-r10.psv \
+		data/camera-generation-r7-r11.psv \
 		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a8b0868.rsa.pub \
 		"$(DESTDIR)$(LIBEXECDIR)/keys/"

@@ -1490,3 +1490,28 @@ level-32 pulse, and leaves the setting off by default. Host source and fixture
 validation passed; the phone still needs a live LED status/capture test after
 SSH/ADB/fastboot recovery. No automatic flash metering, HDR or Android-vendor
 image-quality claim is made.
+
+## pmaports r11 recipe and camera-generation synchronization
+
+Date: 2026-08-26. The reproducible pmaports integration patch now carries the
+Advanced Snapshot r11 recipe and its bounded rear-flash implementation. It
+applies cleanly to pmaports base `875bddba6538818f2c3c9849e184f40688ad5140`
+and has SHA-256
+`df39e156c3eeb09f4493a2d3a7c46fc3f18264c83703c7d3256f9b3cfb49f9cf`.
+
+A clean pmbootstrap edge AArch64/musl build passed all 15 cross-compiled tests
+(6 application and 9 Aperture), and the independent package validator accepted
+the signed r11 APK pair for signatures, AArch64 ELF, package content, schema,
+AppStream and overlap:
+
+```text
+advanced-snapshot-0.1.0-r11.apk: f4dafe29a4682df10b4649fee3110dac419c8179098e0a9762f48a2251cf7c1b
+advanced-snapshot-lang-0.1.0-r11.apk: 40a9a822421d5640ce14f1046006bbb5b92b022862d977de0d7d14cf30f2c95a
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+camera-r7-r11 archive: 840fb638260d979ede9f3b86eea048e6b66948f8c8df9ff97326cb90eb5b572f
+```
+
+The signed candidate stage keeps PipeWire r7 and retains the exact r10 app
+pair for rollback. It is source/package validated but remains uninstalled and
+unhardware-tested while the reference phone exposes CDC-NCM without a usable
+SSH banner, ADB device or fastboot transport.

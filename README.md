@@ -337,6 +337,15 @@ adjustment helpers when a newer slider request, camera switch or page teardown
 supersedes them. It is source/package validated but not hardware-accepted, so
 the default manager manifest remains r7/r5.
 
+An opt-in r11 bounded rear-flash candidate is available from the
+[camera-r7-r11 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r11).
+Use it with `data/camera-generation-r7-r11.psv`; it keeps PipeWire r7, upgrades
+the Advanced Snapshot pair from r10 to r11 and retains r10 for rollback. The
+app's Hardware flash switch launches the bounded `pmos-camera-flash` helper
+only for rear stills and restores LED state on completion or interruption. It
+is source/package validated but not hardware-accepted, so the default manager
+manifest remains r7/r5.
+
 The equivalent low-level simulation is:
 
 ```sh
