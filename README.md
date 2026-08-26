@@ -288,6 +288,12 @@ Verify its `SHA256SUMS` file, extract the archive, and pass the extracted
 directory as `--stage`. The release is explicitly not a production build and
 still requires the simulation and phone-side health gates below.
 
+An opt-in r8 capture-safety candidate is available from the
+[camera-r7-r6 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r6).
+Use it with `data/camera-generation-r7-r6.psv`; it keeps PipeWire r7 and
+rolls back to the r7 Advanced Snapshot pair. It is source/package validated but
+not hardware-accepted, so the default manager manifest remains r7/r5.
+
 The equivalent low-level simulation is:
 
 ```sh
