@@ -52,7 +52,7 @@ camera UI by themselves; an Android camera application consumes them.
 
 ## Source layout
 
-- `patches/libcamera/v0.7.2/` contains the sixteen generic native patches. The
+- `patches/libcamera/v0.7.2/` contains the seventeen generic native patches. The
   final two add `FrameDurationLimits` and stable progressive autofocus
   transitions to simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
@@ -123,7 +123,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 ## Prepare the source
 
 Apply the pmaports integration patch first. Its resulting libcamera recipe
-contains the two postmarketOS base patches and this project's sixteen generic
+contains the two postmarketOS base patches and this project's seventeen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
 the eleven Android patches in numeric order:
 

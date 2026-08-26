@@ -1,12 +1,13 @@
 # Reproducible OnePlus 6T camera packages
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
-pmaports: six SDM845 kernel patches, sixteen libcamera patches, three tuning
+pmaports: six SDM845 kernel patches, seventeen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r11 Advanced Snapshot
-source recipe and the libcamera r25 continuous-AF reference candidate; r24 and
+source recipe, the libcamera r26 manual-exposure source candidate and the r25
+continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
 It also carries the opt-in Samsung panel brightness-serialization patch as
 kernel r9, with kernel r8 retained as its rollback package.
@@ -18,7 +19,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`6259e171500508a515c71d38fdf2d270221fa8be53196e0d7f4f4724fe50536d`.
+`7be05142a61879f8ba9ae4b04f50b1b04520a6c17aad83e4aadce9fe2c48744d`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -42,8 +43,9 @@ Applying the integration patch to the reviewed base produces:
 
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r9` (display brightness-serialization
   candidate; r8 remains the rollback package);
-- `libcamera-99990.7.2-r25` and `libcamera-ipa-99990.7.2-r25` (AF reference
-  candidate; r24 remains the installed rollback);
+- `libcamera-99990.7.2-r26` and `libcamera-ipa-99990.7.2-r26` (manual-exposure
+  source candidate; r25 remains the latest built AF reference and r24 remains
+  the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
 - `advanced-snapshot-0.1.0-r11` plus
@@ -51,6 +53,12 @@ Applying the integration patch to the reviewed base produces:
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
+
+The r26 libcamera revision is a source candidate only at this checkpoint. Its
+standalone manual-control patch has passed an isolated libcamera build and the
+full integration diff applies cleanly, but no r26 APK has been built or
+installed yet. Keep the signed r24/r25 APKs for rollback until a clean
+AArch64 build and live manual-exposure test pass.
 
 ## Reference artifacts
 

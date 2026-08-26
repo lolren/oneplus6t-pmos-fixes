@@ -1554,3 +1554,31 @@ included. `make test`, shell syntax validation and a fresh pmaports
 reference phone still has no usable SSH banner, ADB device or fastboot
 transport, so physical display, reboot-persistence and rollback acceptance are
 open.
+
+## Libcamera r26 manual-exposure source checkpoint
+
+Date: 2026-08-26. The standalone
+`0017-ipa-simple-Expose-manual-exposure-and-gain-controls.patch` now publishes
+standard `ExposureTimeMode`, `ExposureTime`, `AnalogueGainMode` and
+`AnalogueGain` controls from the simple IPA. It converts public microsecond and
+linear-gain values to sensor units, clamps requests and reports the selected
+Auto/Manual modes in metadata. Automatic exposure and gain remain independently
+selectable for libcamera clients.
+
+The source patch SHA-512 is:
+
+```text
+af4141ed03b1c0647ef55eb1c61ed113933adc82d5651bc39930387bae0c72e717d1bbc24121c775c9b8baa60c5271f6d94029e4e756bbfe3b1ecdf3a94f6172
+```
+
+The isolated v0.7.2 source tree with the preceding OnePlus patches applied
+accepted the patch with `git am`, passed `git diff --check`, and built all 46
+selected simple-IPA/libcamera targets with GCC, Meson and Ninja using
+`-Dwerror=true`. The regenerated pmaports integration patch applies cleanly to
+base `875bddba6538818f2c3c9849e184f40688ad5140`; its current SHA-256 is
+`7be05142a61879f8ba9ae4b04f50b1b04520a6c17aad83e4aadce9fe2c48744d`.
+
+This is a source checkpoint, not a release claim: r26 APKs have not been
+built, installed or hardware-accepted. A clean AArch64 package build and a
+physical shutter/gain test remain required. The phone's USB-NCM link still has
+no usable SSH banner, so no device mutation was attempted.

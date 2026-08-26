@@ -114,6 +114,15 @@ positive EV deliberately trades highlight headroom for brightness instead of
 being cancelled by a fixed ceiling. This is exposure compensation, not fixed
 manual shutter control.
 
+The simple IPA also exposes standard manual shutter and analogue-gain controls.
+`ExposureTime` is expressed in microseconds at the libcamera API boundary and
+converted to sensor line units internally; `AnalogueGain` is a linear multiplier
+converted through the sensor helper. Requests are clamped to the active V4L2
+ranges, and the corresponding Auto/Manual modes are returned in metadata. The
+application sends both controls atomically and restores both automatic modes
+together. This is a real manual control path, but it is not a vendor-calibrated
+ISO implementation and it does not implement HDR.
+
 ### Rear autofocus
 
 The simple IPA gains contrast-detect autofocus for both rear cameras:
@@ -259,7 +268,8 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
 | Hardware flash pulse | Optional | Optional | No | `pmos-camera-flash` helper; writable rear `*:flash` channels required; live LED/capture acceptance pending |
-| Manual exposure/AWB | No | No | No | Not implemented by the simple IPA |
+| Manual shutter and analogue gain | Candidate | Candidate | Candidate | Standard `ExposureTime`/`AnalogueGain` controls; requires the libcamera r26 source candidate and live acceptance |
+| Manual AWB | No | No | No | Not implemented by the simple IPA |
 | Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
 | Temporal denoise | No | No | No | No equivalent algorithm in this pipeline |
 
@@ -285,7 +295,7 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The sixteen-patch libcamera 0.7.2 series is in
+The seventeen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
 50.0 three-patch application series have their own versioned directories under

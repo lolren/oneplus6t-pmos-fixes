@@ -200,6 +200,7 @@ and through an open Camera3 HAL in Waydroid.
 | Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; installed r7/r1 correlates the result and uses amber/green/red state. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
+| Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
