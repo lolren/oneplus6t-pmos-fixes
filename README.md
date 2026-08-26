@@ -220,6 +220,9 @@ install it atomically with `sudo scripts/install-waydroid-camera`. That helper
 backs up only its managed targets and prints the exact rollback directory.
 Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
 package hashes, clean three-camera probe and rollback command.
+Optional Play Store/GAPPS initialization and its read-only package verifier are
+documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
+or APK is included in this repository.
 
 Before any overlay operation, run
 `pmos-check-waydroid-health --status --processes`. It reports stale rootfs

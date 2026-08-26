@@ -73,6 +73,10 @@ The Android series depends on the generic frame-duration and autofocus work. It
 is intentionally separate from pmaports because Android HAL code and its ABI
 dependencies do not belong in the native Alpine package.
 
+Optional GAPPS/Play Store initialization and the read-only package verifier are
+documented in [WAYDROID-GAPPS.md](WAYDROID-GAPPS.md). The verifier is separate
+from the camera overlay and does not download, initialize or modify Waydroid.
+
 ## Build requirements
 
 The tested host was x86-64 Linux with:

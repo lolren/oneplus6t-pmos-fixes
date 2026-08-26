@@ -1126,3 +1126,21 @@ accepted a connection but did not send an SSH banner within eight seconds,
 only CDC-NCM control/data interfaces. No reboot, USB reset, overlay access or
 flash operation was attempted. The phone therefore still requires a physical
 power recovery before the health report or any runtime acceptance can resume.
+
+## Waydroid GAPPS verifier
+
+Date: 2026-08-26. The fixes package now includes
+scripts/check-waydroid-gapps and the pmos-check-waydroid-gapps symlink. The
+helper is deliberately read-only: it records Waydroid status, Android release
+and ABI information, then checks the package paths for Google Play services,
+Google Services Framework and Play Store. It returns gapps=verified only when
+all three paths are present. It does not initialize images, start or stop
+services, alter the camera overlay or include Google files.
+
+The fixture test covers a verified Android 13 ARMv7 result, refusal to
+overwrite an existing report and a missing Play Store package. The complete
+make test suite and staged make install validation passed. The image-change
+procedure, hash-recording requirements and post-initialization camera
+reinstallation gate are documented in docs/WAYDROID-GAPPS.md. The current
+phone remains blocked at the physical-recovery gate, so no GAPPS image was
+initialized and no runtime package result is claimed.
