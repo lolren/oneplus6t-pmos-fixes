@@ -198,6 +198,7 @@ and through an open Camera3 HAL in Waydroid.
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
+| Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
@@ -228,13 +229,15 @@ turns it green only for metadata-confirmed focus and red for failure. Exact
 r6/r0 APKs are retained as the immediate rollback.
 
 The current native UI exposes a visible tap reticle plus Exposure, Colour,
-Contrast, Detail, Zoom and Reset. The lower-layer focus instability is fixed:
+Contrast, Detail, Zoom, Reset and an opt-in rear **Hardware flash** switch when
+the helper is installed. The lower-layer focus instability is fixed:
 both rear cameras now use bounded progressive tap-focus and return to
 continuous monitoring without moving the lens. The UI is not yet an
 Android-level camera application; that work continues in the separately
-maintained Advanced Snapshot project. HDR, flash integration, calibrated
+maintained Advanced Snapshot project. HDR, calibrated
 colour/lens shading, temporal denoise and Android vendor computational
-processing are not claimed. See
+processing are not claimed. The hardware switch is not automatic flash
+metering or HDR. See
 [docs/CAMERA.md](docs/CAMERA.md) for native details and
 [docs/WAYDROID.md](docs/WAYDROID.md) for Android requirements, build,
 installation, feature explanations, validation and rollback.

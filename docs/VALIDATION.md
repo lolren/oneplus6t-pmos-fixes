@@ -1472,3 +1472,21 @@ coordinates and both dry-run input paths. Python compilation, `git diff
 --check`, and the complete `make test` suite passed. This is a source-only
 improvement: no native GNSS fix, GeoClue result, Waydroid injection or map
 behavior is claimed until the phone's physical recovery gate is cleared.
+
+## Bounded hardware-flash helper
+
+Date: 2026-08-26. The pMOS fixes tree now installs `pmos-camera-flash`, a
+signal-safe helper for writable top-level `*:flash` LED channels. It supports
+read-only `--probe`/`--status`, bounded `--pulse`, and explicit `--off`. A
+pulse saves every channel's existing brightness, applies the requested level
+(halving yellow/amber channels), caps duration at five seconds and restores the
+saved values on normal exit or interruption.
+
+`tests/test-camera-flash.sh` uses a temporary white/yellow LED fixture and
+covers status, pulse restoration, off and the no-hardware failure path. The
+helper is included in `make test`, `make install` and the package recipe. The
+Advanced Snapshot UI calls it only for a rear camera, with a default 2.5-second
+level-32 pulse, and leaves the setting off by default. Host source and fixture
+validation passed; the phone still needs a live LED status/capture test after
+SSH/ADB/fastboot recovery. No automatic flash metering, HDR or Android-vendor
+image-quality claim is made.

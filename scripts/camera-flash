@@ -1,0 +1,195 @@
+#!/bin/sh
+set -eu
+
+PROGRAM=${0##*/}
+led_root=${PMOS_FLASH_SYSFS_ROOT:-/sys/class/leds}
+duration_ms=1500
+level=32
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM --probe|--status|--off
+       $PROGRAM --pulse [--duration-ms MILLISECONDS] [--level 1..255]
+
+Use the phone's writable *:flash LED channels for a bounded camera pulse.
+The default pulse is 1.5 seconds at level 32/16 for the OnePlus 6T's
+white/yellow pair. Previous brightness values are restored on completion or
+when the process receives HUP, INT or TERM. The pulse is capped at 5 seconds.
+Set PMOS_FLASH_SYSFS_ROOT only for a test fixture or an alternate sysfs root.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+list_leds() {
+	[ -d "$led_root" ] || return 0
+	find "$led_root" -mindepth 1 -maxdepth 1 -type d -name '*:flash' \
+		-print 2>/dev/null | sort
+}
+
+is_integer() {
+	case "$1" in
+	''|*[!0-9]*) return 1 ;;
+	*) return 0 ;;
+	esac
+}
+
+led_level() {
+	name=${1##*/}
+	case "$name" in
+	*yellow*|*amber*)
+		printf '%s\n' $((level / 2))
+		;;
+	*)
+		printf '%s\n' "$level"
+		;;
+	esac
+}
+
+command=${1:---status}
+if [ "$#" -gt 0 ]; then
+	shift
+fi
+
+case "$command" in
+--help|-h)
+	usage
+	exit 0
+	;;
+--probe|--status|--off)
+	[ "$#" -eq 0 ] || die "$command does not accept options"
+	;;
+--pulse)
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--duration-ms)
+			[ "$#" -ge 2 ] || die '--duration-ms requires a value'
+			duration_ms=$2
+			shift 2
+			;;
+		--level)
+			[ "$#" -ge 2 ] || die '--level requires a value'
+			level=$2
+			shift 2
+			;;
+		--help|-h)
+			usage
+			exit 0
+			;;
+		*)
+			die "unknown option for --pulse: $1"
+			;;
+		esac
+	done
+	is_integer "$duration_ms" || die 'duration must be an integer in milliseconds'
+	[ "$duration_ms" -le 5000 ] || die 'duration must not exceed 5000 milliseconds'
+	is_integer "$level" || die 'level must be an integer from 1 to 255'
+	[ "$level" -ge 1 ] && [ "$level" -le 255 ] || die 'level must be from 1 to 255'
+	;;
+*)
+	printf '%s: unknown operation: %s\n' "$PROGRAM" "$command" >&2
+	usage >&2
+	exit 2
+	;;
+esac
+
+leds=$(list_leds)
+
+case "$command" in
+--status)
+	printf '%s\n' 'report=oneplus6t-camera-flash'
+	printf 'led_root=%s\n' "$led_root"
+	if [ -z "$leds" ]; then
+		printf '%s\n' 'leds=none' 'result=unavailable'
+		exit 1
+	fi
+	writable_count=0
+	for led in $leds; do
+		brightness=$led/brightness
+		if [ -w "$brightness" ]; then
+			writable=yes
+			writable_count=$((writable_count + 1))
+		else
+			writable=no
+		fi
+		value=$(cat "$brightness" 2>/dev/null || printf '%s' unavailable)
+		printf 'led=%s writable=%s brightness=%s\n' "${led##*/}" "$writable" "$value"
+	done
+	printf 'writable_leds=%s\n' "$writable_count"
+	if [ "$writable_count" -gt 0 ]; then
+		printf '%s\n' 'result=available'
+		exit 0
+	fi
+	printf '%s\n' 'result=unavailable'
+	exit 1
+	;;
+--probe)
+	writable_count=0
+	for led in $leds; do
+		[ -w "$led/brightness" ] || continue
+		writable_count=$((writable_count + 1))
+	done
+	[ "$writable_count" -gt 0 ]
+	;;
+--off)
+	writable_count=0
+	for led in $leds; do
+		brightness=$led/brightness
+		[ -w "$brightness" ] || continue
+		printf '0\n' >"$brightness" || die "could not turn off ${led##*/}"
+		writable_count=$((writable_count + 1))
+	done
+	[ "$writable_count" -gt 0 ] || die 'no writable flash LED channels were found'
+	printf 'flash=off leds=%s\n' "$writable_count"
+	;;
+--pulse)
+	saved_values=
+	active=no
+
+	restore() {
+		[ "$active" = yes ] || return 0
+		restore_status=0
+		while IFS='|' read -r brightness previous; do
+			[ -n "$brightness" ] || continue
+			printf '%s\n' "$previous" >"$brightness" 2>/dev/null || restore_status=1
+		done <<EOF
+$saved_values
+EOF
+		active=no
+		return "$restore_status"
+	}
+
+	trap 'restore || true' EXIT
+	trap 'restore || true; exit 130' HUP INT TERM
+
+	writable_count=0
+	for led in $leds; do
+		brightness=$led/brightness
+		[ -w "$brightness" ] || continue
+		previous=$(cat "$brightness")
+		is_integer "$previous" || die "invalid brightness in ${led##*/}"
+		if [ -n "$saved_values" ]; then
+			saved_values="$saved_values
+$brightness|$previous"
+		else
+			saved_values="$brightness|$previous"
+		fi
+		active=yes
+		new_level=$(led_level "$led")
+		printf '%s\n' "$new_level" >"$brightness" || die "could not enable ${led##*/}"
+		writable_count=$((writable_count + 1))
+	done
+	[ "$writable_count" -gt 0 ] || die 'no writable flash LED channels were found'
+	printf 'flash=on leds=%s duration_ms=%s level=%s\n' \
+		"$writable_count" "$duration_ms" "$level"
+
+	seconds=$((duration_ms / 1000))
+	milliseconds=$((duration_ms % 1000))
+	sleep "$seconds.$(printf '%03d' "$milliseconds")"
+	restore || die 'could not restore previous flash LED brightness'
+	printf '%s\n' 'flash=restored'
+	;;
+esac

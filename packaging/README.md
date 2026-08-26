@@ -27,6 +27,12 @@ libcamera and tuning changes are deliberately not installed by this noarch
 helper package; their separately reviewed pmaports integration is in
 `packaging/pmaports/`.
 
+The package also installs `pmos-camera-flash`. On hardware exposing writable
+top-level `*:flash` LED channels, `pmos-camera-flash --status` reports the
+available channels without changing them, while `--pulse` performs a capped,
+restorable illumination pulse for Advanced Snapshot. The helper is explicit
+and off by default; it is not a libcamera automatic-flash implementation.
+
 The package also installs `pmos-manage-camera-generation`, the default r7/r5,
 opt-in r7/r6 capture-safety, opt-in r7/r7 save-feedback and legacy r7/r1
 through r7/r4 immutable manifests,

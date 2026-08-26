@@ -22,6 +22,7 @@ SCRIPTS = \
 	scripts/check-display \
 	scripts/check-waydroid-health \
 	scripts/check-waydroid-gapps \
+	scripts/camera-flash \
 	scripts/run-waydroid-camera-probe \
 	scripts/compare-waydroid-camera-probes \
 	scripts/audio-route-policy \
@@ -67,6 +68,7 @@ test:
 		tests/test-waydroid-rgb-preview.sh \
 		 tests/test-waydroid-gapps.sh \
 		tests/test-display-report.sh \
+		tests/test-camera-flash.sh \
 		tests/test-device-acceptance.sh \
 		tests/test-location-service.sh \
 		tests/test-update-guard.sh \
@@ -87,6 +89,7 @@ test:
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
+	./tests/test-camera-flash.sh
 	sh tests/test-device-acceptance.sh
 	sh tests/test-location-service.sh
 	sh tests/test-device-transport.sh
@@ -166,6 +169,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-location"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-display" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-display"
+	ln -sfn "$(LIBEXECDIR)/scripts/camera-flash" \
+		"$(DESTDIR)$(SBINDIR)/pmos-camera-flash"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-health" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-health"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-gapps" \

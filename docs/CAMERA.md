@@ -195,6 +195,28 @@ Snapshot preview remains inexpensive. For a still, it separately selects the
 largest 4:3 mode not exceeding 2048x1536, avoiding the previous behavior where
 the preview-sized stream also limited the saved picture.
 
+### Explicit rear LED flash pulse
+
+The OnePlus 6T exposes its rear illumination as two LED class channels,
+`white:flash` and `yellow:flash`, rather than as a libcamera flash control. The
+repository therefore installs the bounded `pmos-camera-flash` helper for an
+explicit application request:
+
+```sh
+pmos-camera-flash --status
+pmos-camera-flash --pulse --duration-ms 2500 --level 32
+```
+
+`--status` and `--probe` are read-only. A pulse uses only writable top-level
+`*:flash` channels, saves their current brightness, caps the duration at five
+seconds, halves the requested level for yellow/amber channels, and restores
+every saved value on normal completion or interruption. `--off` is available
+for an explicit zeroing operation. Advanced Snapshot keeps the control off by
+default, exposes it only for a rear camera, and uses the same 2.5-second/level
+32 defaults. This is bounded illumination, not automatic flash metering, HDR,
+or vendor-camera image processing; the front fixed-focus camera must never
+start it.
+
 ### GPU grid and crop fix
 
 The old EGL path demosaiced and resized packed Bayer data in one pass with
@@ -236,7 +258,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; installed r3 |
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
-| Flash integration | No | No | No | LEDs exist but are not a libcamera flash device |
+| Hardware flash pulse | Optional | Optional | No | `pmos-camera-flash` helper; writable rear `*:flash` channels required; live LED/capture acceptance pending |
 | Manual exposure/AWB | No | No | No | Not implemented by the simple IPA |
 | Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
 | Temporal denoise | No | No | No | No equivalent algorithm in this pipeline |
