@@ -3,7 +3,9 @@ set -eu
 
 case "$1" in
 info)
-	printf '%s\n' 'Server String: mock'
+	printf '%s\n' \
+		'Server String: mock' \
+		"Server Name: ${PMOS_AUDIO_SERVER_NAME:-PulseAudio (on PipeWire mock)}"
 	;;
 get-default-sink)
 	printf '%s\n' "${PMOS_AUDIO_SINK:?PMOS_AUDIO_SINK is required}"
@@ -11,12 +13,29 @@ get-default-sink)
 get-default-source)
 	printf '%s\n' "${PMOS_AUDIO_CURRENT_SOURCE:?PMOS_AUDIO_CURRENT_SOURCE is required}"
 	;;
-	list)
-	[ "${2:-}" = short ] && [ "${3:-}" = sources ] || exit 1
-	printf '%s\n' \
-		'41 alsa_input.platform-sound.HiFi__Mic2__source PipeWire' \
-		'42 alsa_input.platform-sound.Voice_Call__Mic__source PipeWire' \
-		'43 alsa_input.platform-sound.Headset__source PipeWire'
+list)
+	case "${2:-}:${3:-}" in
+	cards:)
+		printf '%s\n' \
+			'Card #1' \
+			'Name: alsa_card.platform-sound' \
+			'HiFi: available' \
+			'Voice Call: available' \
+			'Active Profile: HiFi'
+		;;
+	short:sinks)
+		printf '%s\n' \
+			'31 alsa_output.platform-sound.HiFi__Speaker__sink PipeWire' \
+			'32 alsa_output.platform-sound.Voice_Call__Earpiece__sink PipeWire'
+		;;
+	short:sources)
+		printf '%s\n' \
+			'41 alsa_input.platform-sound.HiFi__Mic2__source PipeWire' \
+			'42 alsa_input.platform-sound.Voice_Call__Mic__source PipeWire' \
+			'43 alsa_input.platform-sound.Headset__source PipeWire'
+		;;
+	*) exit 1 ;;
+	esac
 	;;
 	set-default-source)
 	printf '%s\n' "${2:?missing target}" >"${PMOS_AUDIO_LOG:?PMOS_AUDIO_LOG is required}"

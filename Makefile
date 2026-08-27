@@ -61,8 +61,9 @@ all: test
 test:
 	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(HOST_DIAGNOSTIC_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
-		 tests/fixtures/camera-generation-smoke \
+		tests/fixtures/camera-generation-smoke \
 		tests/fixtures/nfctool \
+		tests/fixtures/audio-systemctl \
 			 tests/test-apn-selection.sh tests/test-messages-check.sh \
 			tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
@@ -83,6 +84,7 @@ test:
 	./tests/test-messages-check.sh
 	./tests/test-ssh-recovery.sh
 	./tests/test-audio-route-policy.sh
+	./tests/test-audio-routing-check.sh
 	./tests/test-power-report.sh
 	./tests/test-power-sampler.sh
 	./tests/test-nfc-report.sh

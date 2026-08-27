@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+case " $* " in
+*' --user is-active --quiet pipewire-pulse.socket '*) exit 0 ;;
+*' --user is-active '*) printf '%s\n' active ;;
+*) exit 1 ;;
+esac

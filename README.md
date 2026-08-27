@@ -211,11 +211,14 @@ See [docs/TRANSPORT.md](docs/TRANSPORT.md) for the safe interpretation.
 
 ## Audio and microphone pairing
 
-The audio layer now re-enables WirePlumber's ALSA hardware monitor and exposes
-the real OnePlus card to `wpctl`, Phosh and PipeWire clients. An optional user
-service pairs the default built-in microphone with the selected built-in
-output: top mic for speaker, bottom mic for earpiece/voice call, and headset
-mic for connected headphones. It leaves USB and Bluetooth routes untouched.
+The audio layer now requires postmarketOS's PipeWire backend, re-enables
+WirePlumber's ALSA hardware monitor and exposes the real OnePlus card to
+`wpctl`, Phosh, native applications and Waydroid. This prevents a second real
+PulseAudio daemon from taking the compatibility socket while WirePlumber owns
+the hardware. An optional user service pairs the default built-in microphone
+with the selected built-in output: top mic for speaker, bottom mic for
+earpiece/voice call, and headset mic for connected headphones. It leaves USB
+and Bluetooth routes untouched.
 
 Install and enable it with:
 
@@ -229,7 +232,9 @@ pmos-check-audio-routing
 
 The route policy and the current q6voice/callaudiod boundary are documented in
 [docs/AUDIO.md](docs/AUDIO.md). A real modem-call speakerphone test remains
-required before claiming a complete speakerphone output route.
+required before claiming a complete speakerphone output route. The live
+PipeWire-Pulse graph already passes native microphone capture, Waydroid AAC
+recording and Waydroid playback through the physical speaker.
 
 ## Cameras
 

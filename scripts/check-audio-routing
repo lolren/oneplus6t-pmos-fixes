@@ -3,29 +3,78 @@
 
 set -u
 
-if ! pactl info >/dev/null 2>&1; then
+pactl_command=${PMOS_AUDIO_CHECK_PACTL:-pactl}
+systemctl_command=${PMOS_AUDIO_CHECK_SYSTEMCTL:-systemctl}
+proc_root=${PMOS_AUDIO_CHECK_PROC_ROOT:-/proc}
+
+run_pactl() {
+	"$pactl_command" "$@"
+}
+
+pulse_info=$(LC_ALL=C run_pactl info 2>/dev/null) || {
 	echo "PipeWire's PulseAudio compatibility server is unavailable" >&2
+	exit 1
+}
+
+server_name=$(printf '%s\n' "$pulse_info" |
+	sed -n 's/^Server Name:[[:space:]]*//p' | head -n 1)
+case "$server_name" in
+	*PipeWire*) ;;
+	*)
+		printf 'Wrong PulseAudio server: %s\n' "${server_name:-unknown}" >&2
+		printf '%s\n' \
+			'Install postmarketos-base-ui-audio-backend-pipewire; a real PulseAudio daemon conflicts with WirePlumber on this phone.' >&2
+		exit 1
+		;;
+esac
+
+pulseaudio_pids=
+for comm_file in "$proc_root"/[0-9]*/comm; do
+	[ -r "$comm_file" ] || continue
+	IFS= read -r process_name <"$comm_file" || continue
+	[ "$process_name" = pulseaudio ] || continue
+	pid=${comm_file%/comm}
+	pid=${pid##*/}
+	pulseaudio_pids="${pulseaudio_pids}${pulseaudio_pids:+ }$pid"
+done
+if [ -n "$pulseaudio_pids" ]; then
+	printf 'Conflicting pulseaudio process detected (PID%s %s)\n' \
+		"$([ "${pulseaudio_pids#* }" = "$pulseaudio_pids" ] && printf '' || printf 's')" \
+		"$pulseaudio_pids" >&2
+	exit 1
+fi
+
+if ! command -v "$systemctl_command" >/dev/null 2>&1; then
+	printf 'systemctl is unavailable: %s\n' "$systemctl_command" >&2
+	exit 1
+fi
+if ! "$systemctl_command" --user is-active --quiet pipewire-pulse.socket; then
+	echo 'pipewire-pulse.socket is not active in this user session' >&2
 	exit 1
 fi
 
 echo "Audio services:"
-systemctl --user is-active pipewire.service 2>/dev/null || true
-systemctl --user is-active wireplumber.service 2>/dev/null || true
+for unit in pipewire.service wireplumber.service pipewire-pulse.socket pipewire-pulse.service; do
+	printf '%-26s ' "$unit"
+	"$systemctl_command" --user is-active "$unit" 2>/dev/null || true
+done
+
+printf '\nPulse compatibility server:\n%s\n' "$server_name"
 
 echo
 echo "Card profiles:"
-pactl list cards 2>/dev/null |
+run_pactl list cards 2>/dev/null |
 	awk '/^Card #[0-9]+/{card=$0} /Name: alsa_card\.platform-sound/{show=1} show && (/Voice Call:|HiFi:|Active Profile:/){print} show && /^Card #[0-9]+/ && card != $0{show=0}'
 
 echo
 echo "Defaults:"
-printf 'sink:   %s\n' "$(pactl get-default-sink)"
-printf 'source: %s\n' "$(pactl get-default-source)"
+printf 'sink:   %s\n' "$(run_pactl get-default-sink)"
+printf 'source: %s\n' "$(run_pactl get-default-source)"
 
 echo
 echo "OnePlus built-in nodes:"
-pactl list short sinks 2>/dev/null | awk '$2 ~ /^alsa_output\.platform-sound\./{print}'
-pactl list short sources 2>/dev/null | awk '$2 ~ /^alsa_input\.platform-sound\./{print}'
+run_pactl list short sinks 2>/dev/null | awk '$2 ~ /^alsa_output\.platform-sound\./{print}'
+run_pactl list short sources 2>/dev/null | awk '$2 ~ /^alsa_input\.platform-sound\./{print}'
 
 echo
 echo "Call-audio daemon (if installed):"

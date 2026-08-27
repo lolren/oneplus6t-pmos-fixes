@@ -26,9 +26,12 @@ is not in a configured repository, installation uses
 resolved through the target's configured repositories.
 
 The package depends on the current owners of `ip`, `mmcli`, `nmcli` and the
-Mobile Broadband Provider database. `curl`, `resolvectl` and systemd time
-tools remain optional: diagnostics degrade safely when they are absent, and the
-time helper reports an explicit error outside a systemd installation.
+Mobile Broadband Provider database. Runtime r17 also selects postmarketOS's
+PipeWire UI backend and the PipeWire-Pulse systemd socket; this replaces the
+conflicting real PulseAudio daemon while preserving `pactl` through
+`pulseaudio-utils`. `curl`, `resolvectl` and systemd time tools remain optional:
+diagnostics degrade safely when they are absent, and the time helper reports an
+explicit error outside a systemd installation.
 
 `pmos-enable-ssh --apply` is an explicit, idempotent recovery helper for a
 phone whose postmarketOS USB developer-mode NCM link answers ping but has no

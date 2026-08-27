@@ -1813,3 +1813,37 @@ Front/auxiliary recording, long-duration capture, suspend/resume and r42's
 exact installed bundle remain open. This result proves the open Camera3,
 software encoder, microphone, muxer and speaker path; it does not claim
 OnePlus vendor-camera image quality or frame rate.
+
+## PipeWire-Pulse and Waydroid audio acceptance
+
+Date: 2026-08-27. The reference image had both the postmarketOS PulseAudio
+backend and PipeWire/WirePlumber installed. Calling `pactl` autospawned a real
+PulseAudio daemon while WirePlumber retained the hardware reservation. ALSA
+nodes remained suspended and Waydroid's microphone stream was silent.
+
+Installing `postmarketos-base-ui-audio-backend-pipewire` removed the conflicting
+PulseAudio daemon/backend packages and installed `pipewire-pulse` with its
+systemd user units. The resulting graph reported:
+
+```text
+Server Name: PulseAudio (on PipeWire 1.6.8)
+default sink:   alsa_output.platform-sound.HiFi__Speaker__sink
+default source: alsa_input.platform-sound.HiFi__Mic2__source
+pipewire.service:             active
+wireplumber.service:          active
+pipewire-pulse.socket:        active
+pipewire-pulse.service:       active
+oneplus6t-audio-route.service active
+```
+
+Only `pipewire-pulse` was running; no real `pulseaudio` process remained. A
+native microphone sample measured roughly -38.6 dB mean and -10.7 dB peak.
+After restarting Waydroid once to replace its stale Pulse socket, an Aperture
+video held an active Waydroid source-output and contained non-empty 48 kHz mono
+AAC. Playing the saved clip created a sink-input on the physical speaker.
+
+Runtime package r17 now requires the PipeWire backend and systemd Pulse socket,
+the route unit orders itself after that socket, and the diagnostic rejects both
+a legacy PulseAudio server and any stray process named `pulseaudio`. Real
+modem-call earpiece/speakerphone/headset switching and post-reboot acceptance
+remain open.
