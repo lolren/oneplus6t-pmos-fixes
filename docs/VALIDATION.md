@@ -1736,3 +1736,35 @@ The bundle is source/package validated but remains opt-in: no phone package
 was installed, and live preview, focus, exposure, HDR, video, display,
 modem, audio, location, NFC, Waydroid, battery and rollback acceptance remain
 open behind the unavailable phone transport.
+
+## Live SMARTY cellular and Waydroid location lifecycle acceptance
+
+Date: 2026-08-27. After inserting the SMARTY SIM, ModemManager dynamically
+enumerated the Qualcomm modem, registered at home on 3 UK LTE, attached packet
+service and connected the database-selected `mob.asm.net` profile. The default
+bearer supplied a static IPv4 configuration and DNS servers. NetworkManager
+installed the cellular default in its policy table, and four ICMP packets
+forced through the QMAP bearer interface completed with zero loss. Wi-Fi kept
+the lower-metric ordinary default while connected, as intended. SMARTY's
+current help page independently lists `mob.asm.net` with blank credentials.
+
+The modem exposes `gps-raw`, `gps-nmea`, `agps-msa` and `agps-msb`. Raw/NMEA
+enabled successfully at one-second refresh. Six timed samples carried current
+UTC but consistently reported RMC invalid, GGA quality zero and GSA mode one,
+so no coordinate was forwarded. Both advertised assisted modes failed with
+`Failed to receive operation mode indication`; this is retained as a lower
+ModemManager/Qualcomm gap rather than hidden by a guessed location.
+
+Live Waydroid testing found and fixed two integration errors: current Waydroid
+requires the `shell --` option boundary, and Android requires the
+`android:mock_location` app-op for the UID used by `waydroid shell`. The bridge
+now preserves that app-op, timestamps fixes and restores it on exit. With the
+service running, `dumpsys location` showed `fused provider [mock]` with null
+last/mock location. Stopping the service restored the ordinary fused provider
+and app-op `default`; starting it again cleanly recreated the bridge. The unit
+is enabled as a child of `waydroid-container.service`, so it does not force the
+container to consume battery when Waydroid is otherwise stopped.
+
+No coordinate, modem identifier, phone number or SIM identifier from this run
+is committed. A genuine outdoor fix, GeoClue acceptance and Android map-app
+acceptance remain open.

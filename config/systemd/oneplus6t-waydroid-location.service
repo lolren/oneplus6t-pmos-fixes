@@ -2,7 +2,8 @@
 Description=Bridge OnePlus 6T ModemManager GNSS fixes into Waydroid
 Documentation=https://github.com/lolren/oneplus6t-pmos-fixes/blob/main/docs/LOCATION.md
 After=ModemManager.service waydroid-container.service
-Wants=ModemManager.service waydroid-container.service
+Wants=ModemManager.service
+PartOf=waydroid-container.service
 ConditionPathExists=@SBINDIR@/pmos-waydroid-location-bridge
 
 [Service]
@@ -12,8 +13,14 @@ Restart=on-failure
 RestartSec=5s
 KillSignal=SIGINT
 TimeoutStopSec=10s
+Environment=PYTHONUNBUFFERED=1
 
 # The bridge needs ModemManager and Waydroid system access. The unit is
 # installed disabled; enable it only after native GNSS and the Waydroid
 # health gate pass.
 NoNewPrivileges=no
+
+[Install]
+# Start the bridge when Waydroid is started; do not pull the container into
+# every boot merely for location, which would waste battery.
+WantedBy=waydroid-container.service

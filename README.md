@@ -104,6 +104,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now oneplus6t-waydroid-location.service
 ```
 
+Once enabled, it follows `waydroid-container.service` and does not start the
+container merely for location. It temporarily grants the Android root shell's
+mock-location app-op, uses the required `waydroid shell --` boundary, and
+restores both the original fused provider and prior app-op when stopped.
+
 For the normal daily-use setup, preview and then apply the carrier-neutral
 mobile-data, network-time and microphone-route configuration together:
 
@@ -458,10 +463,11 @@ Native GeoClue/ModemManager GNSS checks, the dry-run-first Waydroid location
 bridge and its optional disabled system service are documented in
 [docs/LOCATION.md](docs/LOCATION.md). It accepts raw
 NMEA, formatted decimal fields from `mmcli --location-monitor`, or gpsd JSON;
-the bridge is explicitly a mock-provider diagnostic until the phone's native
-GNSS and an Android map application have been tested. It does not pretend to
-provide a vendor GNSS HAL. `pmos-check-location` now provides the read-only
-native ModemManager/GeoClue report needed before using the bridge.
+the bridge is explicitly a mock-provider integration rather than a vendor GNSS
+HAL. Live service lifecycle and rollback now pass on the phone, while a genuine
+outdoor satellite fix and Android map acceptance remain open.
+`pmos-check-location` provides the read-only native ModemManager/GeoClue report
+needed before using the bridge.
 
 ### NFC
 

@@ -304,7 +304,13 @@ def discover_modem() -> str:
 
 def _modem_lines(modem: str, enable_gps: bool, dry_run: bool) -> Iterator[str]:
     if enable_gps:
-        command = ["mmcli", "-m", modem, "--location-enable-gps-nmea"]
+        command = [
+            "mmcli",
+            "-m",
+            modem,
+            "--location-enable-gps-raw",
+            "--location-enable-gps-nmea",
+        ]
         if _run(command, dry_run=dry_run).returncode != 0:
             raise RuntimeError("could not enable ModemManager GPS NMEA")
         refresh = ["mmcli", "-m", modem, "--location-set-gps-refresh-rate=1"]
@@ -361,21 +367,68 @@ class WaydroidProvider:
         self.provider = provider
         self.dry_run = dry_run
         self.created = False
+        self._mock_location_mode: Optional[str] = None
+        self._changed_mock_location_mode = False
+
+    def _waydroid_command(self, *arguments: str) -> list[str]:
+        # ``--`` is required by current Waydroid releases whenever the
+        # Android command has options of its own. Without it, options such as
+        # --accuracy are consumed by the host-side Waydroid CLI.
+        return ["waydroid", "shell", "--", *arguments]
 
     def _location_command(self, action: str, *arguments: str) -> list[str]:
-        return [
-            "waydroid",
-            "shell",
+        return self._waydroid_command(
             "cmd",
             "location",
             "providers",
             action,
             *arguments,
-        ]
+        )
+
+    def _appops_command(self, action: str, *arguments: str) -> list[str]:
+        return self._waydroid_command(
+            "cmd",
+            "appops",
+            action,
+            "0",
+            "android:mock_location",
+            *arguments,
+        )
+
+    def _prepare_mock_location_permission(self) -> None:
+        """Allow the root identity used by ``waydroid shell`` to inject.
+
+        Android's location shell command is gated by the MOCK_LOCATION app-op,
+        including on a rooted Waydroid image. Preserve an existing mode and
+        restore it when this bridge exits instead of leaving a broad developer
+        setting behind.
+        """
+
+        result = _run(self._appops_command("get"), dry_run=self.dry_run)
+        if result.returncode != 0:
+            raise RuntimeError("could not query Android mock-location app-op")
+        match = re.search(
+            r"\bMOCK_LOCATION\s*:\s*([a-z_-]+)",
+            result.stdout,
+            re.IGNORECASE,
+        )
+        # Dry-run commands have no output. Treat that as the Android default
+        # so the complete reversible command sequence is still displayed.
+        self._mock_location_mode = match.group(1).lower() if match else "default"
+        if self._mock_location_mode == "allow":
+            return
+        result = _run(
+            self._appops_command("set", "allow"),
+            dry_run=self.dry_run,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("could not allow Android mock-location app-op")
+        self._changed_mock_location_mode = True
 
     def start(self) -> None:
         if not self.dry_run and shutil.which("waydroid") is None:
             raise RuntimeError("waydroid command is not installed")
+        self._prepare_mock_location_permission()
         add = self._location_command(
             "add-test-provider",
             self.provider,
@@ -402,22 +455,33 @@ class WaydroidProvider:
             location,
             "--accuracy",
             f"{max(1.0, accuracy):.1f}",
+            "--time",
+            str(int(time.time() * 1000)),
         )
         return _run(command, dry_run=self.dry_run).returncode == 0
 
     def close(self) -> None:
-        if not self.created:
-            return
-        _run(
-            self._location_command(
-                "set-test-provider-enabled", self.provider, "false"
-            ),
-            dry_run=self.dry_run,
-        )
-        _run(
-            self._location_command("remove-test-provider", self.provider),
-            dry_run=self.dry_run,
-        )
+        try:
+            if self.created:
+                _run(
+                    self._location_command(
+                        "set-test-provider-enabled", self.provider, "false"
+                    ),
+                    dry_run=self.dry_run,
+                )
+                _run(
+                    self._location_command("remove-test-provider", self.provider),
+                    dry_run=self.dry_run,
+                )
+        finally:
+            if self._changed_mock_location_mode:
+                _run(
+                    self._appops_command(
+                        "set", self._mock_location_mode or "default"
+                    ),
+                    dry_run=self.dry_run,
+                )
+                self._changed_mock_location_mode = False
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -510,6 +574,8 @@ def run(arguments: argparse.Namespace) -> int:
             )
             if arguments.once:
                 break
+        if arguments.input is None and not arguments.once and not dry_run:
+            raise RuntimeError("live location source ended unexpectedly")
     finally:
         if lines is not None and hasattr(lines, "close"):
             lines.close()  # type: ignore[union-attr]

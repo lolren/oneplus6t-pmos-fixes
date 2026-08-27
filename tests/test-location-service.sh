@@ -6,15 +6,17 @@ SERVICE=$ROOT/config/systemd/oneplus6t-waydroid-location.service
 
 [ -f "$SERVICE" ]
 grep -q '^After=ModemManager\.service waydroid-container\.service$' "$SERVICE"
-grep -q '^Wants=ModemManager\.service waydroid-container\.service$' "$SERVICE"
+grep -q '^Wants=ModemManager\.service$' "$SERVICE"
+grep -q '^PartOf=waydroid-container\.service$' "$SERVICE"
 grep -q '^ConditionPathExists=@SBINDIR@/pmos-waydroid-location-bridge$' "$SERVICE"
 grep -q '^ExecStart=@SBINDIR@/pmos-waydroid-location-bridge --source mmcli --enable-gps --provider fused --apply$' "$SERVICE"
 grep -q '^Restart=on-failure$' "$SERVICE"
 grep -q '^KillSignal=SIGINT$' "$SERVICE"
 
 # Installing the unit alone must not start GNSS or create an Android mock
-# provider; enabling it is an explicit administrator action.
-! grep -q '^WantedBy=' "$SERVICE"
+# provider; enabling it is an explicit administrator action. Once enabled it
+# follows Waydroid instead of starting the battery-heavy container itself.
+grep -q '^WantedBy=waydroid-container\.service$' "$SERVICE"
 ! grep -q 'systemctl.*enable.*oneplus6t-waydroid-location' "$ROOT/Makefile"
 
 stage=$(mktemp -d "${TMPDIR:-/tmp}/location-service-stage.XXXXXX")

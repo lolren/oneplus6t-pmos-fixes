@@ -82,7 +82,9 @@ an overlay operation unsafe.
 The optional `oneplus6t-waydroid-location.service` is installed disabled. After
 native GNSS and Waydroid health acceptance, an administrator may enable it to
 run the documented ModemManager-to-Waydroid mock-provider bridge continuously.
-It is not enabled by the package and does not provide a vendor GNSS HAL.
+It is not enabled by the package, follows the Waydroid container lifecycle so
+it does not pull the container into every boot, and does not provide a vendor
+GNSS HAL.
 
 NFC userspace remains optional because `neard` is currently an Alpine testing
 package. If it is available in the target channel, install `neard` and
