@@ -887,9 +887,19 @@ public final class CameraProbeActivity extends Activity {
                     bitmap.recycle();
                     return;
                 }
-                if (status == PixelCopy.SUCCESS)
-                    surfacePixelResult = analyzeSurfaceBitmap(bitmap);
-                else
+                if (status == PixelCopy.SUCCESS) {
+                    String stats = analyzeSurfaceBitmap(bitmap);
+                    String filename = "surface-camera-" + cameraIds[cameraIndex] + ".png";
+                    try (FileOutputStream output = new FileOutputStream(
+                            new File(getFilesDir(), filename))) {
+                        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                            throw new IllegalStateException("bitmap compression failed");
+                        surfacePixelResult = stats + " surfaceImage=" + filename;
+                    } catch (Exception error) {
+                        surfacePixelResult = stats + " surfaceImage=unavailable reason="
+                                + compactError(error);
+                    }
+                } else
                     surfacePixelResult = "surfacePixels=unavailable pixelCopyStatus=" + status;
                 bitmap.recycle();
                 maybeCompleteCamera(token);

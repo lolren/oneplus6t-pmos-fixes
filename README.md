@@ -246,6 +246,7 @@ and through an open Camera3 HAL in Waydroid.
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
+| Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the r36 bundle is installed and its single-output preview passed all three cameras. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Waydroid SIGPIPE-safe provider teardown | A closed software-IPA socket is returned as an IPC error instead of terminating the Android camera provider. |
@@ -257,12 +258,12 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the previously accepted r8/r24/r7/r3 camera baseline
-and publishes the newer opt-in r26/r13 and r26/r14 lower-stack candidates. The current
-source, package and signature checks pass on the host, but the reference
-phone's present USB session exposes only CDC-NCM with working ping; its SSH
-userspace, ADB and fastboot endpoints are not currently usable. Therefore the
-current audit does not claim that any candidate is installed or that the
-earlier physical acceptance still describes the phone's present state.
+and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
+reference phone is reachable over USB CDC-NCM/SSH. The Waydroid r36
+channel-order bundle is installed with a dated rollback backup; its live
+single-output `surface` and `preview` probes pass all three cameras. The full
+multi-output diagnostic remains a separate lower-layer limitation and is
+documented rather than counted as a pass.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
 packages are now pinned and the signed AArch64 APK pair is published in the
@@ -479,18 +480,20 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r26/r13 and r26/r14, plus Waydroid r37/r38 candidates,
-  are published;
+- signed AArch64 camera r26/r13 and r26/r14, plus the Waydroid r36 colour-fix
+  bundle and r37/r38 performance candidates, are published;
 - live modem/DNS/HTTPS, time-after-boot, modem-call audio, display stability,
-  native camera quality/video, Waydroid camera/GAPPS, GNSS, NFC, battery and
-  rollback persistence still require a usable phone transport; and
+  native camera quality/video, Waydroid multi-output camera/GAPPS, GNSS, NFC,
+  battery and rollback persistence still need their respective device tests;
+  Waydroid single-output preview is already live-tested on all three cameras;
 - Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are
   not claimed because the open stack does not provide those proprietary
   components.
 
-The current USB evidence is CDC-NCM with ping working, but no usable SSH
-banner, OnePlus ADB device or fastboot device. No new package or kernel
-candidate has been installed through that incomplete transport.
+The current USB evidence is CDC-NCM with ping and password SSH working. ADB
+and fastboot remain unavailable, so bootloader or partition operations are
+still out of scope; userspace packages and the guarded Waydroid overlay can be
+managed over the working SSH transport.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 The requirement-by-requirement implementation and device-acceptance audit is

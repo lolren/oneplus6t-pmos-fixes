@@ -26,11 +26,13 @@ location and Android-container failures cannot obscure one another.
    health gate now pass. The `pmos-safe-upgrade` wrapper now intercepts ordinary
    critical-package upgrades; repository signing, compatibility-gated published
    generations and retained public rollback generations remain.
-4. Broaden Android acceptance: the Waydroid r35 Camera3 lower layer now passes
-   the clean all-camera YUV/JPEG/private, AF and EV probe, and its GPU path
-   produces a clean full-size JPEG. Separately built r37 RGB-private-preview
-   and r38 native-RGB-fence candidates are ready for physical comparison, but
-   are not accepted yet. Test real camera applications and lifecycle
+4. Broaden Android acceptance: the Waydroid r36 Camera3 lower layer now fixes
+   the GPU NV12 red/blue swap that made the front preview render purple, and
+   its live single-output `preview`/`surface` probes pass all three cameras.
+   The full multi-output probe still exposes the underlying software-ISP
+   limitation and needs a separate implementation. The r37
+   RGB-private-preview and r38 native-RGB-fence candidates remain available
+   for performance comparison. Test real camera applications and lifecycle
    transitions, then add Play Store support; Android computational HDR and
    vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose

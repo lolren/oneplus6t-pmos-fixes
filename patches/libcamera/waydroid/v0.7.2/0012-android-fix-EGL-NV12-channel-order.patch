@@ -1,0 +1,33 @@
+From 7d3b6c3b2f8c4a9c9f2a1e7a6d5c4b3a2f1e0d9c Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Thu, 27 Aug 2026 00:00:00 +0100
+Subject: [PATCH] android: fix EGL NV12 red-blue channel order
+
+The GPU Bayer shader selects the ABGR8888 output variant for the NV12
+intermediate.  Its blue-swap therefore makes glReadPixels(GL_RGBA) return
+B,G,R,A bytes.  libyuv's little-endian ARGB entry point is the matching
+conversion for that byte order; using ABGR swaps red and blue and gives
+Waydroid previews a purple/blue cast, especially on skin tones.
+
+---
+ src/libcamera/software_isp/debayer_egl.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -783,6 +783,11 @@ bool DebayerEGL::convertRgbaToNv12(FrameBuffer *output)
+ 	}
+ 
+-	int ret = libyuv::ABGRToNV12(rgbaBuffer_.data(), width * 4,
++	/*
++	 * The ABGR8888 scale shader swaps blue before GL_RGBA readback, so
++	 * the bytes here are B,G,R,A.  In libyuv's little-endian naming this
++	 * is ARGB, not ABGR; the latter would swap red and blue again.
++	 */
++	int ret = libyuv::ARGBToNV12(rgbaBuffer_.data(), width * 4,
+ 				      yPlane, outputConfig_.stride,
+ 				      uvPlane, outputConfig_.stride,
+ 				      width, height);
+-- 
+2.39.5

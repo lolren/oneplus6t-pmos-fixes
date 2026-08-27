@@ -87,9 +87,11 @@ and describe provider-delivered buffers; they are not a display-latency
 measurement. The `surface` profile reports `privateTimingSource=surface`,
 counts `TextureView` update callbacks, and adds fields such as
 `surfaceRgbMean=[r,g,b]` and `surfaceRgbRange=[r,g,b]` from one asynchronous
-readback. This includes the Android surface/compositor path and provides
-evidence for RGB channel ordering or an all-black surface, but it is not a
-colour-chart or image-quality pass/fail test. Generated JPEGs remain in the
+readback. It also saves that sampled displayed frame as
+`surface-camera-<id>.png` in the application's private directory. This
+includes the Android surface/compositor path and provides evidence for RGB
+channel ordering or an all-black surface, but it is not a colour-chart or
+image-quality pass/fail test. Generated JPEGs and PNGs remain in the
 application's private directory. Do not add them to Git.
 
 ## Performance profiles

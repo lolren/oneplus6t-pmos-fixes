@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PATCH_DIR=$ROOT/patches/libcamera/waydroid/v0.7.2
 PATCH=$PATCH_DIR/0010-android-route-private-preview-to-rgb.patch
 FENCE_PATCH=$PATCH_DIR/0011-android-export-native-rgb-fence.patch
+ORDER_PATCH=$PATCH_DIR/0012-android-fix-EGL-NV12-channel-order.patch
 
 [ -f "$PATCH" ] || {
 	printf 'missing RGB preview patch: %s\n' "$PATCH" >&2
@@ -13,6 +14,11 @@ FENCE_PATCH=$PATCH_DIR/0011-android-export-native-rgb-fence.patch
 
 [ -f "$FENCE_PATCH" ] || {
 	printf 'missing RGB release-fence patch: %s\n' "$FENCE_PATCH" >&2
+	exit 1
+}
+
+[ -f "$ORDER_PATCH" ] || {
+	printf 'missing EGL NV12 channel-order patch: %s\n' "$ORDER_PATCH" >&2
 	exit 1
 }
 
@@ -47,10 +53,13 @@ grep -Fq 'exportOutputFence' "$FENCE_PATCH"
 grep -Fq 'EGL_SYNC_NATIVE_FENCE_ANDROID' "$FENCE_PATCH"
 grep -Fq 'waitSourceFence' "$FENCE_PATCH"
 grep -Fq 'setFence' "$FENCE_PATCH"
+grep -Fq 'Subject: [PATCH] android: fix EGL NV12 red-blue channel order' \
+	"$ORDER_PATCH"
+grep -Fq 'libyuv::ARGBToNV12' "$ORDER_PATCH"
 
 # When a patched libcamera tree is supplied, perform the real application
 # checks in a temporary worktree. The supplied tree must already contain
-# patch 0009; both candidate patches are applied only to the temporary copy.
+# patch 0009; candidate patches are applied only to the temporary copy.
 if [ -n "${LIBCAMERA_WAYDROID_SOURCE:-}" ]; then
 	check_tree=$(mktemp -d "${TMPDIR:-/tmp}/waydroid-rgb-series-check.XXXXXX")
 	cleanup() {
@@ -64,6 +73,8 @@ if [ -n "${LIBCAMERA_WAYDROID_SOURCE:-}" ]; then
 	git -C "$check_tree" apply "$PATCH"
 	git -C "$check_tree" apply --check "$FENCE_PATCH"
 	git -C "$check_tree" apply "$FENCE_PATCH"
+	git -C "$check_tree" apply --check "$ORDER_PATCH"
+	git -C "$check_tree" apply "$ORDER_PATCH"
 	git -C "$check_tree" diff --check
 	cleanup
 	trap - EXIT HUP INT TERM

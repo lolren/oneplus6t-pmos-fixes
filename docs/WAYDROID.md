@@ -6,18 +6,26 @@ software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The r35 overlay is installed and exposes three Android cameras. It includes
+The r36 overlay is installed and exposes three Android cameras. It includes
 the Mesa EGL software-ISP path, a DMA-heap allocator fallback and the
 Camera3 logical-JPEG-size fix. The native postmarketOS stack is packaged
 separately; see [CAMERA.md](CAMERA.md).
 
-The unaccepted r37 RGB-private-preview and r38 native-RGB-release-fence
-bundles are published in the
+The current r35 private-preview path has now been tested in Waydroid and shows
+a red/blue swap in the front-camera viewfinder, visible as purple skin tones.
+Source inspection and the surface probe identify the cause as the GPU
+RGBA-to-NV12 channel-order conversion, not a front-sensor colour filter. The
+new r36 channel-order bundle is now installed after passing the overlay health
+gate. Its single-output preview paths pass all three cameras; r35 is retained
+as the rollback baseline for the remaining multi-output limitation. The older
+unaccepted r37 RGB-private-preview and r38 native-RGB-release-fence bundles are
+published in the
 [Waydroid camera r37/r38 development release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38).
 Download both the archive and its matching `.sha256` manifest. Verify the
 manifest after extraction, then use `scripts/install-waydroid-camera` only
-after the read-only rootfs/I/O health gate passes. These remain comparison
-candidates; r35 is the rollback baseline until a real phone test accepts one.
+after the read-only rootfs/I/O health gate passes. Keep the printed r35 backup
+available until the r36 colour fix also passes application-specific lifecycle
+and multi-output tests.
 
 ## Features and their benefit
 
@@ -27,6 +35,7 @@ candidates; r35 is the rollback baseline until a real phone test accepts one.
 | Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path. |
 | minigbm plane parsing | The HAL reads Waydroid's real buffer offsets, strides and sizes, preventing corrupt mappings and one-plane assumptions. |
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
+| EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
 | RGB private-preview candidate | Texture-only `IMPLEMENTATION_DEFINED` streams can use Android RGBX/XBGR buffers, so the GPU output avoids the NV12 `glReadPixels()` and libyuv conversion; encoder and explicit YUV streams retain NV12. Phone acceptance is pending. |
 | Native RGB release-fence candidate | When Android's EGL native-fence extension is available, GPU-written RGB preview buffers carry a native release fence and mapped RGB consumers wait on it before CPU access; the older synchronous `glFinish()` path remains the safe fallback. Phone acceptance is pending. |
@@ -58,8 +67,8 @@ camera UI by themselves; an Android camera application consumes them.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
   software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
-  conditional-mipmap, redundant-clear, NV12-fence and RGB-private-preview
-  patches (`0002`–`0011`).
+  conditional-mipmap, redundant-clear, NV12-fence, RGB-private-preview and
+  EGL NV12 channel-order patches (`0002`–`0012`).
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -125,7 +134,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's seventeen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the eleven Android patches in numeric order:
+the twelve Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -146,6 +155,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0008-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0009-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0010-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0011-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0012-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -153,7 +163,7 @@ mismatch. The reviewed order ends with generic frame duration, generic
 autofocus-transition stability, the Android Camera3 HAL, GPU NV12 conversion,
 robust buffer/JPEG handling, SIGPIPE-safe IPA socket teardown, the
 aspect-preserving reduced preview source, the RGB private-preview route and
-native RGB release-fence export.
+native RGB release-fence export, followed by the EGL NV12 channel-order fix.
 The seventh patch avoids mipmap
 generation for equal-size and upscaled previews while retaining it for true
 downscales. The eighth patch removes two redundant full-frame clears from the
@@ -174,10 +184,13 @@ release fence when the EGL extension is available, and makes mapped RGB
 consumers wait on the source fence before CPU access. If the extension is not
 available, the existing synchronous `glFinish()` fallback remains in use; this
 patch is a phone-gated performance candidate, not a guarantee of higher FPS.
+The twelfth patch fixes the separate NV12 path: the ABGR8888 scale shader
+swaps blue before `glReadPixels(GL_RGBA)`, so the returned B,G,R,A bytes must
+be passed to libyuv's little-endian `ARGBToNV12()` entry point. This is the
+channel-order correction for the purple front-camera preview; RGB private
+preview streams are unchanged.
 
 ## Build a runtime bundle
-
-Choose new, empty build and stage directories:
 
 ```sh
 export ANDROID_NDK_ROOT=/path/to/Android/Sdk/ndk/29.0.14206865
@@ -192,7 +205,7 @@ export WAYDROID_SOFTISP_GPU=enabled
 
 /path/to/oneplus6t-pmos-fixes/scripts/package-waydroid-camera \
   /path/to/stage-waydroid-camera \
-  /path/to/waydroid-camera-r35-gpu
+  /path/to/waydroid-camera-nv12-r36-fix
 ```
 
 The helper configures only the simple pipeline/IPA and generic Android HAL,
@@ -353,15 +366,25 @@ callback backlog does not inflate the measured rate. The profile is diagnostic
 and does not invoke an encoder or save a file. A large drop only when YUV/JPEG
 is added points to multi-stream conversion load. This distinction is required
 before changing
-the GPU default: the accepted r35 path still reads an
+the GPU default: the r35 NV12 baseline still reads an
 RGBA frame back to CPU memory and converts it to Android NV12. Patch 0010 adds
 a separate texture-only private RGB route that avoids that readback;
 explicit YUV and encoder streams keep the old path. Patch 0011 can replace the
 RGB path's blocking completion with an Android native release fence when the
-EGL extension is present; it leaves the synchronous fallback intact. This is
-why `preview`, `preview-yuv`, `surface` and `record` must all be compared before changing the runtime
+EGL extension is present; it leaves the synchronous fallback intact. Patch
+0012 corrects the red/blue order in the NV12 conversion used by the r36
+single-output preview. This is why `preview`, `preview-yuv`, `surface` and
+`record` must all be compared before changing the runtime
 baseline: an RGB preview can be faster while a multi-stream video request
 remains NV12-bound.
+
+For the front-camera colour regression, run the `surface` profile while
+pointing the camera at a face or a red/blue reference object. On the affected
+r35 path, the preview remains valid but red and blue are exchanged. After the
+r36 bundle is installed, the same scene must show natural skin tones and the
+rear-camera colours must remain unchanged. The probe's RGB sample is useful for
+detecting a channel swap, but visual colour-chart or skin-tone review is still
+required; this patch does not add Android-vendor colour calibration.
 
 The installed `pmos-compare-waydroid-camera-probes` helper compares two saved
 results from the same profile. It verifies matching camera IDs and valid
@@ -467,6 +490,51 @@ After reboot, verify there are no `/var/lib/waydroid/rootfs` mounts, run the
 installer dry-run, install this exact bundle, then repeat the Camera2 probe
 and compare preview frame timing against the r35 baseline. Roll back if
 preview buffers, JPEG capture or provider stability regress.
+
+## Waydroid r36 front-camera colour fix
+
+Date: 2026-08-27. The installed r35 Waydroid path was delivering valid private
+preview frames, but its GPU NV12 conversion passed B,G,R,A `glReadPixels()`
+bytes to libyuv's ABGR entry point. That exchanged red and blue, producing the
+purple skin tones seen in the front-camera viewfinder. The Android provider log
+also confirmed that this path uses the Mesa EGL renderer (`FD630`) and the
+software ISP, so the defect is below the camera application.
+
+Patch `0012` changes only that conversion to `ARGBToNV12()`, whose little-endian
+input order matches B,G,R,A. The RGB private-preview route is not changed. The
+conversion naming follows libyuv's documented ARGB/ABGR byte-order distinction
+in its [conversion header](https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/include/libyuv/convert_from_argb.h).
+
+The bundle was built from the exact r35 source tree with ARMv7/API 33,
+`softisp-gpu=enabled`, and a build-local IPA signature. The host package
+manifest matched on the phone. The guarded installer passed with zero rootfs
+mounts and zero PSI I/O pressure, created the rollback backup below, and
+installed all 13 managed runtime files:
+
+```text
+libcamera source base: deaa218
+0012-android-fix-EGL-NV12-channel-order.patch:  0acd6ac1895dbef0a46c3ba95fec789ff34d0b342471f9f8025580204433ff98
+waydroid-camera-nv12-r36-fix.tar.gz:  f4e2adfa81eb87398d262ff9b5249b3b05a0bd4bbcdd9b73ed1fc10213a3fb13
+waydroid-camera-nv12-r36-fix.sha256:  b97d178c7c97b71e508e8915696fc20e8f2ecc3c882bbcb1e7e8dd845df34d7a
+probe APK: ba99b76e1c107beff05da165ddbae368399fd3aef2580ebf12345ebed372b51e
+backup: /var/lib/waydroid/backups/camera-20260827T143502Z-74465
+```
+
+Post-install evidence:
+
+- the `surface` profile completed `valid=3 total=3`, with the front camera
+  reported as `id=0`, and saved a 1600x1200 displayed frame;
+- the front frame's orange and teal reference objects render with normal
+  red/blue relationships rather than the previous purple cast; and
+- the private `preview` profile completed `valid=3 total=3` for all cameras.
+
+The full diagnostic profile still reports `capture session configuration
+failed` when it requests simultaneous private preview plus a separate YUV
+stream. The provider log identifies the pre-existing `DebayerEGL` limitation
+(`Unsupported number of output streams: 2`); it is separate from this channel
+fix and is not silently counted as a full-profile pass. Ordinary single-output
+preview is accepted above. Multi-output Camera2 support remains a separate
+follow-up before claiming complete Android camera parity.
 
 ## Rollback
 

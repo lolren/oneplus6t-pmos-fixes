@@ -5,7 +5,7 @@ postmarketOS work. It separates source implementation, host validation and
 physical-phone acceptance. A passing host test does not imply that a package
 is installed or that the phone has passed the corresponding runtime test.
 
-Audit date: 2026-08-26.
+Audit date: 2026-08-27.
 
 ## Feature status
 
@@ -21,8 +21,8 @@ Audit date: 2026-08-26.
 | Native camera UI | Advanced Snapshot r14 source with tap-focus reticle, automatic/manual exposure, shutter/gain, exposure/colour/contrast/detail controls, 1x–4x pinch/slider zoom, latest-frame preview scheduling, save-failure feedback, guarded rear hardware-flash switch and opt-in software HDR | Pinned GTK build, formatting, 8 application tests, 5 HDR-helper tests, 9 Aperture tests, clippy, staged helper install and signed AArch64 r14 APK validation pass; phone acceptance pending | Verify visual preview latency, HDR output, saved images, manual exposure, playable video and rear LED restoration on the phone |
 | Rear hardware flash | Bounded `pmos-camera-flash` helper for the OnePlus `white:flash`/`yellow:flash` channels; saves/restores brightness and handles interruption | Fixture test covers pulse, restoration, off and no-hardware paths | Run `pmos-camera-flash --status` and one rear still capture on the recovered phone; confirm no front-camera pulse |
 | Android camera enumeration | Open Camera3 HAL for all three sensors, YUV/JPEG/private streams, AF and EV metadata | Probe source builds and host validators pass; the r35 baseline probe is recorded | Recover Waydroid, install the exact bundle and run the full three-camera probe |
-| Android camera performance | GPU software-ISP baseline plus r37 RGB-private and r38 native-release-fence candidates; preview, surface and recording-template probe profiles | ARM build/signature checks and probe comparison tests pass | Compare `preview`, `preview-yuv`, `surface` and `record` on the same phone before selecting a new baseline |
-| Android camera image quality | Sensor-aware format/order handling and JPEG buffer validation | JPEG/metadata fixtures and source checks pass | Compare front-camera colour/grid, exposure, focus and back-camera sharpness against Android; vendor HDR/CCM/lens shading are not implemented |
+| Android camera performance | GPU software-ISP baseline, installed r36 NV12 colour fix, plus r37 RGB-private and r38 native-release-fence candidates; preview, surface and recording-template probe profiles | r36 ARM build/manifest verification, guarded overlay install and live `preview`/`surface` probes pass for all three cameras; full probe still exposes the lower-layer multi-output limit | Add native multi-output support, then compare `preview`, `preview-yuv`, `surface` and `record` on the same phone before selecting another performance baseline |
+| Android camera image quality | Sensor-aware format/order handling, installed EGL NV12 red/blue correction and JPEG buffer validation | Live front-camera surface frame after r36 shows normal orange/teal channel relationships; JPEG/metadata fixtures and source checks pass | Compare a real face/colour chart, exposure, focus and back-camera sharpness against Android; vendor HDR/CCM/lens shading are not implemented |
 | Waydroid apps | Guarded camera overlay installer, health preflight and separate GAPPS verifier | Installer, mount/I/O-pressure and GAPPS fixture tests pass | Clear the stale rootfs/physical recovery gate, then initialize or verify GAPPS only if desired |
 | Location | Read-only ModemManager/GeoClue report, dry-run-first Android test-provider bridge and optional disabled systemd service; raw NMEA, gpsd JSON and formatted ModemManager GPS parsing | Eight bridge tests, service-install test, Python compilation and location report tests pass | Obtain a genuine native GNSS fix, validate GeoClue, then enable and test the service with Waydroid; the bridge is not a GNSS HAL |
 | NFC | Read-only controller/rfkill/device-node report, kernel-NCI `nfctool` discovery/poll path and libnfc fallback | NFC report fixtures cover both no-poll and `nfctool` polling selection | Install/enable `neard`, detect a real tag and validate a userspace reader |
@@ -32,13 +32,12 @@ Audit date: 2026-08-26.
 ## Transport evidence
 
 The host-side `scripts/check-device-transport` report is deliberately separate
-from phone runtime acceptance. On 2026-08-26 it confirmed the OnePlus as
+from phone runtime acceptance. On 2026-08-27 it confirmed the OnePlus as
 `ID_MODEL=OnePlus_6T` with a CDC-NCM interface, a working
 `172.16.42.2/16` host link and ping to `172.16.42.1`; the latest bounded probe
-could not complete TCP/22 and received no SSH banner. `fastboot devices` was
-empty and ADB showed only the separately attached Pixel. This means the phone
-was not exposing USB fastboot or a usable SSH service, and the NCM kernel path
-alone must not be treated as an installation session.
+completed TCP/22 and accepted the SSH banner. `fastboot devices` remains empty
+and ADB shows only the separately attached Pixel. The NCM/SSH session is usable
+for guarded userspace work, but it is not a bootloader or flashing session.
 
 ## Reproducibility entry points
 
@@ -71,21 +70,18 @@ The last non-mutating host check found:
 
 ```text
 172.16.42.1: ping responds
-USB: CDC-NCM networking only
+USB: CDC-NCM networking with working SSH
 Fastboot: no device
 OnePlus ADB: no device
-SSH: TCP/22 not usable; no SSH banner
+SSH: TCP/22 usable
 ```
 
-Until a physical recovery cycle restores a usable Fastboot, ADB or SSH
-interface, do not install a new camera generation, modify a Waydroid overlay,
-change the display driver, or claim runtime acceptance. The host-side source,
-tests, package recipes and documentation can continue to be maintained, but
-the phone-side gates above cannot be completed remotely through the current
-interface.
+Until a physical recovery cycle restores Fastboot or ADB, do not flash a
+partition, boot slot or firmware. The working SSH transport is sufficient for
+guarded userspace and Waydroid procedures, which still require their own
+health checks and live acceptance evidence.
 
 The fixes package now includes `pmos-enable-ssh --apply`, an idempotent
 systemd/OpenRC recovery helper that starts and persists `sshd` and verifies a
-TCP/22 listener without changing firewall rules. It must still be run from the
-phone's local terminal once because the current NCM endpoint does not expose a
-remote execution service.
+TCP/22 listener without changing firewall rules. It can be run from the
+phone's local terminal or through the working SSH session.
