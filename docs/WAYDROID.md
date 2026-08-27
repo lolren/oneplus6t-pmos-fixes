@@ -15,8 +15,9 @@ The current r35 private-preview path has now been tested in Waydroid and shows
 a red/blue swap in the front-camera viewfinder, visible as purple skin tones.
 Source inspection and the surface probe identify the cause as the GPU
 RGBA-to-NV12 channel-order conversion, not a front-sensor colour filter. The
-new r36 channel-order bundle is now installed after passing the overlay health
-gate. Its single-output preview paths pass all three cameras; r35 is retained
+the [r36 channel-order bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12)
+is now installed after passing the overlay health gate. Its single-output
+preview paths pass all three cameras; r35 is retained
 as the rollback baseline for the remaining multi-output limitation. The older
 unaccepted r37 RGB-private-preview and r38 native-RGB-release-fence bundles are
 published in the
