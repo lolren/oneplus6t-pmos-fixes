@@ -26,15 +26,15 @@ location and Android-container failures cannot obscure one another.
    health gate now pass. The `pmos-safe-upgrade` wrapper now intercepts ordinary
    critical-package upgrades; repository signing, compatibility-gated published
    generations and retained public rollback generations remain.
-4. Broaden Android acceptance: the Waydroid r36 Camera3 lower layer now fixes
-   the GPU NV12 red/blue swap that made the front preview render purple, and
-   its live single-output `preview`/`surface` probes pass all three cameras.
-   The full multi-output probe still exposes the underlying software-ISP
-   limitation and needs a separate implementation. The r37
-   RGB-private-preview and r38 native-RGB-fence candidates remain available
-   for performance comparison. Test real camera applications and lifecycle
-   transitions, then add Play Store support; Android computational HDR and
-   vendor image-quality parity remain unimplemented.
+4. Broaden Android acceptance: the Waydroid r41 Camera3 lower layer retains
+   the NV12 colour fix and now processes preview plus encoder outputs from one
+   Bayer input. Per-camera recording profiles, Codec2 selection and the
+   bounded Mesa software-codec policy let Aperture save a verified H.264/AAC
+   rear-camera clip. The equivalent clean r42 source/package is ready for
+   publication. Repeat front/auxiliary recording and performance profiles,
+   then improve the remaining low Android frame rate without sacrificing the
+   working multi-stream path; Android computational HDR and vendor
+   image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. The reproducible dry-run-first NMEA/test-provider
    bridge, optional disabled systemd service and read-only native location

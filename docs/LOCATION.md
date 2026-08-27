@@ -150,7 +150,8 @@ the expected town or inject guessed coordinates. Wait for a valid native RMC
 - the inserted SMARTY SIM registered at home on 3 UK LTE and packet service
   attached;
 - the active `mob.asm.net` bearer supplied address, gateway and DNS settings,
-  and four packets forced through its QMAP interface completed with no loss;
+  four packets forced through its QMAP interface completed with no loss, and
+  cellular-only DNS plus HTTPS passed while Wi-Fi was temporarily disabled;
 - raw/NMEA GNSS is enabled at a one-second refresh and emits a current UTC
   stream, but the indoor test had no satellite fix;
 - the Waydroid service is enabled and active, with `fused provider [mock]` and

@@ -17,6 +17,8 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.CamcorderProfile;
+import android.media.EncoderProfiles;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Bundle;
@@ -189,11 +191,59 @@ public final class CameraProbeActivity extends Activity {
                 cameraIds = manager.getCameraIdList();
                 enumerationComplete = true;
                 Log.i(TAG, "PROBE_START cameras=" + cameraIds.length);
+                logEncoderProfiles(cameraIds);
                 maybeStartCameras();
             } catch (Throwable e) {
                 finishProbe("enumeration failed: " + compactError(e));
             }
         });
+    }
+
+    /**
+     * Record the legacy and API-31+ recording-profile view for every camera.
+     * CameraX uses EncoderProfiles to decide whether to expose video mode, so
+     * this makes a missing or rejected media_profiles declaration visible in a
+     * reproducible probe run instead of only in the camera application's UI.
+     */
+    private void logEncoderProfiles(String[] ids) {
+        int[] qualities = new int[]{
+                CamcorderProfile.QUALITY_2160P,
+                CamcorderProfile.QUALITY_1080P,
+                CamcorderProfile.QUALITY_720P,
+                CamcorderProfile.QUALITY_480P,
+                CamcorderProfile.QUALITY_HIGH,
+                CamcorderProfile.QUALITY_LOW,
+                CamcorderProfile.QUALITY_QVGA
+        };
+        for (String id : ids) {
+            int cameraId;
+            try {
+                cameraId = Integer.parseInt(id);
+            } catch (NumberFormatException e) {
+                Log.w(TAG, "MEDIA_PROFILE camera=" + id + " skipped=non-numeric-id");
+                continue;
+            }
+            for (int quality : qualities) {
+                boolean has = false;
+                boolean all = false;
+                int videoProfiles = -1;
+                try {
+                    has = CamcorderProfile.hasProfile(cameraId, quality);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        EncoderProfiles profiles = CamcorderProfile.getAll(id, quality);
+                        all = profiles != null;
+                        if (profiles != null && profiles.getVideoProfiles() != null)
+                            videoProfiles = profiles.getVideoProfiles().size();
+                    }
+                } catch (Throwable e) {
+                    Log.w(TAG, "MEDIA_PROFILE camera=" + id + " quality=" + quality
+                            + " error=" + compactError(e));
+                }
+                Log.i(TAG, "MEDIA_PROFILE camera=" + id + " quality=" + quality
+                        + " has=" + has + " all=" + all
+                        + " videoProfiles=" + videoProfiles);
+            }
+        }
     }
 
     private void maybeStartCameras() {

@@ -33,6 +33,9 @@ vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign
 vendor/libexec/libcamera/soft_ipa_proxy
 vendor/etc/libcamera/camera_hal.yaml
 vendor/etc/libcamera/configuration.yaml
+vendor/etc/media_profiles.xml
+vendor/etc/media_profiles_V1_0.xml
+vendor_extra/etc/seccomp_policy/mediaswcodec.policy
 vendor/share/libcamera/ipa/simple/imx371.yaml
 vendor/share/libcamera/ipa/simple/imx376.yaml
 vendor/share/libcamera/ipa/simple/imx519.yaml

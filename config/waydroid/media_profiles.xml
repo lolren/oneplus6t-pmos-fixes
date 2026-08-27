@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     OnePlus 6T / libcamera Camera3 recording profiles for Waydroid.
+
+     Waydroid's stock profile file is named media_profiles_V1_0.xml.  Some
+     Android 13 builds search only for media_profiles.xml when
+     ro.media.xml_variant.profiles is unset, then silently fall back to one
+     synthetic camera profile.  Keeping this second, device-neutral file in
+     the vendor overlay makes CameraX's EncoderProfiles query deterministic.
+
+     The three IDs are the libcamera order on fajita: 0 front, 1 rear main,
+     2 rear auxiliary. Their live Camera2 fixed-rate maxima are 24, 19 and
+     15 fps respectively; do not advertise a profile above those limits.
+-->
+<MediaSettings>
+    <CamcorderProfiles cameraId="0">
+        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="4000000" width="640" height="480" frameRate="24" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+        <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="8000000" width="1280" height="720" frameRate="24" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+    </CamcorderProfiles>
+
+    <CamcorderProfiles cameraId="1">
+        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="3000000" width="640" height="480" frameRate="19" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+        <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="19" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+    </CamcorderProfiles>
+
+    <CamcorderProfiles cameraId="2">
+        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="4000000" width="640" height="480" frameRate="15" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+        <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
+            <Video codec="h264" bitRate="8000000" width="1280" height="720" frameRate="15" />
+            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+    </CamcorderProfiles>
+
+    <EncoderOutputFileFormat name="mp4" />
+
+    <VideoEncoderCap name="h264" enabled="true"
+        minBitRate="64000" maxBitRate="12000000"
+        minFrameWidth="176" maxFrameWidth="2048"
+        minFrameHeight="144" maxFrameHeight="2048"
+        minFrameRate="15" maxFrameRate="30" />
+
+    <AudioEncoderCap name="aac" enabled="true"
+        minBitRate="8000" maxBitRate="96000"
+        minSampleRate="8000" maxSampleRate="48000"
+        minChannels="1" maxChannels="1" />
+
+    <VideoDecoderCap name="wmv" enabled="false" />
+    <AudioDecoderCap name="wma" enabled="false" />
+</MediaSettings>

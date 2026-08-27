@@ -252,6 +252,8 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
 | Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the [r36 bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12) is installed and its single-output preview passed all three cameras. |
+| Waydroid multi-output software ISP | Debayers one Bayer input once and renders every preview/encoder output in the same Camera3 request; this removes the one-output limit that prevented Android video capture. |
+| Waydroid recording profiles and Codec2 policy | Publishes per-camera 480p/720p H.264/AAC `EncoderProfiles`, selects Codec2 and extends only the software-codec seccomp calls observed on Mesa. Aperture now records and finalizes a playable rear-camera clip with microphone audio. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Waydroid SIGPIPE-safe provider teardown | A closed software-IPA socket is returned as an IPC error instead of terminating the Android camera provider. |
@@ -264,11 +266,13 @@ and through an open Camera3 HAL in Waydroid.
 
 The repository retains the previously accepted r8/r24/r7/r3 camera baseline
 and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
-reference phone is reachable over USB CDC-NCM/SSH. The Waydroid r36
-channel-order bundle is installed with a dated rollback backup; its live
-single-output `surface` and `preview` probes pass all three cameras. The full
-multi-output diagnostic remains a separate lower-layer limitation and is
-documented rather than counted as a pass.
+reference phone is reachable over USB CDC-NCM/SSH. The Waydroid r41
+multi-output/video bundle is installed with a dated rollback backup. It retains
+the r36 colour correction, and Aperture completed a 19-second 1280x720 H.264
+recording with 48 kHz AAC microphone audio; playback also reached the physical
+speaker. The same source was formatted, committed as patch `0013`, cleanly
+rebuilt as the reproducible r42 bundle, and remains source/package evidence
+until that exact archive is installed or published.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
 packages are now pinned and the signed AArch64 APK pair is published in the
@@ -486,12 +490,13 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r26/r13 and r26/r14, plus the Waydroid r36 colour-fix
-  bundle and r37/r38 performance candidates, are published;
-- live modem/DNS/HTTPS, time-after-boot, modem-call audio, display stability,
-  native camera quality/video, Waydroid multi-output camera/GAPPS, GNSS, NFC,
-  battery and rollback persistence still need their respective device tests;
-  Waydroid single-output preview is already live-tested on all three cameras;
+- signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
+  bundles, are published; Waydroid r41 is live-tested and the reproducible r42
+  multistream/video bundle is ready for publication;
+- live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
+  microphone and speaker playback pass; time-after-boot, modem-call audio,
+  display stability, native camera quality/video, outdoor GNSS, NFC, battery
+  and rollback persistence still need their respective device tests;
 - Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are
   not claimed because the open stack does not provide those proprietary
   components.

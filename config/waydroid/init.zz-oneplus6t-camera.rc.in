@@ -1,6 +1,13 @@
 # Render @VIDEO_GID@ as the numeric postmarketOS video group before install.
 # The zz prefix makes this override load after the stock Waydroid camera
 # provider definition while leaving the provider binary itself unchanged.
+on early-init
+    # CameraX reads this file when constructing EncoderProfiles. Prefer Codec2
+    # for software encoding; the legacy OMX encoder cannot consume Waydroid's
+    # IMPLEMENTATION_DEFINED camera surface.
+    setprop media.settings.xml /vendor/etc/media_profiles_V1_0.xml
+    setprop debug.stagefright.ccodec 2
+
 service vendor.camera-provider-2-4 /vendor/bin/hw/android.hardware.camera.provider@2.4-service
     override
     interface android.hardware.camera.provider@2.4::ICameraProvider legacy/0

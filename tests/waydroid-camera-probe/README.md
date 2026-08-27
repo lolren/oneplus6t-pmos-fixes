@@ -9,6 +9,8 @@ not a replacement camera application, and it never uploads a frame.
 For every camera reported by Android, the probe checks:
 
 - Camera2 characteristics can be read without malformed-metadata assertions;
+- legacy `CamcorderProfile` and API-31+ `EncoderProfiles` availability is
+  logged for 2160p, 1080p, 720p, 480p, high, low and QVGA qualities;
 - a 640x480 YUV stream produces non-flat luminance and chroma data;
 - an implementation-defined preview stream continues to deliver frames at a
   common large size (preferably 1600x1200, then 1920x1080); and

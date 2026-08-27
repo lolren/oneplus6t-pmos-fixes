@@ -26,6 +26,9 @@ vendor/lib/libcamera/ipa/ipa_soft_simple.so.sign
 vendor/libexec/libcamera/soft_ipa_proxy
 vendor/etc/libcamera/camera_hal.yaml
 vendor/etc/libcamera/configuration.yaml
+vendor/etc/media_profiles.xml
+vendor/etc/media_profiles_V1_0.xml
+vendor_extra/etc/seccomp_policy/mediaswcodec.policy
 vendor/share/libcamera/ipa/simple/imx371.yaml
 vendor/share/libcamera/ipa/simple/imx376.yaml
 vendor/share/libcamera/ipa/simple/imx519.yaml
@@ -54,7 +57,30 @@ VIDEO_GID=27 WAYDROID_CAMERA_MOUNTINFO="$mountinfo" \
 	WAYDROID_CAMERA_PROC_ROOT="$proc_root" \
 	"$INSTALLER" --dry-run "$stage" "$overlay" > "$TEST_DIR/clear.out"
 grep -q '^dry-run: would back up to ' "$TEST_DIR/clear.out"
-grep -q '^dry-run: would install 13 runtime files' "$TEST_DIR/clear.out"
+grep -q '^dry-run: would install 16 runtime files' "$TEST_DIR/clear.out"
+
+grep -q 'setprop media.settings.xml /vendor/etc/media_profiles_V1_0.xml' \
+	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
+grep -q 'setprop debug.stagefright.ccodec 2' \
+	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
+grep -q '^sched_setscheduler: 1$' \
+	"$ROOT/config/waydroid/mediaswcodec.policy"
+for camera_id in 0 1 2; do
+	grep -q "<CamcorderProfiles cameraId=\"$camera_id\">" \
+		"$ROOT/config/waydroid/media_profiles.xml"
+done
+for frame_rate in 24 19 15; do
+	grep -q "frameRate=\"$frame_rate\"" \
+		"$ROOT/config/waydroid/media_profiles.xml"
+done
+grep -q 'Using NV12 for multi-stream private buffer' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0013-software_isp-Support-multiple-output-streams.patch"
+
+install_stage=$TEST_DIR/install-stage
+make -s -C "$ROOT" install DESTDIR="$install_stage" PREFIX=/usr >/dev/null
+for installed_config in media_profiles.xml mediaswcodec.policy; do
+	[ -f "$install_stage/usr/libexec/oneplus6t-pmos-fixes/config/waydroid/$installed_config" ]
+done
 
 printf '%s\n' \
 	'some avg10=0.00 avg60=0.00 avg300=0.00 total=0' \

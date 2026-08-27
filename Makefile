@@ -129,6 +129,8 @@ install:
 	$(INSTALL) -m 0644 config/waydroid/camera_hal.yaml \
 		config/waydroid/configuration.yaml \
 		config/waydroid/init.zz-oneplus6t-camera.rc.in \
+		config/waydroid/media_profiles.xml \
+		config/waydroid/mediaswcodec.policy \
 		"$(DESTDIR)$(LIBEXECDIR)/config/waydroid/"
 	$(INSTALL) -m 0644 config/libcamera/simple/imx371.yaml \
 		config/libcamera/simple/imx376.yaml \

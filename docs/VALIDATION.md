@@ -1744,9 +1744,11 @@ enumerated the Qualcomm modem, registered at home on 3 UK LTE, attached packet
 service and connected the database-selected `mob.asm.net` profile. The default
 bearer supplied a static IPv4 configuration and DNS servers. NetworkManager
 installed the cellular default in its policy table, and four ICMP packets
-forced through the QMAP bearer interface completed with zero loss. Wi-Fi kept
-the lower-metric ordinary default while connected, as intended. SMARTY's
-current help page independently lists `mob.asm.net` with blank credentials.
+forced through the QMAP bearer interface completed with zero loss. With Wi-Fi
+disabled, NetworkManager promoted that bearer to the main default route, DNS
+resolved and an HTTPS fetch completed; Wi-Fi then reconnected automatically.
+SMARTY's current help page independently lists `mob.asm.net` with blank
+credentials.
 
 The modem exposes `gps-raw`, `gps-nmea`, `agps-msa` and `agps-msb`. Raw/NMEA
 enabled successfully at one-second refresh. Six timed samples carried current
@@ -1768,3 +1770,46 @@ container to consume battery when Waydroid is otherwise stopped.
 No coordinate, modem identifier, phone number or SIM identifier from this run
 is committed. A genuine outdoor fix, GeoClue acceptance and Android map-app
 acceptance remain open.
+
+## Waydroid r41 live video and r42 reproducible-build acceptance
+
+Date: 2026-08-27. Android recording-profile discovery and codec enumeration
+were present, but CameraX's required preview-plus-encoder session failed at
+the software ISP's one-output guard. Patch `0013` carries all configured output
+buffers through one GPU Bayer pass, per-output scale/conversion, one statistics
+pass and balanced completion. The CPU fallback retains an explicit
+single-output error rather than silently corrupting a second stream.
+
+The overlay now also installs conservative H.264/AAC 480p/720p profiles for
+all three IDs under both Android-recognized filenames (front 24 fps, rear main
+19 fps and rear auxiliary 15 fps), selects Codec2 and adds the five
+Mesa-observed calls to the `media.swcodec` device policy. The guarded
+r41 install created backup
+`/var/lib/waydroid/backups/camera-20260827T212305Z-63014`.
+
+Aperture then configured a rear preview and 1280x720 encoder together. Logs
+recorded the first H.264 keyframe, muxer start, first video/audio timestamps and
+successful encoding completion. The MediaStore output was independently
+streamed to `ffprobe`: H.264 1280x720 for 19.056 seconds and mono AAC 48 kHz
+for 19.029 seconds in a 19.148-second, 2,223,809-byte MP4. Waydroid held an
+active microphone source-output during capture, and playing the clip created a
+sink-input on the physical speaker. The private clip is not in Git.
+
+The final source was committed as a standalone signed-off patch, passed
+libcamera's style checker and reapplied cleanly after patch `0012`. A fresh
+Android ARMv7/API-33 build completed all 198 targets with GPU soft-ISP enabled;
+XML parsing, installer tests and probe APK compilation also pass. The clean r42
+camera HAL is byte-identical to the live r41 HAL.
+
+```text
+0013 patch: 729943ef624a283cdccf62a292e74938cd320c940d5260b2ec97c4aa02543420
+r41 archive: 03ab130dd027e7786401ab261a8f50460d0acd71bb1bee206f8a3012d90cb703
+r41 manifest: 6439d413af4deecb7b31346e36089a9ff1e93ff4caf25149db2ea507b8ed53a4
+r42 archive: af1d6c7f41b2c72cae362f008bdb7ccb22f238ebf786a850f6afd8ec1a6a4cf4
+r42 manifest: cf87fde5a123b3231a53c78e8eaba1dfe9552980399df6c844d324d1cc058c65
+```
+
+Front/auxiliary recording, long-duration capture, suspend/resume and r42's
+exact installed bundle remain open. This result proves the open Camera3,
+software encoder, microphone, muxer and speaker path; it does not claim
+OnePlus vendor-camera image quality or frame rate.

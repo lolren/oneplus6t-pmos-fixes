@@ -1,0 +1,788 @@
+From cfeb1a2bfe60528b27874cedec536c71dcc20a41 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Thu, 27 Aug 2026 23:35:44 +0100
+Subject: [PATCH 13/13] software_isp: Support multiple output streams
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ .../internal/software_isp/software_isp.h      |   9 +-
+ src/android/camera_device.cpp                 |  18 +
+ src/libcamera/software_isp/debayer.h          |  10 +-
+ src/libcamera/software_isp/debayer_cpu.cpp    |  17 +-
+ src/libcamera/software_isp/debayer_cpu.h      |   4 +-
+ src/libcamera/software_isp/debayer_egl.cpp    | 367 ++++++++++--------
+ src/libcamera/software_isp/debayer_egl.h      |  24 +-
+ src/libcamera/software_isp/software_isp.cpp   |  64 ++-
+ 8 files changed, 332 insertions(+), 181 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
+index 4c4d5e9..99303d5 100644
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -47,6 +47,11 @@ LOG_DECLARE_CATEGORY(SoftwareIsp)
+ class SoftwareIsp : public Object
+ {
+ public:
++	struct Output {
++		FrameBuffer *buffer;
++		unsigned int configIndex;
++	};
++
+ 	SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 		    ControlInfoMap *ipaControls);
+ 	~SoftwareIsp();
+@@ -80,7 +85,8 @@ public:
+ 	int queueBuffers(uint32_t frame, FrameBuffer *input,
+ 			 const std::map<const Stream *, FrameBuffer *> &outputs);
+ 
+-	void process(uint32_t frame, FrameBuffer *input, FrameBuffer *output);
++	void process(uint32_t frame, FrameBuffer *input,
++		     std::vector<Output> outputs);
+ 
+ 	Signal<FrameBuffer *> inputBufferReady;
+ 	Signal<FrameBuffer *> outputBufferReady;
+@@ -106,6 +112,7 @@ private:
+ 	std::unique_ptr<ipa::soft::IPAProxySoft> ipa_;
+ 	std::deque<FrameBuffer *> queuedInputBuffers_;
+ 	std::deque<FrameBuffer *> queuedOutputBuffers_;
++	std::map<const Stream *, unsigned int> outputConfigIndices_;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index a2dc200..5e27856 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -640,6 +640,24 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		Size size(stream->width, stream->height);
+ 		PixelFormat format = capabilities_.toPixelFormat(stream->format,
+ 									 stream->usage);
++
++		/*
++		 * A texture-only private stream can be rendered straight into an RGB
++		 * gralloc buffer. In a multi-stream request, however, Android's buffer
++		 * allocation may change when an encoder or JPEG consumer is present.
++		 * The generic Waydroid memory backend cannot propagate that per-buffer
++		 * layout to the software ISP, and importing it as a linear RGB target can
++		 * therefore expose tiled data as horizontal corruption. Keep the fast
++		 * RGB path for isolated previews and use the layout-stable NV12 path when
++		 * more than one stream is configured.
++		 */
++		if (stream_list->num_streams > 1 &&
++		    stream->format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
++		    format == formats::XBGR8888) {
++			LOG(HAL, Info)
++				<< "Using NV12 for multi-stream private buffer";
++			format = formats::NV12;
++		}
+ 		Size sourceSize = reducedPreviewSourceSize(format, size);
+ 
+ 		LOG(HAL, Info) << "Stream #" << i
+diff --git a/src/libcamera/software_isp/debayer.h b/src/libcamera/software_isp/debayer.h
+index 28f1b85..d0d38b4 100644
+--- a/src/libcamera/software_isp/debayer.h
++++ b/src/libcamera/software_isp/debayer.h
+@@ -12,6 +12,7 @@
+ #pragma once
+ 
+ #include <stdint.h>
++#include <vector>
+ 
+ #include <libcamera/base/log.h>
+ #include <libcamera/base/object.h>
+@@ -35,6 +36,11 @@ LOG_DECLARE_CATEGORY(Debayer)
+ class Debayer : public Object
+ {
+ public:
++	struct Output {
++		FrameBuffer *buffer;
++		unsigned int configIndex;
++	};
++
+ 	Debayer(const CameraManager &cm);
+ 	virtual ~Debayer() = 0;
+ 
+@@ -48,7 +54,9 @@ public:
+ 	strideAndFrameSize(const PixelFormat &outputFormat, const Size &size) = 0;
+ 	virtual uint32_t preferredInputStride([[maybe_unused]] const PixelFormat &inputFormat, [[maybe_unused]] const Size &size) { return 0; }
+ 
+-	virtual void process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params) = 0;
++	virtual void process(uint32_t frame, FrameBuffer *input,
++			     std::vector<Output> outputs,
++			     const DebayerParams &params) = 0;
+ 	virtual int start() { return 0; }
+ 	virtual void stop() {}
+ 
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 0440dd2..f486cfb 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -1208,8 +1208,23 @@ bool DebayerCpu::convertRgbToNv12(Span<const uint8_t> input,
+ 	return true;
+ }
+ 
+-void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
++void DebayerCpu::process(uint32_t frame, FrameBuffer *input,
++			 std::vector<Output> outputs,
++			 const DebayerParams &params)
+ {
++	if (outputs.size() != 1 || outputs[0].configIndex != 0) {
++		LOG(Debayer, Error)
++			<< "CPU debayer received an unsupported output set";
++		for (const Output &queuedOutput : outputs) {
++			FrameMetadata &metadata = queuedOutput.buffer->_d()->metadata();
++			metadata.status = FrameMetadata::FrameError;
++			outputBufferReady.emit(queuedOutput.buffer);
++		}
++		inputBufferReady.emit(input);
++		return;
++	}
++
++	FrameBuffer *output = outputs[0].buffer;
+ 	bench_.startFrame();
+ 
+ 	Rectangle focusWindow = params.focusWindow.boundedTo(window_);
+diff --git a/src/libcamera/software_isp/debayer_cpu.h b/src/libcamera/software_isp/debayer_cpu.h
+index 907b070..efd9d8d 100644
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -43,7 +43,9 @@ public:
+ 	std::vector<PixelFormat> formats(PixelFormat input) override;
+ 	std::tuple<unsigned int, unsigned int>
+ 	strideAndFrameSize(const PixelFormat &outputFormat, const Size &size) override;
+-	void process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params) override;
++	void process(uint32_t frame, FrameBuffer *input,
++		     std::vector<Output> outputs,
++		     const DebayerParams &params) override;
+ 	int start() override;
+ 	void stop() override;
+ 	SizeRange sizes(PixelFormat inputFormat, const Size &inputSize) override;
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 3f081cb..3bdd7f9 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -350,76 +350,92 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	width_ = inputCfg.size.width;
+ 	height_ = inputCfg.size.height;
+ 
+-	if (outputCfgs.size() != 1) {
+-		LOG(Debayer, Error)
+-			<< "Unsupported number of output streams: "
+-			<< outputCfgs.size();
++	if (outputCfgs.empty()) {
++		LOG(Debayer, Error) << "No output streams configured";
+ 		return -EINVAL;
+ 	}
+ 
+-	const StreamConfiguration &outputCfg = outputCfgs[0];
+ 	SizeRange outSizeRange = sizes(inputCfg.pixelFormat, inputCfg.size);
+-	std::tie(outputConfig_.stride, outputConfig_.frameSize) =
+-		strideAndFrameSize(outputCfg.pixelFormat, outputCfg.size);
++	nativeOutputSize_ = outSizeRange.max;
++	inputBufferCount_ = inputCfg.bufferCount;
++	outputBufferCount_ = 0;
++	anyScaleUsesMipmaps_ = false;
++	outputStates_.clear();
++	outputStates_.reserve(outputCfgs.size());
++
++	for (const auto &outputCfgRef : outputCfgs) {
++		const StreamConfiguration &outputCfg = outputCfgRef.get();
++		OutputState state{};
++		std::tie(state.config.stride, state.config.frameSize) =
++			strideAndFrameSize(outputCfg.pixelFormat, outputCfg.size);
++		if (getOutputConfig(outputCfg.pixelFormat, state.config) ||
++		    !outSizeRange.contains(outputCfg.size) ||
++		    state.config.stride != outputCfg.stride) {
++			LOG(Debayer, Error)
++				<< "Invalid output size/stride: "
++				<< "\n  " << outputCfg.size << " (" << outSizeRange << ")"
++				<< "\n  " << outputCfg.stride << " ("
++				<< state.config.stride << ")";
++			return -EINVAL;
++		}
+ 
+-	if (!outSizeRange.contains(outputCfg.size) || outputConfig_.stride != outputCfg.stride) {
+-		LOG(Debayer, Error)
+-			<< "Invalid output size/stride: "
+-			<< "\n  " << outputCfg.size << " (" << outSizeRange << ")"
+-			<< "\n  " << outputCfg.stride << " (" << outputConfig_.stride << ")";
+-		return -EINVAL;
++		state.size = outputCfg.size;
++		state.pixelFormat = outputCfg.pixelFormat;
++		state.bufferCount = outputCfg.bufferCount;
++		state.isNv12 = outputCfg.pixelFormat == formats::NV12;
++
++		/* Crop the source in the centre to this output's aspect ratio. */
++		unsigned int cropWidth = width_;
++		unsigned int cropHeight = height_;
++		if (static_cast<uint64_t>(width_) * state.size.height >
++		    static_cast<uint64_t>(height_) * state.size.width)
++			cropWidth = static_cast<uint64_t>(height_) * state.size.width /
++				    state.size.height;
++		else
++			cropHeight = static_cast<uint64_t>(width_) * state.size.height /
++				     state.size.width;
++
++		cropWidth &= ~(inputConfig_.patternSize.width - 1);
++		cropHeight &= ~(inputConfig_.patternSize.height - 1);
++		unsigned int cropX = ((width_ - cropWidth) / 2) &
++				     ~(inputConfig_.patternSize.width - 1);
++		unsigned int cropY = ((height_ - cropHeight) / 2) &
++				     ~(inputConfig_.patternSize.height - 1);
++		state.displayWindow = Rectangle(cropX, cropY, cropWidth, cropHeight);
++		state.scaleUsesMipmaps =
++			state.displayWindow.width > state.size.width ||
++			state.displayWindow.height > state.size.height;
++
++		outputBufferCount_ += outputCfg.bufferCount;
++		anyScaleUsesMipmaps_ |= state.scaleUsesMipmaps;
++		outputStates_.push_back(std::move(state));
+ 	}
+ 
+-	outputPixelFormat_ = outputCfg.pixelFormat;
+-	outputIsNv12_ = outputPixelFormat_ == formats::NV12;
+-	outputSize_ = outputCfg.size;
+-	nativeOutputSize_ = outSizeRange.max;
+-
+-	window_.x = ((inputCfg.size.width - outputCfg.size.width) / 2) &
++	/* Use the first stream's field of view for statistics and focus mapping. */
++	selectOutput(0);
++	window_.x = ((inputCfg.size.width - outputSize_.width) / 2) &
+ 		    ~(inputConfig_.patternSize.width - 1);
+-	window_.y = ((inputCfg.size.height - outputCfg.size.height) / 2) &
++	window_.y = ((inputCfg.size.height - outputSize_.height) / 2) &
+ 		    ~(inputConfig_.patternSize.height - 1);
+-	window_.width = outputCfg.size.width;
+-	window_.height = outputCfg.size.height;
+-
+-	/*
+-	 * Crop the source in the centre to the output aspect ratio. The second
+-	 * rendering pass scales this exact region, and statistics use it too.
+-	 */
+-	unsigned int cropWidth = width_;
+-	unsigned int cropHeight = height_;
+-	if (static_cast<uint64_t>(width_) * outputSize_.height >
+-	    static_cast<uint64_t>(height_) * outputSize_.width)
+-		cropWidth = static_cast<uint64_t>(height_) * outputSize_.width /
+-			    outputSize_.height;
+-	else
+-		cropHeight = static_cast<uint64_t>(width_) * outputSize_.height /
+-			     outputSize_.width;
+-
+-	cropWidth &= ~(inputConfig_.patternSize.width - 1);
+-	cropHeight &= ~(inputConfig_.patternSize.height - 1);
+-	unsigned int cropX = ((width_ - cropWidth) / 2) &
+-			     ~(inputConfig_.patternSize.width - 1);
+-	unsigned int cropY = ((height_ - cropHeight) / 2) &
+-			     ~(inputConfig_.patternSize.height - 1);
+-	displayWindow_ = Rectangle(cropX, cropY, cropWidth, cropHeight);
++	window_.width = outputSize_.width;
++	window_.height = outputSize_.height;
+ 	stats_->setWindow(displayWindow_);
+ 
+-	/*
+-	 * Mipmaps improve texture minification, but generating the complete
+-	 * chain for every frame is wasted when the RGB pass keeps or enlarges
+-	 * the cropped source. The scale shader already applies its explicit
+-	 * five-tap filter in those cases.
+-	 */
+-	scaleUsesMipmaps_ = displayWindow_.width > outputSize_.width ||
+-				    displayWindow_.height > outputSize_.height;
+-
+-	inputBufferCount_ = inputCfg.bufferCount;
+-	outputBufferCount_ = outputCfg.bufferCount;
+-
+ 	return 0;
+ }
+ 
++void DebayerEGL::selectOutput(unsigned int index)
++{
++	ASSERT(index < outputStates_.size());
++	const OutputState &state = outputStates_[index];
++	outputConfig_ = state.config;
++	outputSize_ = state.size;
++	outputPixelFormat_ = state.pixelFormat;
++	displayWindow_ = state.displayWindow;
++	outputIsNv12_ = state.isNv12;
++	scaleUsesMipmaps_ = state.scaleUsesMipmaps;
++}
++
+ Size DebayerEGL::patternSize(PixelFormat inputFormat)
+ {
+ 	DebayerEGL::DebayerInputConfig config;
+@@ -702,40 +718,47 @@ eGLImage *DebayerEGL::getCachedOutputFrameBuffer(FrameBuffer *output)
+ 	return eglImageOut;
+ }
+ 
+-int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
++int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output,
++			   const DebayerParams &params, bool renderInput,
++			   std::optional<MappedFrameBuffer> *inMapped,
++			   std::optional<DmaSyncer> *inDmaSyncer)
+ {
+-	eGLImage *eglImageIn;
+ 	eGLImage *eglImageOut;
+ 
+ 	/* eGL context switch */
+ 	egl_.makeCurrent();
+ 
+-	eglImageIn = getCachedInputFrameBuffer(input, inMapped, inDmaSyncer);
+-	if (!eglImageIn)
+-		return -ENOMEM;
++	if (renderInput) {
++		eGLImage *eglImageIn =
++			getCachedInputFrameBuffer(input, inMapped, inDmaSyncer);
++		if (!eglImageIn)
++			return -ENOMEM;
++
++		egl_.activateBindTexture(*intermediateImage_);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++		egl_.useProgram(programId_);
++		egl_.attachTextureToFBO(*intermediateImage_);
++		setShaderVariableValues(*eglImageIn, params);
++
++		glViewport(0, 0, width_, height_);
++		/* The Bayer pass covers the complete intermediate target. */
++		glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
++		egl_.activateBindTexture(*intermediateImage_);
++		if (anyScaleUsesMipmaps_) {
++			glGenerateMipmap(GL_TEXTURE_2D);
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
++					GL_LINEAR_MIPMAP_LINEAR);
++		} else {
++			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
++					GL_LINEAR);
++		}
++	}
++
+ 	eglImageOut = outputIsNv12_ ? nv12IntermediateImage_.get()
+ 				    : getCachedOutputFrameBuffer(output);
+ 	if (!eglImageOut)
+ 		return -ENOMEM;
+ 
+-	egl_.activateBindTexture(*intermediateImage_);
+-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+-	egl_.useProgram(programId_);
+-	egl_.attachTextureToFBO(*intermediateImage_);
+-	setShaderVariableValues(*eglImageIn, params);
+-
+-	glViewport(0, 0, width_, height_);
+-	/* The Bayer pass covers the complete intermediate target. */
+-	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
+-	egl_.activateBindTexture(*intermediateImage_);
+-	if (scaleUsesMipmaps_) {
+-		glGenerateMipmap(GL_TEXTURE_2D);
+-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+-				GL_LINEAR_MIPMAP_LINEAR);
+-	} else {
+-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+-	}
+-
+ 	egl_.useProgram(scaleProgramId_);
+ 	egl_.attachTextureToFBO(*eglImageOut);
+ 	setScaleShaderVariableValues(*intermediateImage_, params);
+@@ -799,14 +822,22 @@ bool DebayerEGL::convertRgbaToNv12(FrameBuffer *output)
+ 	}
+ 
+ 	/*
+-	 * The ABGR8888 scale shader swaps blue before GL_RGBA readback, so
+-	 * the bytes here are B,G,R,A.  In libyuv's little-endian naming this
+-	 * is ARGB, not ABGR; the latter would swap red and blue again.
++	 * A standalone NV12 configuration retains the accepted ABGR scale
++	 * shader, whose readback bytes are B,G,R,A (libyuv ARGB). Mixed RGB and
++	 * NV12 configurations use the native RGB shader for direct preview, so
++	 * their readback bytes are R,G,B,A (libyuv ABGR).
+ 	 */
+-	int ret = libyuv::ARGBToNV12(rgbaBuffer_.data(), width * 4,
+-				      yPlane, outputConfig_.stride,
+-				      uvPlane, outputConfig_.stride,
+-				      width, height);
++	int ret;
++	if (scaleSwapsRedBlue_)
++		ret = libyuv::ARGBToNV12(rgbaBuffer_.data(), width * 4,
++					 yPlane, outputConfig_.stride,
++					 uvPlane, outputConfig_.stride,
++					 width, height);
++	else
++		ret = libyuv::ABGRToNV12(rgbaBuffer_.data(), width * 4,
++					 yPlane, outputConfig_.stride,
++					 uvPlane, outputConfig_.stride,
++					 width, height);
+ 	if (ret) {
+ 		LOG(Debayer, Error) << "libyuv RGBA to NV12 conversion failed";
+ 		return false;
+@@ -815,86 +846,102 @@ bool DebayerEGL::convertRgbaToNv12(FrameBuffer *output)
+ 	return true;
+ }
+ 
+-void DebayerEGL::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params)
++void DebayerEGL::process(uint32_t frame, FrameBuffer *input,
++			 std::vector<Output> outputs,
++			 const DebayerParams &params)
+ {
+ 	bench_.startFrame();
+ 
+-	Rectangle focusWindow = params.focusWindow.boundedTo(displayWindow_);
++	if (outputs.empty()) {
++		LOG(Debayer, Error) << "No output buffers queued";
++		bench_.finishFrame();
++		inputBufferReady.emit(input);
++		return;
++	}
++
++	const Rectangle statsWindow = outputStates_.front().displayWindow;
++	Rectangle focusWindow = params.focusWindow.boundedTo(statsWindow);
+ 	if (!focusWindow.isNull())
+-		focusWindow.translateBy(-displayWindow_.topLeft());
++		focusWindow.translateBy(-statsWindow.topLeft());
+ 	stats_->setFocusWindow(focusWindow);
+ 
+-	/* Copy metadata from the input buffer */
+-	FrameMetadata &metadata = output->_d()->metadata();
+-	metadata.status = input->metadata().status;
+-	metadata.sequence = input->metadata().sequence;
+-	metadata.timestamp = input->metadata().timestamp;
+-
+ 	std::optional<MappedFrameBuffer> inMapped;
+ 	std::optional<DmaSyncer> inDmaSyncer;
++	bool inputRendered = false;
++	bool gpuFailed = false;
++
++	for (const Output &queuedOutput : outputs) {
++		FrameBuffer *output = queuedOutput.buffer;
++		FrameMetadata &metadata = output->_d()->metadata();
++		metadata.status = input->metadata().status;
++		metadata.sequence = input->metadata().sequence;
++		metadata.timestamp = input->metadata().timestamp;
++
++		if (queuedOutput.configIndex >= outputStates_.size() || gpuFailed) {
++			metadata.status = FrameMetadata::FrameError;
++			outputBufferReady.emit(output);
++			continue;
++		}
+ 
+-	if (debayerGPU(input, output, params, &inMapped, &inDmaSyncer)) {
+-		LOG(Debayer, Error) << "debayerGPU failed";
+-		goto error;
+-	}
+-	if (outputIsNv12_ && !convertRgbaToNv12(output)) {
+-		LOG(Debayer, Error) << "GPU RGBA to NV12 conversion failed";
+-		goto error;
+-	}
++		selectOutput(queuedOutput.configIndex);
++		if (debayerGPU(input, output, params, !inputRendered,
++			       &inMapped, &inDmaSyncer)) {
++			LOG(Debayer, Error) << "debayerGPU failed";
++			metadata.status = FrameMetadata::FrameError;
++			gpuFailed = true;
++			outputBufferReady.emit(output);
++			continue;
++		}
++		inputRendered = true;
+ 
+-	if (outputIsNv12_) {
+-		if (metadata.planes().size() == 1)
+-			metadata.planes()[0].bytesused = outputConfig_.frameSize;
+-		else {
+-			metadata.planes()[0].bytesused = outputConfig_.stride * outputSize_.height;
+-			metadata.planes()[1].bytesused = outputConfig_.stride * outputSize_.height / 2;
++		if (outputIsNv12_ && !convertRgbaToNv12(output)) {
++			LOG(Debayer, Error) << "GPU RGBA to NV12 conversion failed";
++			metadata.status = FrameMetadata::FrameError;
++			outputBufferReady.emit(output);
++			continue;
+ 		}
+-	} else {
+-		metadata.planes()[0].bytesused = output->planes()[0].length;
++
++		if (outputIsNv12_) {
++			if (metadata.planes().size() == 1) {
++				metadata.planes()[0].bytesused = outputConfig_.frameSize;
++			} else {
++				metadata.planes()[0].bytesused =
++					outputConfig_.stride * outputSize_.height;
++				metadata.planes()[1].bytesused =
++					outputConfig_.stride * outputSize_.height / 2;
++			}
++		} else {
++			metadata.planes()[0].bytesused = output->planes()[0].length;
++			UniqueFD fence = egl_.exportOutputFence();
++			if (fence.isValid())
++				output->_d()->setFence(
++					std::make_unique<Fence>(std::move(fence)));
++			else
++				egl_.syncOutput();
++		}
++
++		outputBufferReady.emit(output);
+ 	}
+ 
+-	/* Calculate stats for the whole frame */
++	/* Calculate statistics once from the Bayer input, not once per output. */
+ 	if (frame % SwStatsCpu::kStatPerNumFrames) {
+ 		stats_->finishFrame(frame, 0);
+ 	} else {
+ 		if (!inMapped) {
+-			/*
+-			 * The buffer was directly imported into EGL and thus
+-			 * not mapped for texture upload. Do it now for the
+-			 * CPU-based stats calculation.
+-			 */
+ 			assert(!inDmaSyncer);
+-			inDmaSyncer.emplace(input->planes()[0].fd, DmaSyncer::SyncType::Read);
++			inDmaSyncer.emplace(input->planes()[0].fd,
++					    DmaSyncer::SyncType::Read);
+ 			inMapped.emplace(input, MappedFrameBuffer::MapFlag::Read);
+ 		}
+-		stats_->processFrame(frame, 0, inMapped.value());
++		if (inMapped->isValid())
++			stats_->processFrame(frame, 0, inMapped.value());
++		else
++			stats_->finishFrame(frame, 0);
+ 	}
+ 	inDmaSyncer.reset();
+ 
+-	/*
+-	 * convertRgbaToNv12() has already completed a synchronous glReadPixels()
+-	 * and written the output from the CPU. A second full GPU wait is
+-	 * redundant for NV12. RGB output exports a native release fence when EGL
+-	 * supports it; otherwise it retains the synchronous fallback.
+-	 */
+-	if (!outputIsNv12_) {
+-		UniqueFD fence = egl_.exportOutputFence();
+-		if (fence.isValid())
+-			output->_d()->setFence(std::make_unique<Fence>(std::move(fence)));
+-		else
+-			egl_.syncOutput();
+-	}
+ 	bench_.finishFrame();
+-
+-	outputBufferReady.emit(output);
+ 	inputBufferReady.emit(input);
+-
+-	return;
+-
+-error:
+-	bench_.finishFrame();
+-	metadata.status = FrameMetadata::FrameError;
+-	return;
+ }
+ 
+ int DebayerEGL::start()
+@@ -909,19 +956,18 @@ int DebayerEGL::start()
+ 	LOG(Debayer, Debug) << "Available fragment shader texture units " << maxTextureImageUnits;
+ 
+ 	/*
+-	 * NV12 uses a GL_RGBA intermediate and the historical ABGR shader
+-	 * ordering expected by libyuv. Direct RGB output is imported with its
+-	 * actual DRM fourcc, so its shader must use the native channel order.
+-	 * XRGB/ARGB are the no-swap equivalents of XBGR/ABGR respectively.
++	 * A native RGB output requires the no-swap scaler variant. Use that one
++	 * for a mixed preview/encoder configuration as well, then select the
++	 * matching libyuv byte-order conversion for NV12 readback. A standalone
++	 * NV12 stream retains the previously accepted swapped path.
+ 	 */
+-	PixelFormat gpuOutputFormat = outputIsNv12_ ? formats::ABGR8888
+-					       : outputPixelFormat_;
+-	if (!outputIsNv12_) {
+-		if (outputPixelFormat_ == formats::XBGR8888)
+-			gpuOutputFormat = formats::XRGB8888;
+-		else if (outputPixelFormat_ == formats::ABGR8888)
+-			gpuOutputFormat = formats::ARGB8888;
+-	}
++	const bool hasRgbOutput = std::any_of(
++		outputStates_.begin(), outputStates_.end(),
++		[](const OutputState &state) { return !state.isNv12; });
++	scaleSwapsRedBlue_ = !hasRgbOutput;
++	PixelFormat gpuOutputFormat = scaleSwapsRedBlue_
++					      ? formats::ABGR8888
++					      : formats::XRGB8888;
+ 	if (initBayerShaders(inputPixelFormat_, gpuOutputFormat))
+ 		return -EINVAL;
+ 	if (initScaleShaders(gpuOutputFormat))
+@@ -934,12 +980,19 @@ int DebayerEGL::start()
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+ 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+ 
+-	if (outputIsNv12_) {
++	nv12IntermediateSize_ = {};
++	for (const OutputState &state : outputStates_) {
++		if (state.isNv12)
++			nv12IntermediateSize_.expandTo(state.size);
++	}
++	if (!nv12IntermediateSize_.isNull()) {
+ 		nv12IntermediateImage_ = std::make_unique<eGLImage>(
+-			GL_RGBA, outputSize_.width, outputSize_.height,
+-			outputSize_.width * 4, GL_TEXTURE1, 1);
++			GL_RGBA, nv12IntermediateSize_.width,
++			nv12IntermediateSize_.height,
++			nv12IntermediateSize_.width * 4, GL_TEXTURE1, 1);
+ 		egl_.createOutputTexture2D(*nv12IntermediateImage_);
+-		rgbaBuffer_.resize(outputSize_.width * outputSize_.height * 4);
++		rgbaBuffer_.resize(nv12IntermediateSize_.width *
++				   nv12IntermediateSize_.height * 4);
+ 	}
+ 
+ 	return 0;
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index 1ddc37a..99116b5 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -53,7 +53,9 @@ public:
+ 	std::tuple<unsigned int, unsigned int> strideAndFrameSize(const PixelFormat &outputFormat, const Size &size) override;
+ 	uint32_t preferredInputStride(const PixelFormat &inputFormat, const Size &size) override;
+ 
+-	void process(uint32_t frame, FrameBuffer *input, FrameBuffer *output, const DebayerParams &params) override;
++	void process(uint32_t frame, FrameBuffer *input,
++		     std::vector<Output> outputs,
++		     const DebayerParams &params) override;
+ 	int start() override;
+ 	void stop() override;
+ 
+@@ -70,8 +72,12 @@ private:
+ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
+ 	void setScaleShaderVariableValues(eGLImage &eGLImageIn,
+ 					  const DebayerParams &params);
+-	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
++	int debayerGPU(FrameBuffer *input, FrameBuffer *output,
++		       const DebayerParams &params, bool renderInput,
++		       std::optional<MappedFrameBuffer> *mappedInputBuffer,
++		       std::optional<DmaSyncer> *inputBufferDmaSyncer);
+ 	bool convertRgbaToNv12(FrameBuffer *output);
++	void selectOutput(unsigned int index);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+ 	eGLImage *getCachedOutputFrameBuffer(FrameBuffer *output);
+@@ -92,6 +98,20 @@ private:
+ 	unsigned int outputBufferCount_;
+ 	bool outputIsNv12_ = false;
+ 	bool scaleUsesMipmaps_ = false;
++	bool anyScaleUsesMipmaps_ = false;
++	bool scaleSwapsRedBlue_ = true;
++
++	struct OutputState {
++		DebayerOutputConfig config;
++		Size size;
++		PixelFormat pixelFormat;
++		Rectangle displayWindow;
++		unsigned int bufferCount;
++		bool isNv12;
++		bool scaleUsesMipmaps;
++	};
++	std::vector<OutputState> outputStates_;
++	Size nv12IntermediateSize_;
+ 
+ 	/* Shader parameters */
+ 	float firstRed_x_;
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index bafa1f2..59511cd 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -295,6 +295,16 @@ int SoftwareIsp::configure(const StreamConfiguration &inputCfg,
+ {
+ 	ASSERT(ipa_ && debayer_);
+ 
++	outputConfigIndices_.clear();
++	for (unsigned int i = 0; i < outputCfgs.size(); ++i) {
++		const Stream *stream = outputCfgs[i].get().stream();
++		if (!stream || !outputConfigIndices_.emplace(stream, i).second) {
++			LOG(SoftwareIsp, Error)
++				<< "Invalid or duplicate output stream at index " << i;
++			return -EINVAL;
++		}
++	}
++
+ 	int ret = ipa_->configure(configInfo);
+ 	if (ret < 0)
+ 		return ret;
+@@ -324,11 +334,16 @@ int SoftwareIsp::exportBuffers(const Stream *stream, unsigned int count,
+ {
+ 	ASSERT(debayer_ != nullptr);
+ 
+-	/* single output for now */
+ 	if (stream == nullptr)
+ 		return -EINVAL;
+ 
+-	return dmaHeap_.exportBuffers(count, { debayer_->frameSize() }, buffers);
++	const StreamConfiguration &config = stream->configuration();
++	auto [stride, frameSize] =
++		debayer_->strideAndFrameSize(config.pixelFormat, config.size);
++	if (!stride || !frameSize || stride != config.stride)
++		return -EINVAL;
++
++	return dmaHeap_.exportBuffers(count, { frameSize }, buffers);
+ }
+ 
+ /**
+@@ -359,25 +374,45 @@ int SoftwareIsp::queueBuffers(uint32_t frame, FrameBuffer *input,
+ 	if (outputs.empty())
+ 		return -EINVAL;
+ 
+-	/* We only support a single stream for now. */
+-	if (outputs.size() != 1)
+-		return -EINVAL;
+-
++	std::vector<Output> queuedOutputs;
++	queuedOutputs.reserve(outputs.size());
+ 	for (auto [stream, buffer] : outputs) {
+-		if (!buffer)
++		auto index = outputConfigIndices_.find(stream);
++		if (!buffer || index == outputConfigIndices_.end())
+ 			return -EINVAL;
++		queuedOutputs.push_back({ buffer, index->second });
+ 	}
+ 
+ 	queuedInputBuffers_.push_back(input);
+ 
+-	for (const auto &[stream, buffer] : outputs) {
+-		queuedOutputBuffers_.push_back(buffer);
+-		process(frame, input, buffer);
+-	}
++	for (const Output &output : queuedOutputs)
++		queuedOutputBuffers_.push_back(output.buffer);
++
++	process(frame, input, std::move(queuedOutputs));
+ 
+ 	return 0;
+ }
+ 
++/**
++ * \brief Pass an input framebuffer and all request outputs to the ISP worker
++ * \param[in] frame The frame number
++ * \param[in] input The input framebuffer
++ * \param[in] outputs The output buffers and their configured stream indexes
++ */
++void SoftwareIsp::process(uint32_t frame, FrameBuffer *input,
++			  std::vector<Output> outputs)
++{
++	std::vector<Debayer::Output> debayerOutputs;
++	debayerOutputs.reserve(outputs.size());
++	for (const Output &output : outputs)
++		debayerOutputs.push_back({ output.buffer, output.configIndex });
++
++	ipa_->computeParams(frame);
++	debayer_->invokeMethod(&Debayer::process,
++			       ConnectionTypeQueued, frame, input,
++			       std::move(debayerOutputs), debayerParams_);
++}
++
+ /**
+  * \brief Starts the Software ISP streaming operation
+  * \return 0 on success, any other value indicates an error
+@@ -431,13 +466,6 @@ void SoftwareIsp::stop()
+  * \param[in] input The input framebuffer
+  * \param[out] output The framebuffer to write the processed frame to
+  */
+-void SoftwareIsp::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output)
+-{
+-	ipa_->computeParams(frame);
+-	debayer_->invokeMethod(&Debayer::process,
+-			       ConnectionTypeQueued, frame, input, output, debayerParams_);
+-}
+-
+ void SoftwareIsp::saveIspParams()
+ {
+ 	debayerParams_ = *sharedParams_;
+-- 
+2.49.0
+

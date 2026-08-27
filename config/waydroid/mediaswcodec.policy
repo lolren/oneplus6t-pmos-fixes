@@ -1,0 +1,9 @@
+# Mesa creates helper threads while Codec2 maps camera encoder buffers. The
+# APEX sandbox loads this device-specific policy from /vendor_extra in addition
+# to its base policy. Without sched_setscheduler, minijail kills media.swcodec
+# before the software H.264 encoder can consume its first frame.
+kcmp: 1
+sched_getaffinity: 1
+sched_setscheduler: 1
+sysinfo: 1
+mkdirat: 1
