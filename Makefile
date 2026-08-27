@@ -11,6 +11,7 @@ SCRIPTS = \
 	scripts/configure-mobile-data \
 	scripts/remove-mobile-data \
 	scripts/check-mobile-data \
+	scripts/mobile-data-watchdog \
 	scripts/configure-daily-use \
 	scripts/configure-time-sync \
 	scripts/enable-ssh \
@@ -64,7 +65,11 @@ test:
 		tests/fixtures/camera-generation-smoke \
 		tests/fixtures/nfctool \
 		tests/fixtures/audio-systemctl \
+		tests/fixtures/mobile-watchdog-nmcli \
+		tests/fixtures/mobile-watchdog-mmcli \
+		tests/fixtures/mobile-watchdog-ip \
 			 tests/test-apn-selection.sh tests/test-messages-check.sh \
+		tests/test-mobile-data-watchdog.sh \
 			tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-probe-runner.sh \
@@ -80,6 +85,7 @@ test:
 		tests/test-display-kernel-manager.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
+	./tests/test-mobile-data-watchdog.sh
 	./tests/test-daily-use.sh
 	./tests/test-messages-check.sh
 	./tests/test-ssh-recovery.sh
@@ -146,6 +152,11 @@ install:
 	sed 's|@SBINDIR@|$(SBINDIR)|g' \
 		config/systemd/oneplus6t-waydroid-location.service \
 		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
+	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
+		config/systemd/oneplus6t-mobile-data-watchdog.service \
+		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-mobile-data-watchdog.service"
+	$(INSTALL) -m 0644 config/systemd/oneplus6t-mobile-data-watchdog.timer \
+		"$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/"
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"
@@ -172,6 +183,8 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-configure-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/remove-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-remove-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-check-mobile-data"
+	ln -sfn "$(LIBEXECDIR)/scripts/mobile-data-watchdog" \
+		"$(DESTDIR)$(SBINDIR)/pmos-mobile-data-watchdog"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-daily-use" "$(DESTDIR)$(SBINDIR)/pmos-configure-daily-use"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-time-sync" "$(DESTDIR)$(SBINDIR)/pmos-configure-time-sync"
 	ln -sfn "$(LIBEXECDIR)/scripts/enable-ssh" "$(DESTDIR)$(SBINDIR)/pmos-enable-ssh"

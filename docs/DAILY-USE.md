@@ -4,7 +4,8 @@
 small runtime configurations that are useful on every postmarketOS install:
 
 1. a NetworkManager mobile-data profile selected from the standard provider
-   database plus the reviewed GID-aware MVNO overlay;
+   database plus the reviewed GID-aware MVNO overlay, with a bounded
+   stale-bearer watchdog when its packaged unit is present;
 2. systemd network-time synchronization; and
 3. the optional PipeWire/WirePlumber user service that pairs the built-in
    microphone with the current earpiece, speakerphone or headset route.
@@ -49,6 +50,11 @@ the user's D-Bus session. If no graphical user session exists, apply the
 individual mobile/time helpers as root and enable the audio unit later from
 that user's session.
 
+The mobile helper enables `oneplus6t-mobile-data-watchdog.timer` only after its
+candidate profile has connected and become the managed UUID. The timer ignores
+ordinary inactive state, defers during calls and repairs only an activated
+profile whose reported QMAP interface/address/default route has disappeared.
+
 ## Carrier selection
 
 The mobile-data part uses this order:
@@ -81,7 +87,7 @@ The wrapper does not pretend the three subsystems form one atomic transaction.
 If a later component fails, the earlier component is left in its normal
 managed state and can be reversed independently:
 
-- cellular: `sudo pmos-remove-mobile-data`;
+- cellular: `sudo pmos-remove-mobile-data` (also disables its watchdog timer);
 - time: `sudo timedatectl set-ntp false` or the site's normal time policy; and
 - audio: `systemctl --user disable --now oneplus6t-audio-route.service`.
 

@@ -8,6 +8,8 @@ OVERLAY=${PMOS_MVNO_OVERLAY:-$PROJECT_DIR/data/mvno-apns.psv}
 PROVIDER_DB=${PMOS_PROVIDER_DB:-/usr/share/mobile-broadband-provider-info/serviceproviders.xml}
 MARKER_DIR=${PMOS_MOBILE_STATE_DIR:-/var/lib/oneplus6t-pmos-fixes}
 MARKER_FILE=$MARKER_DIR/mobile-data-profile.uuid
+SYSTEMCTL=${PMOS_MOBILE_SYSTEMCTL:-systemctl}
+WATCHDOG_TIMER=oneplus6t-mobile-data-watchdog.timer
 
 operator_code=
 gid1=
@@ -490,4 +492,16 @@ fi
 trap - EXIT HUP INT TERM
 
 printf 'managed_uuid=%s\n' "$candidate_uuid"
+if command -v "$SYSTEMCTL" >/dev/null 2>&1 &&
+	"$SYSTEMCTL" cat "$WATCHDOG_TIMER" >/dev/null 2>&1; then
+	"$SYSTEMCTL" daemon-reload
+	if "$SYSTEMCTL" enable --now "$WATCHDOG_TIMER" >/dev/null; then
+		printf 'watchdog=%s\n' "$WATCHDOG_TIMER"
+	else
+		printf '%s: warning: profile is active but %s could not be enabled\n' \
+			"$PROGRAM" "$WATCHDOG_TIMER" >&2
+	fi
+else
+	printf '%s\n' 'watchdog=not-installed'
+fi
 printf 'rollback=sudo %s/remove-mobile-data\n' "$SCRIPT_DIR"

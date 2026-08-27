@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+healthy=${PMOS_WATCHDOG_HEALTH:-healthy}
+if [ "$healthy" = repairable ] &&
+	grep -q '^up$' "${PMOS_WATCHDOG_LOG:?PMOS_WATCHDOG_LOG is required}" 2>/dev/null; then
+	healthy=healthy
+fi
+
+[ "$healthy" = healthy ] || exit 1
+
+case " $* " in
+*' link show dev '*)
+	printf '%s\n' '7: qmapmux0.0: <UP,LOWER_UP>'
+	;;
+*' -o -4 address show dev '*' scope global '*)
+	printf '%s\n' '7: qmapmux0.0 inet 10.0.0.1/30 scope global qmapmux0.0'
+	;;
+*' -4 route show table all default dev '*)
+	printf '%s\n' 'default via 10.0.0.2 dev qmapmux0.0 table 100'
+	;;
+*) exit 1 ;;
+esac

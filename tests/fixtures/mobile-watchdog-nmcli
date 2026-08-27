@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+case " $* " in
+*' -g connection.type connection show '*)
+	printf '%s\n' "${PMOS_WATCHDOG_PROFILE_TYPE:-gsm}"
+	;;
+*' -g GENERAL.STATE connection show '*)
+	printf '%s\n' "${PMOS_WATCHDOG_NM_STATE:-activated}"
+	;;
+*' -g GENERAL.IP-IFACE connection show '*)
+	printf '%s\n' "${PMOS_WATCHDOG_IFACE:-qmapmux0.0}"
+	;;
+*' --wait 30 connection down '*)
+	printf '%s\n' down >>"${PMOS_WATCHDOG_LOG:?PMOS_WATCHDOG_LOG is required}"
+	;;
+*' --wait 60 connection up '*)
+	printf '%s\n' up >>"${PMOS_WATCHDOG_LOG:?PMOS_WATCHDOG_LOG is required}"
+	;;
+*)
+	printf 'unsupported mock nmcli call: %s\n' "$*" >&2
+	exit 1
+	;;
+esac

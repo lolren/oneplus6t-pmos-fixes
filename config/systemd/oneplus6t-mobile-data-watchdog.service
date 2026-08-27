@@ -1,0 +1,10 @@
+[Unit]
+Description=Repair a stale OnePlus 6T mobile-data bearer
+After=ModemManager.service NetworkManager.service
+Wants=ModemManager.service NetworkManager.service
+ConditionPathExists=/var/lib/oneplus6t-pmos-fixes/mobile-data-profile.uuid
+
+[Service]
+Type=oneshot
+ExecStart=@LIBEXEC@/scripts/mobile-data-watchdog --repair
+TimeoutStartSec=90

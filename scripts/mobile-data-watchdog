@@ -1,0 +1,188 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Repair only the NetworkManager GSM profile created by configure-mobile-data
+# when NetworkManager still calls it activated after ModemManager has removed
+# its Internet bearer/QMAP interface.
+
+set -u
+
+PROGRAM=${0##*/}
+STATE_DIR=${PMOS_MOBILE_STATE_DIR:-/var/lib/oneplus6t-pmos-fixes}
+MARKER_FILE=$STATE_DIR/mobile-data-profile.uuid
+RUNTIME_DIR=${PMOS_MOBILE_WATCHDOG_RUNTIME_DIR:-/run/oneplus6t-pmos-fixes}
+LAST_ATTEMPT=$RUNTIME_DIR/mobile-data-watchdog.last
+NMCLI=${PMOS_MOBILE_WATCHDOG_NMCLI:-nmcli}
+MMCLI=${PMOS_MOBILE_WATCHDOG_MMCLI:-mmcli}
+IP=${PMOS_MOBILE_WATCHDOG_IP:-ip}
+COOLDOWN=${PMOS_MOBILE_WATCHDOG_COOLDOWN:-300}
+repair=no
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--check | --repair]
+
+Check the managed mobile-data profile for NetworkManager's stale-activated
+bearer state. --check is read-only and is the default. --repair cycles only the
+UUID recorded by configure-mobile-data, with a five-minute retry cooldown.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+case "${1:-}" in
+	""|--check) ;;
+	--repair) repair=yes ;;
+	-h|--help) usage; exit 0 ;;
+	*) usage >&2; die "unknown argument: $1" ;;
+esac
+[ "$#" -le 1 ] || die 'too many arguments'
+
+case "$COOLDOWN" in
+	""|*[!0-9]*) die 'cooldown must be a non-negative integer' ;;
+esac
+
+[ ! -L "$STATE_DIR" ] || die "state directory must not be a symbolic link: $STATE_DIR"
+[ ! -L "$MARKER_FILE" ] || die "managed-profile marker must not be a symbolic link: $MARKER_FILE"
+if [ ! -e "$MARKER_FILE" ]; then
+	printf '%s\n' 'status=unmanaged' 'action=none'
+	exit 0
+fi
+[ -r "$MARKER_FILE" ] || die "managed-profile marker is not readable; run as root: $MARKER_FILE"
+
+for command_path in "$NMCLI" "$MMCLI" "$IP"; do
+	command -v "$command_path" >/dev/null 2>&1 || die "required command is unavailable: $command_path"
+done
+
+uuid=$(sed -n '1p' "$MARKER_FILE")
+case "$uuid" in
+	????????-????-????-????-????????????) ;;
+	*) die "invalid profile UUID in $MARKER_FILE" ;;
+esac
+
+profile_type=$("$NMCLI" -g connection.type connection show "$uuid" 2>/dev/null) || {
+	printf '%s\n' "managed_uuid=$uuid" 'status=profile-missing' 'action=none'
+	exit 0
+}
+[ "$profile_type" = gsm ] || die 'managed-profile marker points to a non-GSM connection'
+
+state=$("$NMCLI" -g GENERAL.STATE connection show "$uuid" 2>/dev/null || true)
+iface=$("$NMCLI" -g GENERAL.IP-IFACE connection show "$uuid" 2>/dev/null || true)
+printf 'managed_uuid=%s\n' "$uuid"
+printf 'networkmanager_state=%s\n' "${state:---}"
+printf 'data_interface=%s\n' "${iface:---}"
+
+if [ "$state" != activated ]; then
+	printf '%s\n' 'status=inactive' 'action=networkmanager-autoconnect'
+	exit 0
+fi
+
+interface_is_healthy() {
+	case "$iface" in
+		""|--|*[!A-Za-z0-9_.:@-]*) return 1 ;;
+	esac
+	"$IP" link show dev "$iface" >/dev/null 2>&1 || return 1
+	if ! "$IP" -o -4 address show dev "$iface" scope global 2>/dev/null | grep -q . &&
+	   ! "$IP" -o -6 address show dev "$iface" scope global 2>/dev/null | grep -q .; then
+		return 1
+	fi
+	"$IP" -4 route show table all default dev "$iface" 2>/dev/null | grep -q . ||
+		"$IP" -6 route show table all default dev "$iface" 2>/dev/null | grep -q .
+}
+
+if interface_is_healthy; then
+	printf '%s\n' 'status=healthy' 'action=none'
+	exit 0
+fi
+
+printf '%s\n' 'status=stale-activated'
+if [ "$repair" != yes ]; then
+	printf '%s\n' 'action=repair-required'
+	exit 1
+fi
+effective_uid=${PMOS_MOBILE_WATCHDOG_UID:-$(id -u)}
+[ "$effective_uid" -eq 0 ] || die '--repair must run as root'
+
+modem_id=$("$MMCLI" -L 2>/dev/null | sed -n 's#.*Modem/\([0-9][0-9]*\).*#\1#p' | head -n 1)
+if [ -z "$modem_id" ]; then
+	printf '%s\n' 'action=deferred-no-modem'
+	exit 0
+fi
+voice_info=$("$MMCLI" -m "$modem_id" --voice-list-calls -K 2>/dev/null || true)
+voice_calls=$(printf '%s\n' "$voice_info" | awk -F: '
+$1 ~ /^[[:space:]]*modem\.voice\.call[[:space:]]*$/ {
+	value=substr($0, index($0, ":") + 1)
+	gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+	print value
+	exit
+}')
+case "$voice_calls" in
+	""|0) ;;
+	*)
+		printf '%s\n' 'action=deferred-active-call'
+		exit 0
+		;;
+esac
+modem_info=$("$MMCLI" -m "$modem_id" -K 2>/dev/null || true)
+registration=$(printf '%s\n' "$modem_info" | awk -F: '
+$1 ~ /^[[:space:]]*modem\.3gpp\.registration-state[[:space:]]*$/ {
+	value=substr($0, index($0, ":") + 1)
+	gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+	print value
+	exit
+}')
+case "$registration" in
+	home|roaming) ;;
+	*)
+		printf 'registration_state=%s\n' "${registration:---}"
+		printf '%s\n' 'action=deferred-not-registered'
+		exit 0
+		;;
+esac
+
+now=${PMOS_MOBILE_WATCHDOG_NOW:-$(date +%s)}
+case "$now" in
+	""|*[!0-9]*) die 'current time must be a non-negative integer' ;;
+esac
+[ ! -L "$RUNTIME_DIR" ] || die "runtime directory must not be a symbolic link: $RUNTIME_DIR"
+[ ! -L "$LAST_ATTEMPT" ] || die "last-attempt marker must not be a symbolic link: $LAST_ATTEMPT"
+if [ -r "$LAST_ATTEMPT" ]; then
+	last=$(sed -n '1p' "$LAST_ATTEMPT")
+	case "$last" in
+		""|*[!0-9]*) last=0 ;;
+	esac
+	elapsed=$((now - last))
+	if [ "$now" -ge "$last" ] && [ "$elapsed" -lt "$COOLDOWN" ]; then
+		printf 'retry_after_seconds=%s\n' "$((COOLDOWN - elapsed))"
+		printf '%s\n' 'action=deferred-cooldown'
+		exit 0
+	fi
+fi
+
+install -d -m 0755 "$RUNTIME_DIR"
+attempt_tmp=$LAST_ATTEMPT.tmp.$$
+trap 'rm -f "$attempt_tmp"' EXIT HUP INT TERM
+umask 077
+printf '%s\n' "$now" >"$attempt_tmp"
+mv "$attempt_tmp" "$LAST_ATTEMPT"
+trap - EXIT HUP INT TERM
+
+"$NMCLI" --wait 30 connection down "$uuid" >/dev/null 2>&1 || true
+if ! "$NMCLI" --wait 60 connection up "$uuid" >/dev/null; then
+	printf '%s\n' 'action=repair-failed'
+	exit 1
+fi
+
+state=$("$NMCLI" -g GENERAL.STATE connection show "$uuid" 2>/dev/null || true)
+iface=$("$NMCLI" -g GENERAL.IP-IFACE connection show "$uuid" 2>/dev/null || true)
+if [ "$state" = activated ] && interface_is_healthy; then
+	printf 'repaired_interface=%s\n' "$iface"
+	printf '%s\n' 'action=reconnected' 'result=pass'
+	exit 0
+fi
+
+printf '%s\n' 'action=repair-incomplete' 'result=fail'
+exit 1

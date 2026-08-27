@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+case " $* " in
+*' -L '*)
+	printf '%s\n' '/org/freedesktop/ModemManager1/Modem/0 [mock] modem'
+	;;
+*' -m 0 --voice-list-calls -K '*)
+	printf 'modem.voice.call : %s\n' "${PMOS_WATCHDOG_VOICE_CALLS:-0}"
+	;;
+*' -m 0 -K '*)
+	printf 'modem.3gpp.registration-state : %s\n' \
+		"${PMOS_WATCHDOG_REGISTRATION:-home}"
+	;;
+*)
+	printf 'unsupported mock mmcli call: %s\n' "$*" >&2
+	exit 1
+	;;
+esac

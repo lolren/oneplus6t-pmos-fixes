@@ -1847,3 +1847,34 @@ the route unit orders itself after that socket, and the diagnostic rejects both
 a legacy PulseAudio server and any stray process named `pulseaudio`. Real
 modem-call earpiece/speakerphone/headset switching and post-reboot acceptance
 remain open.
+
+## Mobile-data stale-bearer recovery
+
+Date: 2026-08-28. After the initial cellular acceptance, the network sent a
+regular deactivation for the `mob.asm.net` Internet bearer. ModemManager marked
+that bearer disconnected and removed its QMAP interface, but NetworkManager
+continued reporting the managed profile as activated with
+`GENERAL.IP-IFACE=qmapmux0.0`. The only remaining QMAP interface belonged to
+the separate IMS bearer, and the stale Internet profile had no address or
+route. Cycling that exact managed UUID restored data immediately.
+
+The new watchdog validates the recorded profile type/UUID, NetworkManager
+state, reported interface, global address and default route in all policy
+tables. It repairs only stale activated state, requires modem registration,
+defers when ModemManager reports a voice call, and rate-limits attempts to five
+minutes. A coalesced systemd timer checks every five minutes; configuration
+enables it only after the candidate profile is committed, and profile removal
+disables it.
+
+For live fault injection, only the connected `mob.asm.net` bearer was
+disconnected through ModemManager. The expected stale NetworkManager state was
+reproduced with `qmapmux0.0` absent. The watchdog then reported
+`status=stale-activated`, cycled the managed UUID, reported
+`action=reconnected`, restored the same QMAP interface/address/default route
+and passed three cellular-bound pings with zero loss. The idle IMS bearer was
+automatically restored by `81voltd` within eight seconds. No live call was in
+progress.
+
+Host fixtures independently cover healthy no-op, read-only stale detection,
+successful repair, retry cooldown, inactive-profile delegation, active-call
+deferral, non-GSM marker refusal, missing marker and package staging.

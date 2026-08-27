@@ -4,6 +4,8 @@ set -eu
 PROGRAM=${0##*/}
 MARKER_DIR=${PMOS_MOBILE_STATE_DIR:-/var/lib/oneplus6t-pmos-fixes}
 MARKER_FILE=$MARKER_DIR/mobile-data-profile.uuid
+SYSTEMCTL=${PMOS_MOBILE_SYSTEMCTL:-systemctl}
+WATCHDOG_TIMER=oneplus6t-mobile-data-watchdog.timer
 
 die() {
 	printf '%s: %s\n' "$PROGRAM" "$*" >&2
@@ -28,5 +30,8 @@ if profile_type=$(nmcli -g connection.type connection show "$uuid" 2>/dev/null);
 	nmcli connection delete "$uuid" >/dev/null
 fi
 
+if command -v "$SYSTEMCTL" >/dev/null 2>&1; then
+	"$SYSTEMCTL" disable --now "$WATCHDOG_TIMER" >/dev/null 2>&1 || true
+fi
 rm -f "$MARKER_FILE"
 printf 'removed managed mobile-data profile %s\n' "$uuid"

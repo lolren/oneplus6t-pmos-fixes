@@ -85,6 +85,15 @@ The profile is bound to the detected SIM operator with
 mode recorded in the reviewed rule. SMARTY's current official instructions
 specify IPv4.
 
+When the packaged systemd unit is present, successful configuration also
+enables `oneplus6t-mobile-data-watchdog.timer`. For a profile that predates the
+watchdog, enable it once without rebuilding the connection:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now oneplus6t-mobile-data-watchdog.timer
+```
+
 For a missing provider:
 
 ```sh
@@ -119,7 +128,46 @@ sudo ./scripts/remove-mobile-data
 ```
 
 The remover validates the UUID and connection type, refuses symbolic-link
-markers, and deletes only that managed GSM profile.
+markers, disables the associated watchdog timer and deletes only that managed
+GSM profile.
+
+## Stale-bearer recovery
+
+The Qualcomm IPA/QMAP stack can receive an ordinary network-side data-bearer
+deactivation while Wi-Fi is preferred. In the reproduced failure,
+ModemManager correctly marked the Internet bearer disconnected and deleted
+`qmapmux0.0`, but NetworkManager continued to report the managed connection as
+`activated`, retained `GENERAL.IP-IFACE=qmapmux0.0` and never retried. Unlimited
+NetworkManager autoconnect retries do not help while that stale active state
+persists.
+
+`mobile-data-watchdog` validates all of these together:
+
+- the UUID is the project-owned GSM profile recorded in the root-only marker;
+- NetworkManager reports it activated;
+- the reported interface still exists with a global address; and
+- that interface owns an IPv4 or IPv6 default route in any policy table.
+
+Healthy profiles are read-only no-ops. Inactive profiles are left to normal
+NetworkManager autoconnect. A stale activated profile is cycled only with
+`--repair`, only while the modem is registered, never while ModemManager lists
+an active voice call, and no more than once every five minutes. The systemd
+timer runs this repair mode every five minutes with a randomized/coalesced
+delay to limit wakeups.
+
+The live acceptance test explicitly disconnected only the `mob.asm.net`
+bearer. NetworkManager reproduced its stale activated state with the interface
+absent; the watchdog reconnected `qmapmux0.0`, restored its address/default
+route and passed three interface-bound pings. The idle IMS bearer briefly
+reconnected as part of modem recovery and was restored by `81voltd` within
+eight seconds. Active calls are therefore a hard no-repair condition.
+
+Run a read-only check at any time:
+
+```sh
+sudo pmos-mobile-data-watchdog --check
+systemctl status oneplus6t-mobile-data-watchdog.timer
+```
 
 ## Adding an MVNO rule
 

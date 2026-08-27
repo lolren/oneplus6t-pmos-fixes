@@ -7,7 +7,9 @@ The first validated fix creates persistent mobile data through NetworkManager.
 It uses the standard `mobile-broadband-provider-info` database where that is
 safe, understands its newer SIM GID1 field, adds an evidence-backed
 compatibility overlay for older releases, and never guesses when several
-carriers share one MCC/MNC.
+carriers share one MCC/MNC. A bounded watchdog also repairs the Qualcomm/QMAP
+case where the carrier removes an Internet bearer but NetworkManager leaves its
+profile falsely activated with a deleted data interface.
 
 Validated on 23-24 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
 ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
@@ -35,6 +37,11 @@ Install and activate one managed connection profile:
 sudo ./scripts/configure-mobile-data
 ./scripts/check-mobile-data
 ```
+
+When installed as a package, the configurator also enables the five-minute
+`oneplus6t-mobile-data-watchdog.timer`. The watchdog checks only the UUID that
+this project records, does nothing to healthy or ordinarily inactive profiles,
+defers during a voice call, and rate-limits reconnection attempts.
 
 For a carrier missing from the databases, use its officially documented APN:
 
@@ -64,8 +71,9 @@ sudo make install PREFIX=/usr/local
 sudo pmos-configure-mobile-data --dry-run
 ```
 
-`make install DESTDIR=... PREFIX=/usr` is supported for package builders. No
-service is silently enabled by the Makefile.
+`make install DESTDIR=... PREFIX=/usr` is supported for package builders. The
+Makefile does not enable services; `pmos-configure-mobile-data` enables its
+watchdog only after a managed profile activates successfully.
 
 If USB networking answers ping but port 22 is unavailable, recover the
 phone-side SSH service from its local terminal with the packaged helper:

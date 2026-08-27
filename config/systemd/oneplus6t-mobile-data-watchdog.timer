@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically verify the managed mobile-data bearer
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=oneplus6t-mobile-data-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -26,12 +26,18 @@ is not in a configured repository, installation uses
 resolved through the target's configured repositories.
 
 The package depends on the current owners of `ip`, `mmcli`, `nmcli` and the
-Mobile Broadband Provider database. Runtime r17 also selects postmarketOS's
+Mobile Broadband Provider database. Runtime r17 and later select postmarketOS's
 PipeWire UI backend and the PipeWire-Pulse systemd socket; this replaces the
 conflicting real PulseAudio daemon while preserving `pactl` through
 `pulseaudio-utils`. `curl`, `resolvectl` and systemd time tools remain optional:
 diagnostics degrade safely when they are absent, and the time helper reports an
 explicit error outside a systemd installation.
+
+The package installs a disabled system timer for the NetworkManager stale-
+activated/QMAP bearer failure. `pmos-configure-mobile-data` enables it only
+after committing a working managed UUID; `pmos-remove-mobile-data` disables it.
+The timer never guesses a connection name or APN and does not cycle during a
+ModemManager voice call.
 
 `pmos-enable-ssh --apply` is an explicit, idempotent recovery helper for a
 phone whose postmarketOS USB developer-mode NCM link answers ping but has no
