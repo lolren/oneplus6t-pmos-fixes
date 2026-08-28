@@ -20,6 +20,7 @@ depends="
 	python3
 	wireplumber
 	"
+checkdepends="git"
 options="!strip"
 builddir="$startdir/.."
 
