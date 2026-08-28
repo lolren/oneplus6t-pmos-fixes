@@ -286,10 +286,10 @@ if [ "$with_waydroid" = yes ]; then
 		die 'Waydroid session is not running'
 	printf '%s\n' "$waydroid_status" | grep -Eq '^Container:[[:space:]]+RUNNING$' || \
 		die 'Waydroid container is not running'
-	run_waydroid shell ping -c 3 -W 3 1.1.1.1 >/dev/null || \
+	run_waydroid shell -- ping -c 3 -W 3 1.1.1.1 >/dev/null || \
 		die 'Waydroid cellular raw-IP probe failed'
 	printf '%s\n' 'waydroid_ipv4=pass'
-	run_waydroid shell ping -c 1 -W 5 postmarketos.org >/dev/null || \
+	run_waydroid shell -- ping -c 1 -W 5 postmarketos.org >/dev/null || \
 		die 'Waydroid cellular DNS/name probe failed'
 	printf '%s\n' 'waydroid_dns=pass'
 else

@@ -107,6 +107,10 @@ When Waydroid is already running, include its NAT path:
 ./scripts/test-cellular-only --with-waydroid
 ```
 
+The Android probes use `waydroid shell -- ping ...`; the separator is required
+so current Waydroid releases pass `-c` and `-W` to Android's `ping` instead of
+parsing them as host-side CLI options.
+
 This additionally checks raw IPv4 and DNS-name connectivity inside Android.
 For a normal login user, sudo is validated before Wi-Fi changes and used only
 for the Wi-Fi radio/profile mutations and optional

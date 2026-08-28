@@ -288,6 +288,19 @@ def _run(
     return result
 
 
+def _android_command_succeeded(result: subprocess.CompletedProcess[str]) -> bool:
+    """Reject Android shell failures that Waydroid reports with exit status 0."""
+
+    if result.returncode != 0:
+        return False
+    output = result.stdout or ""
+    return not re.search(
+        r"Exception occurred|SecurityException|java\.lang\.[A-Za-z]+Exception",
+        output,
+        re.IGNORECASE,
+    )
+
+
 def discover_modem() -> str:
     result = subprocess.run(
         ["mmcli", "-L"],
@@ -300,6 +313,27 @@ def discover_modem() -> str:
     if result.returncode != 0 or not modems:
         raise RuntimeError("ModemManager did not report a modem")
     return modems[0]
+
+
+_MODEM_GPS_UTC_RE = re.compile(
+    r"^modem\.location\.gps\.utc\s*:\s*(?P<utc>\d{6}(?:\.\d+)?)\s*$",
+    re.MULTILINE,
+)
+
+
+def _gps_utc_from_keyvalue(output: str) -> Optional[str]:
+    """Return the NMEA time-of-day from one ``mmcli --location-get`` result."""
+
+    match = _MODEM_GPS_UTC_RE.search(output)
+    return match.group("utc") if match else None
+
+
+def _ordered_modem_lines(output: str) -> list[str]:
+    """Prefer GGA so Android receives HDOP-derived accuracy when available."""
+
+    lines = output.splitlines(keepends=True)
+    gga = [line for line in lines if re.search(r"\$(?:GP|GN)GGA,", line)]
+    return gga + [line for line in lines if line not in gga]
 
 
 def _modem_lines(modem: str, enable_gps: bool, dry_run: bool) -> Iterator[str]:
@@ -315,24 +349,48 @@ def _modem_lines(modem: str, enable_gps: bool, dry_run: bool) -> Iterator[str]:
             raise RuntimeError("could not enable ModemManager GPS NMEA")
         refresh = ["mmcli", "-m", modem, "--location-set-gps-refresh-rate=1"]
         _run(refresh, dry_run=dry_run)
+    location_get = [
+        "mmcli",
+        "-m",
+        modem,
+        "--location-get",
+        "--output-keyvalue",
+    ]
     if dry_run:
-        print("$ " + shlex.join(["mmcli", "-m", modem, "--location-monitor"]))
+        print("$ poll every 1s: " + shlex.join(location_get))
         return
-    process = subprocess.Popen(
-        ["mmcli", "-m", modem, "--location-monitor"],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    assert process.stdout is not None
-    try:
-        yield from process.stdout
-    finally:
-        process.terminate()
+
+    # The QRTR/LOC implementation on the reference SDM845 updates
+    # --location-get but emits no --location-monitor records, even when D-Bus
+    # location signalling is temporarily enabled. Poll the read-only snapshot
+    # instead. Requiring the NMEA UTC field to advance before yielding proves
+    # that a cached position is live and prevents replay after GPS loses lock.
+    previous_utc: Optional[str] = None
+    while True:
         try:
-            process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            process.kill()
+            result = subprocess.run(
+                location_get,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError("could not poll ModemManager GPS location") from error
+        if result.returncode != 0:
+            raise RuntimeError("ModemManager GPS location poll failed")
+
+        current_utc = _gps_utc_from_keyvalue(result.stdout)
+        if (
+            current_utc is not None
+            and previous_utc is not None
+            and current_utc != previous_utc
+        ):
+            yield from _ordered_modem_lines(result.stdout)
+        if current_utc is not None:
+            previous_utc = current_utc
+        time.sleep(1.0)
 
 
 def _gpsd_lines(dry_run: bool) -> Iterator[str]:
@@ -362,6 +420,19 @@ def input_lines(path: Optional[Path]) -> TextIO | Iterator[str]:
     return path.open("r", encoding="utf-8")
 
 
+def _fix_log_message(fix: LocationFix, dry_run: bool) -> str:
+    accuracy = "unknown" if fix.accuracy is None else f"{fix.accuracy:.1f}m"
+    if dry_run:
+        return (
+            f"fix source={fix.source} lat={fix.latitude:.8f} "
+            f"lon={fix.longitude:.8f} accuracy={accuracy} dry_run=True"
+        )
+    return (
+        f"fix source={fix.source} accuracy={accuracy} "
+        "injected=true dry_run=False"
+    )
+
+
 class WaydroidProvider:
     def __init__(self, provider: str, dry_run: bool) -> None:
         self.provider = provider
@@ -386,14 +457,32 @@ class WaydroidProvider:
         )
 
     def _appops_command(self, action: str, *arguments: str) -> list[str]:
+        identity = ["--uid", "0"] if action == "set" else ["0"]
         return self._waydroid_command(
             "cmd",
             "appops",
             action,
-            "0",
+            *identity,
             "android:mock_location",
             *arguments,
         )
+
+    def _read_mock_location_mode(self) -> str:
+        result = _run(self._appops_command("get"), dry_run=self.dry_run)
+        if not _android_command_succeeded(result):
+            raise RuntimeError("could not query Android mock-location app-op")
+        match = re.search(
+            r"\bMOCK_LOCATION\s*:\s*([a-z_-]+)",
+            result.stdout,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).lower()
+        if self.dry_run:
+            # Dry-run commands have no output. Treat that as the Android
+            # default so the complete reversible sequence is displayed.
+            return "default"
+        raise RuntimeError("Android did not report the mock-location app-op mode")
 
     def _prepare_mock_location_permission(self) -> None:
         """Allow the root identity used by ``waydroid shell`` to inject.
@@ -404,26 +493,18 @@ class WaydroidProvider:
         setting behind.
         """
 
-        result = _run(self._appops_command("get"), dry_run=self.dry_run)
-        if result.returncode != 0:
-            raise RuntimeError("could not query Android mock-location app-op")
-        match = re.search(
-            r"\bMOCK_LOCATION\s*:\s*([a-z_-]+)",
-            result.stdout,
-            re.IGNORECASE,
-        )
-        # Dry-run commands have no output. Treat that as the Android default
-        # so the complete reversible command sequence is still displayed.
-        self._mock_location_mode = match.group(1).lower() if match else "default"
+        self._mock_location_mode = self._read_mock_location_mode()
         if self._mock_location_mode == "allow":
             return
         result = _run(
             self._appops_command("set", "allow"),
             dry_run=self.dry_run,
         )
-        if result.returncode != 0:
+        if not _android_command_succeeded(result):
             raise RuntimeError("could not allow Android mock-location app-op")
         self._changed_mock_location_mode = True
+        if not self.dry_run and self._read_mock_location_mode() != "allow":
+            raise RuntimeError("Android mock-location app-op did not become allowed")
 
     def start(self) -> None:
         if not self.dry_run and shutil.which("waydroid") is None:
@@ -438,11 +519,11 @@ class WaydroidProvider:
             "1",
         )
         result = _run(add, dry_run=self.dry_run)
-        self.created = result.returncode == 0
+        self.created = _android_command_succeeded(result)
         enabled = self._location_command(
             "set-test-provider-enabled", self.provider, "true"
         )
-        if _run(enabled, dry_run=self.dry_run).returncode != 0:
+        if not _android_command_succeeded(_run(enabled, dry_run=self.dry_run)):
             raise RuntimeError(f"could not enable Android provider {self.provider}")
 
     def send(self, fix: LocationFix) -> bool:
@@ -458,7 +539,7 @@ class WaydroidProvider:
             "--time",
             str(int(time.time() * 1000)),
         )
-        return _run(command, dry_run=self.dry_run).returncode == 0
+        return _android_command_succeeded(_run(command, dry_run=self.dry_run))
 
     def close(self) -> None:
         try:
@@ -566,12 +647,7 @@ def run(arguments: argparse.Namespace) -> int:
                 raise RuntimeError("Waydroid location injection failed")
             last_injected = now
             fixes += 1
-            accuracy = "unknown" if fix.accuracy is None else f"{fix.accuracy:.1f}m"
-            print(
-                f"fix source={fix.source} lat={fix.latitude:.8f} "
-                f"lon={fix.longitude:.8f} accuracy={accuracy} dry_run={dry_run}",
-                flush=True,
-            )
+            print(_fix_log_message(fix, dry_run), flush=True)
             if arguments.once:
                 break
         if arguments.input is None and not arguments.once and not dry_run:

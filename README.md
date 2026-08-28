@@ -549,10 +549,12 @@ successful. `apk upgrade --available` remains outside this workflow.
 Native GeoClue/ModemManager GNSS checks, the dry-run-first Waydroid location
 bridge and its optional disabled system service are documented in
 [docs/LOCATION.md](docs/LOCATION.md). It accepts raw
-NMEA, formatted decimal fields from `mmcli --location-monitor`, or gpsd JSON;
+NMEA and formatted decimal fields from fresh-UTC-gated `mmcli --location-get`
+polls, or gpsd JSON;
 the bridge is explicitly a mock-provider integration rather than a vendor GNSS
-HAL. Live service lifecycle and rollback now pass on the phone, while a genuine
-outdoor satellite fix and Android map acceptance remain open.
+HAL. A fresh Stroud-area native fix, Android fused-provider injection, service
+lifecycle and rollback now pass on the phone; map-application acceptance and a
+native Android GNSS HAL remain open.
 `pmos-check-location` provides the read-only native ModemManager/GeoClue report
 needed before using the bridge.
 

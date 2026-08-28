@@ -2446,3 +2446,50 @@ The exact archive and manifest are published in the
 [r51 auxiliary-video safety release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r51-aux-video-safety).
 No private photographs, video, device identifiers or diagnostic logs are
 release assets.
+
+## Fresh GNSS, Waydroid location r24 and cellular acceptance
+
+Date: 2026-08-28. Reinserting the SMARTY SIM left raw/NMEA location enabled but
+the first formatted coordinate could not by itself prove freshness. Raw/NMEA
+collection was therefore disabled and re-enabled without cycling the modem or
+bearer, and its refresh rate was set to one second. Over twelve private polls,
+the NMEA UTC changed ten times, eleven polls had positive GGA quality and
+active RMC, and UTC-of-day matched the synchronized host clock with zero-second
+skew. The private coordinate was within 5 km of Stroud. No coordinate is stored
+here.
+
+`mmcli --location-monitor` emitted zero records both normally and with D-Bus
+location signaling temporarily enabled, even while `--location-get` advanced.
+The r24 bridge now polls `--location-get --output-keyvalue` once per second and
+requires its NMEA UTC value to change before yielding a fix. It prioritizes GGA
+over RMC so HDOP-derived accuracy reaches Android and omits coordinates from
+applied-mode logs. This prevents both the silent-monitor hang and replay of a
+cached Reading/network result.
+
+The first Android attempt exposed a separate command bug. `cmd appops set 0`
+left UID 0 at its default `MOCK_LOCATION` mode, and Waydroid returned shell
+status zero despite a Java `SecurityException`. The bridge now uses the
+documented `set --uid 0` form, reads the mode back, and treats Java exception
+text as command failure. A stop test removed the mock provider and restored
+the exact prior app-op `default`; restart recreated it and began repeated
+`nmea-gga` injections with 3.5 m estimated accuracy. Android reported location
+enabled, one `fused provider [mock]`, and a private fused fix within 5 km of
+Stroud. No map package was installed, so application acceptance remains open.
+
+The installed r24 bridge hash and retained rollback are:
+
+```text
+pmos-waydroid-location-bridge: f472b4046f0011cef5caf72339e7fc7b3eeeaa1ddfd61d04697f1ced9f44a27d
+rollback: /var/lib/oneplus6t-pmos-fixes/backups/location-20260828T141552Z-r24
+```
+
+The pending packaged cellular-only Waydroid run then exposed the same CLI
+separator issue in its ping probes: `waydroid shell ping -c ...` passed `-c`
+to the host CLI. Both probes now use `waydroid shell -- ping ...`, and the
+fixture asserts the exact boundary. The corrected installed script has hash
+`e31ba079cb8171b82b02c3759803b97db5345c3af71c85a195ce2c8c7a5c9954` with
+rollback at
+`/var/lib/oneplus6t-pmos-fixes/backups/cellular-20260828T1425Z-r24`.
+The complete live run passed native cellular default route, DNS and HTTPS,
+Waydroid raw IPv4 and DNS, then restored the original Wi-Fi profile and ended
+`result=pass`.

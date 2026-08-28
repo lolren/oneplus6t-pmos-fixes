@@ -125,8 +125,8 @@ grep -Fqx 'wifi_restore=pass' "$TEST_DIR/pass.out"
 grep -Fqx 'result=pass' "$TEST_DIR/pass.out"
 [ "$(cat "$STATE")" = enabled ]
 sed -n '1p' "$LOG" | grep -Fqx 'radio wifi off'
-sed -n '2p' "$LOG" | grep -Fqx 'shell ping -c 3 -W 3 1.1.1.1'
-sed -n '3p' "$LOG" | grep -Fqx 'shell ping -c 1 -W 5 postmarketos.org'
+sed -n '2p' "$LOG" | grep -Fqx 'shell -- ping -c 3 -W 3 1.1.1.1'
+sed -n '3p' "$LOG" | grep -Fqx 'shell -- ping -c 1 -W 5 postmarketos.org'
 sed -n '4p' "$LOG" | grep -Fqx 'radio wifi on'
 sed -n '5p' "$LOG" | grep -Fqx -- \
 	"--wait 15 connection up uuid $UUID1 ifname wlan0"

@@ -64,9 +64,14 @@ Waydroid does not provide a native host-GNSS bridge in the reference image.
 `waydroid-location-bridge.py` is therefore an explicit diagnostic bridge. It
 accepts raw ModemManager NMEA, ModemManager's formatted decimal GPS records, or
 gpsd JSON TPV fixes and injects them into Android's documented test-provider
-API. The ModemManager parser keeps latitude and longitude from the same
-formatted update together, so the separate `mmcli` output lines are usable in
-live mode as well as in a fixture.
+API. On the reference SDM845, `mmcli --location-monitor` remains silent even
+when location signaling is temporarily enabled, while
+`--location-get --output-keyvalue` updates normally. The live bridge therefore
+polls that read-only snapshot once per second and refuses to emit a fix until
+the NMEA UTC field advances. This both works around the missing signal and
+prevents a cached coordinate from being replayed as live. GGA is processed
+before RMC so Android receives its HDOP-derived accuracy when both are present.
+The parser keeps latitude and longitude from the same formatted update together.
 
 The default is harmless dry-run mode. It prints the exact commands and never
 changes the modem or Waydroid:
@@ -102,8 +107,11 @@ Current Waydroid releases require `waydroid shell --` before Android command
 options. Android also gates `cmd location providers` with the
 `android:mock_location` app-op even though `waydroid shell` enters as root.
 The bridge handles both details: it records the prior UID-0 app-op mode,
-temporarily permits injection, and restores that exact mode during normal or
-interrupted cleanup. Every injected fix receives a current Android timestamp.
+uses appops' required `set --uid 0` form, verifies that the mode actually
+became `allow`, and restores the exact prior mode during normal or interrupted
+cleanup. It also treats a Java exception as failure even when Waydroid's shell
+wrapper returns status zero. Every injected fix receives a current Android
+timestamp.
 
 For an optional continuous service, enable it only after the native GNSS and
 Waydroid health checks have passed:
@@ -131,7 +139,8 @@ The Android shell interface accepts latitude/longitude, accuracy and time for
 each injected location. The bridge therefore does not advertise or fabricate
 altitude, speed or bearing support; parsed altitude is retained only as source
 metadata. This prevents clients from being promised fields that this bridge
-cannot populate.
+cannot populate. Applied-mode logs record source, accuracy and success but omit
+the exact coordinates; dry-run output still shows the command it would execute.
 
 This path is intentionally labeled a mock provider. Android exposes test
 locations as mock locations, and some Google Play or anti-spoofing clients may
@@ -145,20 +154,23 @@ account or IP-geolocation cache—not a current Android OS fix. Do not hard-code
 the expected town or inject guessed coordinates. Wait for a valid native RMC
 `A`, positive GGA quality, or ModemManager decimal fix.
 
-## Reference-phone live status (2026-08-27)
+## Reference-phone live status (2026-08-28)
 
 - the inserted SMARTY SIM registered at home on 3 UK LTE and packet service
   attached;
 - the active `mob.asm.net` bearer supplied address, gateway and DNS settings,
   four packets forced through its QMAP interface completed with no loss, and
   cellular-only DNS plus HTTPS passed while Wi-Fi was temporarily disabled;
-- raw/NMEA GNSS is enabled at a one-second refresh and emits a current UTC
-  stream, but the indoor test had no satellite fix;
-- a map currently places the phone near Reading although the phone is near
-  Stroud, Gloucestershire; until ModemManager returns a valid satellite fix,
-  that is treated as network/account/IP fallback and is not injected as GNSS;
-- the Waydroid service is enabled and active, with `fused provider [mock]` and
-  no last/mock location until a genuine fix arrives; and
+- after the SIM was reinserted, restarting raw/NMEA collection produced a
+  changing one-second UTC stream, positive GGA quality and active RMC; the
+  private coordinates fall within 5 km of Stroud and GPS UTC-of-day matches
+  the synchronized host clock;
+- the former Reading result is therefore retained only as evidence of stale
+  network/account/IP fallback, not as a GNSS coordinate;
+- the Waydroid service is enabled and accepted with `fused provider [mock]`,
+  repeated fresh GGA injections at 3.5 m estimated accuracy and a private
+  Android fix within 5 km of Stroud; no map package was installed for an
+  application-level check; and
 - a live stop/start rollback test removed the override, restored the original
   fused provider and restored the mock-location app-op to `default` before
   cleanly starting again.

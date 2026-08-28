@@ -41,13 +41,13 @@ location and Android-container failures cannot obscure one another.
    software encoder or kernel/Codec2 fix instead. Continue main/front long
    recording, app switching and suspend/resume. Android computational HDR and
    vendor image-quality parity remain unimplemented.
-5. Establish a reliable native GNSS fix and assisted location, then expose
-   location to Waydroid. The reproducible dry-run-first NMEA/test-provider
-   bridge, optional disabled systemd service and read-only native location
-   report now exist. The current Reading result is not accepted as GPS while
-   the phone is actually near Stroud; validate fresh native satellite
-   coordinates and Android applications separately so network/account/IP
-   fallback cannot be mistaken for GNSS.
+5. Preserve the accepted fresh GNSS-to-Waydroid bridge. Its read-only polling
+   requires advancing NMEA UTC, prioritizes GGA accuracy, restores Android's
+   exact app-op/provider state and omits coordinates from applied logs. Native
+   and Android private fixes are both within 5 km of Stroud; the former Reading
+   result is confirmed as network/account/IP fallback. Next install and test a
+   map application, then investigate the Qualcomm A-GPS operation-mode timeout
+   or a real Android GNSS HAL without weakening the mock-provider label.
 6. Investigate read-only NFC tag support, audio-route/microphone policy,
    suspend/resume and power use as separate bounded workstreams after camera
    and location acceptance. The reproducible NFC readiness report is now

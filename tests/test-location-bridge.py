@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -95,6 +96,56 @@ class LocationBridgeTests(unittest.TestCase):
         self.assertIsNone(parser.feed("GPS | latitude: 190.0"))
         self.assertIsNone(parser.feed("GPS | longitude: -2.218"))
 
+    def test_modemmanager_poll_requires_advancing_gps_utc(self):
+        first = "modem.location.gps.utc : 123519.00\n"
+        second = "modem.location.gps.utc : 123520.00\n"
+        responses = [
+            subprocess.CompletedProcess([], 0, first, ""),
+            subprocess.CompletedProcess([], 0, first, ""),
+            subprocess.CompletedProcess([], 0, second, ""),
+        ]
+        with mock.patch.object(MODULE.subprocess, "run", side_effect=responses) as run:
+            with mock.patch.object(MODULE.time, "sleep"):
+                lines = MODULE._modem_lines("7", False, False)
+                self.assertEqual(next(lines), second)
+                lines.close()
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(
+            run.call_args.args[0],
+            ["mmcli", "-m", "7", "--location-get", "--output-keyvalue"],
+        )
+
+    def test_modemmanager_poll_prefers_gga_accuracy_record(self):
+        output = "".join(
+            [
+                "modem.location.gps.nmea.value[1] : '$GPRMC,123519,A'\n",
+                "modem.location.gps.nmea.value[2] : '$GPGGA,123519,fix'\n",
+            ]
+        )
+        ordered = MODULE._ordered_modem_lines(output)
+        self.assertIn("$GPGGA", ordered[0])
+        self.assertIn("$GPRMC", ordered[1])
+
+    def test_live_fix_log_omits_coordinates(self):
+        fix = MODULE.LocationFix(10.123456, 20.654321, 6.0, source="nmea-gga")
+        live = MODULE._fix_log_message(fix, False)
+        self.assertIn("source=nmea-gga", live)
+        self.assertIn("injected=true", live)
+        self.assertNotIn("10.123456", live)
+        self.assertNotIn("20.654321", live)
+        dry_run = MODULE._fix_log_message(fix, True)
+        self.assertIn("10.12345600,20.65432100", dry_run.replace(" lon=", ","))
+
+    def test_android_status_zero_exception_is_failure(self):
+        result = subprocess.CompletedProcess(
+            [],
+            0,
+            "Exception occurred while executing providers:\n"
+            "java.lang.SecurityException: MOCK_LOCATION denied\n",
+            "",
+        )
+        self.assertFalse(MODULE._android_command_succeeded(result))
+
     def test_dry_run_injects_first_fix_without_waydroid(self):
         sentence = nmea("GPRMC,123519,A,5012.579,N,00214.012,W,0.0,0.0,230826,,,A")
         with tempfile.TemporaryDirectory(prefix="location-bridge-test-") as directory:
@@ -116,11 +167,11 @@ class LocationBridgeTests(unittest.TestCase):
             result.stdout,
         )
         self.assertIn(
-            "waydroid shell -- cmd appops set 0 android:mock_location allow",
+            "waydroid shell -- cmd appops set --uid 0 android:mock_location allow",
             result.stdout,
         )
         self.assertIn(
-            "waydroid shell -- cmd appops set 0 android:mock_location default",
+            "waydroid shell -- cmd appops set --uid 0 android:mock_location default",
             result.stdout,
         )
         self.assertIn(" --time ", result.stdout)
