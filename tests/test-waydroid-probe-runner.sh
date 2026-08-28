@@ -11,6 +11,8 @@ grep -q 'privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888)' \
 grep -q 'size.getWidth() == 1280 && size.getHeight() == 960' "$PROBE_SOURCE"
 grep -q 'PROFILE_RECORD_YUV_720P = "record-yuv-720p"' "$PROBE_SOURCE"
 grep -q 'size.getWidth() == 1280 && size.getHeight() == 720' "$PROBE_SOURCE"
+grep -q 'CaptureResult.SENSOR_TIMESTAMP' "$PROBE_SOURCE"
+grep -q 'captureFps=' "$PROBE_SOURCE"
 TEST_DIR=$(mktemp -d /tmp/waydroid-probe-runner-test.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 

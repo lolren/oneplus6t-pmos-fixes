@@ -84,6 +84,9 @@ public final class CameraProbeActivity extends Activity {
     private int privateTimedFrames;
     private long privateFirstTimestamp;
     private long privateLastTimestamp;
+    private int captureTimedFrames;
+    private long captureFirstTimestamp;
+    private long captureLastTimestamp;
     private Size privateStreamSize;
     private int selectedAfMode;
     private int currentExposureCompensation;
@@ -289,6 +292,9 @@ public final class CameraProbeActivity extends Activity {
         privateTimedFrames = 0;
         privateFirstTimestamp = 0;
         privateLastTimestamp = 0;
+        captureTimedFrames = 0;
+        captureFirstTimestamp = 0;
+        captureLastTimestamp = 0;
         privateStreamSize = null;
         cameraCompleting = false;
         yuvAccepted = false;
@@ -577,6 +583,15 @@ public final class CameraProbeActivity extends Activity {
                 Long exposureTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer sensitivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
                 Long frameDuration = result.get(CaptureResult.SENSOR_FRAME_DURATION);
+                Long sensorTimestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                if (sensorTimestamp != null && sensorTimestamp > 0) {
+                    if (captureFirstTimestamp == 0)
+                        captureFirstTimestamp = sensorTimestamp;
+                    if (captureLastTimestamp > 0
+                            && sensorTimestamp > captureLastTimestamp)
+                        captureTimedFrames++;
+                    captureLastTimestamp = sensorTimestamp;
+                }
                 if (exposureTime != null)
                     latestSensorExposureTime = exposureTime;
                 if (sensitivity != null)
@@ -922,10 +937,10 @@ public final class CameraProbeActivity extends Activity {
                     && exposureMetadata.contains(exposureRequests[3]);
             result = String.format(Locale.US,
                     "CAMERA id=%s valid=%s %s %s privateFrames=%d afMode=%d "
-                            + "privateSize=%s %s afStates=%s afRegion=%s "
+                            + "privateSize=%s %s %s afStates=%s afRegion=%s "
                             + "aeMetadata=%s %s surfacePixels=%s",
                     id, valid, yuvResult, jpegResult, privateFrames, selectedAfMode,
-                    privateStreamSize, privateTiming(),
+                    privateStreamSize, privateTiming(), captureTiming(),
                     afStates, focusRegions == null ? "none" : focusRegions[0].toString(),
                     exposureMetadata, exposureResult,
                     needsSurface() ? surfacePixelResult : "not-requested");
@@ -934,11 +949,11 @@ public final class CameraProbeActivity extends Activity {
                     && autofocusTerminal;
             result = String.format(Locale.US,
                     "CAMERA id=%s valid=%s profile=%s template=%s privateFrames=%d "
-                            + "afMode=%d privateSize=%s %s afStates=%s afRegion=%s "
+                            + "afMode=%d privateSize=%s %s %s afStates=%s afRegion=%s "
                             + "yuv=%s surfacePixels=%s",
                     id, valid, profile, captureTemplateName(), privateFrames,
                     selectedAfMode,
-                    privateStreamSize, privateTiming(), afStates,
+                    privateStreamSize, privateTiming(), captureTiming(), afStates,
                     focusRegions == null ? "none" : focusRegions[0].toString(),
                     needsYuv() ? yuvResult : "not-requested",
                     needsSurface() ? surfacePixelResult : "not-requested");
@@ -1386,6 +1401,24 @@ public final class CameraProbeActivity extends Activity {
         return String.format(Locale.US,
                 "privateFps=%.2f privateIntervalMs=%.2f privateTimingSource=%s",
                 fps, intervalMs, source);
+    }
+
+    private String captureTiming() {
+        String sensor = String.format(Locale.US,
+                "sensorExposureMs=%.3f sensorFrameDurationMs=%.3f sensorSensitivity=%d",
+                latestSensorExposureTime / 1_000_000.0,
+                latestSensorFrameDuration / 1_000_000.0,
+                latestSensorSensitivity);
+        if (captureTimedFrames <= 0 || captureLastTimestamp <= captureFirstTimestamp)
+            return "captureFps=unavailable captureIntervalMs=unavailable " + sensor;
+
+        double spanSeconds =
+                (captureLastTimestamp - captureFirstTimestamp) / 1_000_000_000.0;
+        double fps = captureTimedFrames / spanSeconds;
+        double intervalMs = (spanSeconds * 1000.0) / captureTimedFrames;
+        return String.format(Locale.US,
+                "captureFps=%.2f captureIntervalMs=%.2f %s",
+                fps, intervalMs, sensor);
     }
 
     private static boolean containsSize(Size[] sizes, Size wanted) {

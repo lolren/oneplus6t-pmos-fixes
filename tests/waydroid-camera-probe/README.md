@@ -27,7 +27,8 @@ For every camera reported by Android, the probe checks:
   the ordinary preview template without creating a video file; and
 - a `record-yuv-720p` run adds the real 1280x720 YUV consumer used by the
   recording path, isolating full-size NV12 production from the encoder and
-  muxer; and
+  muxer; surface/compositor timing is reported separately from Camera2 sensor
+  result timing, exposure and frame duration; and
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
