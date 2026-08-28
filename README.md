@@ -16,10 +16,12 @@ ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
 
 ## Safety boundary
 
-These tools operate only inside the running postmarketOS installation. They do
-not flash partitions, select boot slots, alter GPT attributes, change UFS boot
-LUNs, invoke `qbootctl`, or reboot the phone. See
-[docs/SAFETY.md](docs/SAFETY.md).
+These tools do not use fastboot/EDL, select boot slots, alter GPT attributes,
+change UFS boot LUNs, invoke `qbootctl`, or reboot the phone. The one explicit
+exception to a userspace-only scope is the opt-in kernel generation manager:
+applying its manifest-verified APK runs the normal postmarketOS package trigger
+that rebuilds and writes the active postmarketOS boot image. Its exact rollback
+APK must be retained first. See [docs/SAFETY.md](docs/SAFETY.md).
 
 ## Mobile data
 
@@ -222,12 +224,14 @@ changing the display:
 ./scripts/check-display --output /tmp/oneplus6t-display-report.txt
 ```
 
-See [docs/DISPLAY.md](docs/DISPLAY.md). An opt-in, source/package-validated
-serialized-brightness kernel candidate is available from the
+See [docs/DISPLAY.md](docs/DISPLAY.md). The original opt-in,
+source/package-validated serialized-brightness kernel candidate is available
+from the
 [display-r8-r9 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/display-r8-r9).
-It is guarded by `pmos-manage-display-kernel`, retains r8 for rollback and is
-not claimed as fixed until the recovered phone passes timestamped before/after
-reports and the full display acceptance sequence.
+Kernel r10 retains that change and adds bounded Qualcomm Venus firmware-error
+recovery; it is installed and booted on the reference phone with r8 retained by
+`data/kernel-r8-r10.psv`. Brightness remains unclaimed until timestamped
+before/after reports and the full display acceptance sequence pass.
 
 ## USB transport diagnostics
 
@@ -296,7 +300,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid multi-output software ISP | Debayers one Bayer input once, keeps a linear RGB preview and coalesces NV12 encoder/analysis consumers with a centred crop; this removes the one-output limit and avoids repeated GPU readback. |
 | Waydroid private-preview cap | Limits only CameraX private previews to 1280x960 so 720p recording stays on a practical sensor mode; larger explicit YUV/JPEG photography modes remain available. |
 | Waydroid recording profiles and Codec2 policy | Publishes per-camera 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. |
-| Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; an accepted rear clip is 1280x720 H.264 at exactly 18 fps with 48 kHz mono AAC, versus 11.37 fps on software Codec2. |
+| Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated rear H.264/AAC recordings and clean teardown. The current illuminated clip averages 11.62 fps despite a nominal 29.97 fps, so performance work remains. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Waydroid SIGPIPE-safe provider teardown | A closed software-IPA socket is returned as an IPC error instead of terminating the Android camera provider. |
@@ -307,15 +311,17 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12. The follow-on native-fence candidate exports GPU completion to Android when supported and keeps a synchronous fallback; phone acceptance is pending. Download the [r37/r38 development bundles](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38). |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
-The repository retains the previously accepted r8/r24/r7/r3 camera baseline
+The repository retains the previously accepted r8/r24/r7/r3 userspace camera
+baseline
 and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r44
 camera layer retains the r36 colour correction and now includes reproducible
-patches `0013`–`0015` for mixed RGB/NV12 streams and preview sizing. The live
-r50 Venus Codec2 service finalized a 25.56-second 1280x720 hardware-H.264 clip
-at exactly 18 fps with 48 kHz mono AAC. A path-normalized r51 build and package
-are byte-reproducible; those exact r51 binaries still require phone
-installation after the current Waydroid teardown state is cleared.
+patches `0013`–`0015` for mixed RGB/NV12 streams and preview sizing. Kernel r10
+and Codec2 r53 are now installed. Three guarded rear recording cycles, including
+a cold Aperture relaunch, finalized without a Codec2 tombstone, Venus/SMMU
+fault, IRQ storm, blocked task or stale Waydroid mount. The first illuminated
+23.84-second H.264/AAC file decoded fully and had no former green layout band;
+its measured 11.62 fps remains a performance defect to address.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
 packages are now pinned and the signed AArch64 APK pair is published in the
@@ -386,16 +392,16 @@ WAYDROID_LINK_LIB64=/path/to/android13/system/lib64:/path/to/apex-libs \
   scripts/build-waydroid-v4l2-codec \
   /tmp/codec-sources /tmp/codec-build /tmp/codec-stage
 scripts/package-waydroid-v4l2-codec \
-  /tmp/codec-stage /tmp/oneplus6t-waydroid-v4l2-codec-r51
+  /tmp/codec-stage /tmp/oneplus6t-waydroid-v4l2-codec-r53
 sudo scripts/install-waydroid-v4l2-codec /tmp/codec-stage
 ```
 
 Stop Waydroid first. The installer refuses mounted rootfs and active I/O
 pressure, backs up nine exact targets and prints its rollback directory. Full
 source revisions, library requirements, hashes, feature explanations and
-runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md). The exact
-reproducible archive and manifest are also published as the
-[r51 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r51).
+runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md). The r53
+archive and manifest are byte-reproducible; their exact hashes and the r51
+historical release are recorded there.
 Optional Play Store/GAPPS initialization and its read-only package verifier are
 documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
 or APK is included in this repository.
@@ -556,9 +562,9 @@ The current requirement-by-requirement audit is maintained in
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
 - signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
-  bundles, are published; the installed r44 camera layer and live r50 hardware
-  encoder work, while the published byte-reproducible r51 codec pre-release
-  awaits exact phone installation;
+  bundles, are published; the installed r44 camera layer, kernel r10 and
+  byte-reproducible Codec2 r53 complete repeated rear recording/teardown, while
+  Android frame-rate and front/auxiliary acceptance remain open;
 - live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
   microphone and speaker playback pass; time-after-boot, modem-call audio,
   display stability, native camera quality/video, outdoor GNSS, NFC, battery
@@ -568,9 +574,9 @@ The current requirement-by-requirement audit is maintained in
   components.
 
 The current USB evidence is CDC-NCM with ping and password SSH working. ADB
-and fastboot remain unavailable, so bootloader or partition operations are
-still out of scope; userspace packages and the guarded Waydroid overlay can be
-managed over the working SSH transport.
+and fastboot remain unavailable, so bootloader/raw-partition operations are
+still out of scope. Userspace/Waydroid work and the exact package-managed
+kernel generation can be managed over the working SSH transport.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 The requirement-by-requirement implementation and device-acceptance audit is

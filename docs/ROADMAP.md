@@ -13,9 +13,10 @@ location and Android-container failures cannot obscure one another.
    implemented by the lower stack. The independent package and correlated
    focus-state source passed native r7/r1 acceptance; visual photo/video,
    control-surface and lifecycle acceptance are the current gates. The
-   read-only display/brightness report is packaged alongside this work, and a
-   serialized Samsung panel-brightness kernel r9 candidate with an r8 rollback
-   is now published for guarded physical testing after recovery. Do not
+   read-only display/brightness report is packaged alongside this work. Kernel
+   r10 is installed with serialized Samsung brightness writes, bounded Venus
+   error recovery and an exact r8 rollback; brightness-specific acceptance is
+   still pending. Do not
    advertise fake HDR, flash behavior or uncalibrated manual values.
 3. Create the VibeMarketOS product layer: a small pmaports overlay, signed APK
    repository, versioned Waydroid bundle, known-good manifest, pre-activation
@@ -28,13 +29,12 @@ location and Android-container failures cannot obscure one another.
    generations and retained public rollback generations remain.
 4. Broaden Android acceptance: installed camera r44 retains the NV12 colour
    fix, keeps a linear RGB preview, coalesces NV12 consumers and caps private
-   preview size. Live Codec2 r50 drives Venus and saves 1280x720 H.264/AAC at
-   exactly 18 fps instead of the software path's 11.37 fps. The pinned r51
-   source, clean build and deterministic archive are ready; after a physical
-   reboot clears the current D-state Waydroid teardown, install that exact
-   archive and repeat illuminated rear, front/auxiliary, long-recording and
-   suspend/resume tests. Android computational HDR and vendor image-quality
-   parity remain unimplemented.
+   preview size. Codec2 r53 is reproducibly built, installed and passes three
+   guarded rear record/finalize lifecycles without the former green band,
+   gralloc crash or Venus teardown fault. The illuminated file averages only
+   11.62 fps, so profile that path next, then repeat front/auxiliary,
+   long-recording, app-switching and suspend/resume tests. Android computational
+   HDR and vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. The reproducible dry-run-first NMEA/test-provider
    bridge, optional disabled systemd service and read-only native location
@@ -49,6 +49,7 @@ location and Android-container failures cannot obscure one another.
 7. Keep every accepted change packaged, documented, rollback-safe and pushed
    before moving to the next subsystem.
 
-No bootloader, partition, boot-slot or firmware operation belongs to any of
-these stages. The managers never reboot automatically; a reboot is a separate
-manual acceptance action after reviewing the evidence.
+No bootloader, raw-flash, boot-slot or firmware operation belongs to these
+stages. The exact kernel manager is the sole boot-image exception: its verified
+APK transaction runs the normal postmarketOS boot-image trigger. Managers never
+reboot automatically; reboot remains a separate acceptance action.

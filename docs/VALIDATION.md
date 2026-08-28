@@ -2177,3 +2177,108 @@ The exact assets are published as the
 [runtime-r23 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r23).
 Downloading both assets from GitHub reproduces the local APK and checksum
 manifest byte for byte, and `sha256sum -c SHA256SUMS` passes.
+
+## Kernel r10 install and boot acceptance
+
+Date: 2026-08-28. The pmaports integration now adds the bounded Venus recovery
+patch after the existing five camera and one display patch and raises the
+SDM845 recipe to r10. It applies cleanly to reviewed pmaports base
+`875bddba6538818f2c3c9849e184f40688ad5140`; the current complete integration
+SHA-256 is
+`ce5daeadec278087ee0d334b0c9819c71022e9bb70f056adaf14762924c65d06`.
+The standalone patch SHA-256 is
+`0a3ad2342397670183dd3ddddd8d85dff306fa954bca0fdab26e9046c03faa36`.
+
+The change is deliberately dormant during healthy encode. Once Venus has set
+`sys_error`, message and debug queue work is limited to 32 packets per IRQ pass
+and the FIFO IRQ thread yields for 10–20 ms before a possible level-triggered
+re-entry. That limits a failed recovery's ability to monopolize a CPU and
+starve block I/O; it does not hide or retry a userspace, IOMMU or firmware
+fault.
+
+The exact signed package and retained rollback are bound by
+`data/kernel-r8-r10.psv`:
+
+```text
+linux-postmarketos-qcom-sdm845-7.1_rc1-r10.apk: f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e
+linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk: 232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e
+```
+
+The r10 APK installed through the exact local repository, its package trigger
+updated the active postmarketOS boot image, and the phone rebooted as
+`7.1.0-rc1-sdm845`. No fastboot, slot, GPT, bootloader or firmware operation
+was used. A manager audit also found that isolated repository verification
+must pass `apk --usermode` only for a non-root caller. The fixed helper omits it
+for root dry-runs, and its fixture now rejects the former invalid combination.
+Applied-manager output explicitly records `boot_image_update=package-trigger`.
+
+## Waydroid Codec2 r52/r53 failure isolation and acceptance
+
+Date: 2026-08-28. The r52 source candidate preserved the complete Venus
+single-plane NV12 allocation and the camera block's DMA lifetime, then destroyed
+the encoder before its input-format converter. That removed the former green
+lower band and corrected the teardown ownership order. Its first real Aperture
+recording nevertheless crashed before a frame reached Venus. The private
+tombstone resolved the null dereference to Mesa `gbm_bo_unmap`, called while
+`getVideoFrameStride()` destroyed a temporary mapped `C2GraphicBlock`. The
+failure produced no Venus/SMMU/session fault and only ordinary IRQ activity;
+raw logs and the tombstone remain private and are not committed.
+
+Patch `0003-read-temporary-graphic-stride-from-metadata.patch` replaces only that
+temporary mapping. It unwraps width, height and stride from the allocation's
+native Codec2 gralloc metadata, validates them against the visible frame and
+returns the stride. Real recording buffers still follow the r52
+layout/conversion path. The three-patch source result is commit
+`4f4a6d5d4c28794f76e4eff4a53c2b3bb6652458`.
+
+Two complete ARM64 builds used separate clean source/build/stage paths and
+produced byte-identical stages. Two normalized package runs also match byte for
+byte:
+
+```text
+r53 archive: 61707f4726f03e49d26e45bcfd184630e8c28e6410400fe8e327d16f84d14073
+r53 manifest: 26a21d4c439a772370f76c564ef2a72977e06b2f87c229405ea4ac7bd072691c
+service: df13a5a1792ea657405dbac0d5d95d3345ee12ca229cd4f69699809300e9a8d8
+plugin: eb61890494acee634529634a154faed923b2b77813ab7b2da0ff8c09f9db63f6
+common: ed62f247b6788474557c8af2165dc813cc746ba47c07234600e667ea5ba4e225
+components: 0b193b76851701f3d9cfce5c4be5e705429dd14036403a2761994b8218deb73c
+```
+
+The verified r53 stage installed with the Waydroid container stopped,
+unmounted and free of I/O pressure. Because no graphical user was logged in,
+acceptance used the greeter Wayland socket temporarily; its directory, socket
+and exact symlink were restored after the test. A one-second safety monitor
+stopped the container on a Venus IRQ rise above 2,000/s, a matching kernel
+fault, sustained I/O PSI above 50%, or sustained D-state plus I/O pressure. It
+did not trigger.
+
+Three real rear-camera Aperture cycles passed, including one cold app relaunch.
+Each reached an H.264 keyframe, started the muxer, finalized and reported a
+successful MediaStore result. No new tombstone, fatal signal, Venus/SMMU fault,
+IRQ storm, blocked task or storage pressure appeared. Encoder IRQ activity
+returned to zero after every stop. Ordered activity/session/container shutdown
+ended with zero Waydroid mounts and zero D-state tasks.
+
+The first private illuminated clip passed a full decode and probes as:
+
+```text
+H.264 yuv420p: 720x1278 portrait, nominal 30000/1001 fps,
+               measured 11.620796 fps
+AAC: mono, 48000 Hz
+MP4: 23.836600 s, 29354988 bytes
+```
+
+Frames sampled at 5 and 15 seconds contain the complete image without the old
+green band. They remain private. The result accepts rear recording correctness
+and repeated teardown, not performance: the measured frame rate is still too
+low, and the image remains softer/foggier than the vendor camera. Front and
+auxiliary video, long capture, app switching and suspend/resume remain open.
+
+## Reinserted SIM cellular-only confirmation
+
+Date: 2026-08-28. After the r53 test, the newly inserted SMARTY SIM registered
+on its home network and NetworkManager automatically activated the existing
+database-derived profile with APN `mob.asm.net`. With Wi-Fi temporarily off,
+the default route moved to `qmapmux0.0`, DNS resolved and HTTPS returned 204.
+Wi-Fi was then re-enabled and reconnected while the cellular profile remained
+connected. No modem, SIM or subscriber identifier is stored in this evidence.
