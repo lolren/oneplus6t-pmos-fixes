@@ -49,8 +49,9 @@ guarded Wi-Fi-off check. Add Waydroid only when its session is already running:
 The command records the active Wi-Fi profile UUIDs before changing anything,
 briefly disables Wi-Fi, checks the cellular default route, DNS and HTTPS, then
 restores the original radio/profile state on success, failure or interruption.
-It does not create or recycle a modem bearer. The Waydroid option validates
-sudo before Wi-Fi is touched and elevates only the Android shell probes.
+It does not create or recycle a modem bearer. The helper validates sudo before
+Wi-Fi is touched. For a normal user, only the Wi-Fi radio/profile mutations
+and optional Android shell probes are elevated.
 
 When installed as a package, the configurator also enables the five-minute
 `oneplus6t-mobile-data-watchdog.timer`. The watchdog checks only the UUID that

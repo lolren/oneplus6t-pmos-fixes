@@ -32,14 +32,17 @@ make_fixture nmcli \
 	'  [ "${PMOS_TEST_ACTIVE_QUERY_FAIL:-no}" != yes ] || exit 1' \
 	'  printf "%s:802-11-wireless\\n" $PMOS_TEST_WIFI_UUIDS ;;' \
 	'"radio wifi off")' \
+	'  [ "${PMOS_TEST_REQUIRE_ELEVATION:-no}" != yes ] || [ "${PMOS_TEST_ELEVATED:-no}" = yes ]' \
 	'  printf "%s\\n" "radio wifi off" >>"$PMOS_TEST_ACTION_LOG"' \
 	'  printf "%s\\n" disabled >"$PMOS_TEST_WIFI_STATE"' \
 	'  [ "${PMOS_TEST_WIFI_OFF_FAIL:-no}" != yes ] ;;' \
 	'"radio wifi on")' \
+	'  [ "${PMOS_TEST_REQUIRE_ELEVATION:-no}" != yes ] || [ "${PMOS_TEST_ELEVATED:-no}" = yes ]' \
 	'  printf "%s\\n" "radio wifi on" >>"$PMOS_TEST_ACTION_LOG"' \
 	'  [ "${PMOS_TEST_WIFI_ON_FAIL:-no}" != yes ] || exit 1' \
 	'  printf "%s\\n" enabled >"$PMOS_TEST_WIFI_STATE" ;;' \
 	'--wait\ 30\ connection\ up\ uuid\ *)' \
+	'  [ "${PMOS_TEST_REQUIRE_ELEVATION:-no}" != yes ] || [ "${PMOS_TEST_ELEVATED:-no}" = yes ]' \
 	'  printf "%s\\n" "$*" >>"$PMOS_TEST_ACTION_LOG"' \
 	'  [ "${PMOS_TEST_WIFI_UP_FAIL:-no}" != yes ] ;;' \
 	'*) printf "unexpected nmcli arguments: %s\\n" "$*" >&2; exit 2 ;;' \
@@ -78,6 +81,7 @@ make_fixture waydroid \
 
 make_fixture sudo \
 	'[ "$1" != -v ] || { [ "${PMOS_TEST_SUDO_FAIL:-no}" != yes ]; exit; }' \
+	'PMOS_TEST_ELEVATED=yes; export PMOS_TEST_ELEVATED' \
 	'exec "$@"'
 
 make_fixture sleep ':'
@@ -101,7 +105,8 @@ run_probe() {
 
 printf '%s\n' enabled >"$STATE"
 : >"$LOG"
-run_probe --with-waydroid --wait-seconds 10 >"$TEST_DIR/pass.out"
+PMOS_TEST_REQUIRE_ELEVATION=yes run_probe --with-waydroid --wait-seconds 10 \
+	>"$TEST_DIR/pass.out"
 grep -Fqx 'wifi_initial=enabled' "$TEST_DIR/pass.out"
 grep -Fqx 'wifi_disable=pass' "$TEST_DIR/pass.out"
 grep -Fqx 'native_default_interface=qmapmux0.0' "$TEST_DIR/pass.out"
@@ -194,6 +199,19 @@ set -e
 [ "$status" -ne 0 ]
 grep -q 'could not validate sudo before the cellular-only test' \
 	"$TEST_DIR/sudo-fail.out"
+[ "$(cat "$STATE")" = enabled ]
+[ ! -s "$LOG" ]
+
+printf '%s\n' enabled >"$STATE"
+: >"$LOG"
+set +e
+PMOS_TEST_SUDO_FAIL=yes run_probe --wait-seconds 10 \
+	>"$TEST_DIR/native-sudo-fail.out" 2>&1
+status=$?
+set -e
+[ "$status" -ne 0 ]
+grep -q 'could not validate sudo before the cellular-only test' \
+	"$TEST_DIR/native-sudo-fail.out"
 [ "$(cat "$STATE")" = enabled ]
 [ ! -s "$LOG" ]
 

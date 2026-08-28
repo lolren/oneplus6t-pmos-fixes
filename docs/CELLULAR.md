@@ -102,10 +102,12 @@ When Waydroid is already running, include its NAT path:
 
 This additionally checks raw IPv4 and DNS-name connectivity inside Android.
 For a normal login user, sudo is validated before Wi-Fi changes and used only
-for `waydroid status`/`waydroid shell`; root runs those commands directly. The
-test does not start Waydroid, create or recycle a bearer, edit an APN, or touch
-boot state. It can briefly interrupt network applications, so it is never part
-of the default observational acceptance run.
+for the Wi-Fi radio/profile mutations and optional
+`waydroid status`/`waydroid shell`; all inspection and native traffic probes
+stay in the login session. Root runs those commands directly. The test does
+not start Waydroid, create or recycle a bearer, edit an APN, or touch boot
+state. It can briefly interrupt network applications, so it is never part of
+the default observational acceptance run.
 
 With the runtime package installed, use `pmos-test-cellular-only` in place of
 the source path. A bounded wait can be selected with `--wait-seconds N`, where

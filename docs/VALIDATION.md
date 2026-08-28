@@ -2058,8 +2058,10 @@ device-accepted runtime/UI baseline available for rollback.
 Date: 2026-08-28. `test-cellular-only` now turns the earlier manual Wi-Fi-off
 SMARTY/Waydroid acceptance sequence into an explicit, machine-readable check.
 Before mutation it reads the Wi-Fi radio state, captures and validates every
-active wireless profile UUID, verifies required commands and, when requested,
-validates sudo for the Waydroid-only probes. It then disables Wi-Fi, reuses the
+active wireless profile UUID and verifies required commands. The live Plasma
+session additionally showed that Wi-Fi radio changes require authorization,
+so the helper pre-validates sudo for every normal-user Wi-Fi mutation as well
+as requested Waydroid probes. It then disables Wi-Fi, reuses the
 interface-bound mobile checker, requires the ordinary native default route to
 match that cellular interface, and verifies DNS plus HTTPS. A running Waydroid
 session can additionally be required to pass raw-IP and DNS-name probes.
@@ -2072,9 +2074,10 @@ captured UUID is explicitly reactivated. A restoration failure changes the
 overall result to failure. The script never creates/cycles a modem profile,
 starts Waydroid or modifies boot state.
 
-Fixture tests pass for the success path, non-root Waydroid sudo boundary,
-systemd-resolved and `getent` resolver paths, initial Wi-Fi-disabled state,
-mobile failure, partial Wi-Fi-disable failure, active-profile-query failure,
+Fixture tests pass for the success path, elevated NetworkManager mutation
+boundary, non-root Waydroid sudo boundary, systemd-resolved and `getent`
+resolver paths, initial Wi-Fi-disabled state, mobile failure, partial
+Wi-Fi-disable failure, active-profile-query failure, native/Waydroid
 sudo-preflight failure and Wi-Fi-restore failure. Package staging verifies the
 installed command link. The acceptance runner's opt-in native and Waydroid
 flags are fixture-tested while its default remains observational. The complete

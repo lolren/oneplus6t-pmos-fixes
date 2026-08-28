@@ -64,9 +64,10 @@ pmos-run-device-acceptance \
 Use `--cellular-only-waydroid` instead to also require an already-running
 Waydroid session and prove raw-IP and DNS-name access inside Android. The
 cellular helper validates sudo before changing Wi-Fi and elevates only its
-Waydroid commands, so the acceptance runner itself remains in the graphical
-user session. Neither option starts Waydroid or cycles/configures the modem.
-The resulting `cellular-only.log` records whether restoration passed.
+Wi-Fi radio/profile mutations and optional Waydroid commands, so the
+acceptance runner itself remains in the graphical user session. Neither option
+starts Waydroid or cycles/configures the modem. The resulting
+`cellular-only.log` records whether restoration passed.
 
 The camera run requires the same conditions as
 `tests/camera/validate-pipewire-af.sh`: a graphical session, active PipeWire

@@ -33,6 +33,7 @@ wifi_restore_needed=no
 wifi_restore_done=no
 wifi_uuids=
 waydroid_with_sudo=no
+sudo_validated=no
 
 usage() {
 	cat <<EOF
@@ -43,9 +44,7 @@ use the connected cellular bearer, then restore the original Wi-Fi state.
 
 Options:
   --with-waydroid       also require a running Waydroid session and prove its
-                        raw-IP and DNS-name connectivity; when run as a normal
-                        user, validate sudo before changing Wi-Fi and elevate
-                        only the Waydroid shell probes
+                        raw-IP and DNS-name connectivity
   --wait-seconds N      wait 10..180 seconds for the cellular default route
                         (default: 60)
   --help                show this help
@@ -54,7 +53,9 @@ Run from the phone's normal booted postmarketOS environment. The command never
 cycles a modem bearer, edits a NetworkManager profile, starts Waydroid, or
 changes a boot/partition state. It may briefly interrupt Wi-Fi traffic. The
 original Wi-Fi radio state and active Wi-Fi profile UUIDs are restored even if
-a probe fails or the command is interrupted.
+a probe fails or the command is interrupted. For a normal user, sudo is
+validated before any mutation and used only for Wi-Fi state changes plus
+optional Waydroid shell probes.
 EOF
 }
 
@@ -104,11 +105,28 @@ elif command -v "$GETENT" >/dev/null 2>&1; then
 else
 	die 'DNS verification requires resolvectl or getent'
 fi
+
+validate_sudo() {
+	[ "$effective_uid" -ne 0 ] || return 0
+	[ "$sudo_validated" != yes ] || return 0
+	command -v "$SUDO" >/dev/null 2>&1 || \
+		die 'sudo is required for privileged cellular-only operations'
+	"$SUDO" -v || die 'could not validate sudo before the cellular-only test'
+	sudo_validated=yes
+}
+
+run_privileged() {
+	if [ "$effective_uid" -eq 0 ]; then
+		"$@"
+	else
+		"$SUDO" "$@"
+	fi
+}
+
 if [ "$with_waydroid" = yes ]; then
 	command -v "$WAYDROID" >/dev/null 2>&1 || die "missing required command: $WAYDROID"
 	if [ "$effective_uid" -ne 0 ]; then
-		command -v "$SUDO" >/dev/null 2>&1 || die 'sudo is required for Waydroid probes'
-		"$SUDO" -v || die 'could not validate sudo before the cellular-only test'
+		validate_sudo
 		waydroid_with_sudo=yes
 	fi
 fi
@@ -137,6 +155,7 @@ if [ "$wifi_initial" = enabled ]; then
 			'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$' || \
 			die 'NetworkManager returned an unsafe Wi-Fi profile UUID'
 	done
+	validate_sudo
 fi
 
 restore_wifi() {
@@ -148,10 +167,11 @@ restore_wifi() {
 	fi
 
 	restore_status=0
-	"$NMCLI" radio wifi on >/dev/null 2>&1 || restore_status=1
+	run_privileged "$NMCLI" radio wifi on >/dev/null 2>&1 || restore_status=1
 	if [ "$restore_status" -eq 0 ]; then
 		for uuid in $wifi_uuids; do
-			"$NMCLI" --wait 30 connection up uuid "$uuid" >/dev/null 2>&1 || \
+			run_privileged "$NMCLI" --wait 30 connection up uuid "$uuid" \
+				>/dev/null 2>&1 || \
 				restore_status=1
 		done
 	fi
@@ -182,7 +202,8 @@ printf '%s\n' 'report=oneplus6t-cellular-only'
 printf 'wifi_initial=%s\n' "$wifi_initial"
 if [ "$wifi_initial" = enabled ]; then
 	wifi_restore_needed=yes
-	"$NMCLI" radio wifi off >/dev/null || die 'could not disable Wi-Fi radio'
+	run_privileged "$NMCLI" radio wifi off >/dev/null || \
+		die 'could not disable Wi-Fi radio'
 	[ "$("$NMCLI" radio wifi 2>/dev/null || true)" = disabled ] || \
 		die 'Wi-Fi radio did not become disabled'
 	printf '%s\n' 'wifi_disable=pass'
