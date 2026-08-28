@@ -5,12 +5,14 @@ After=ModemManager.service waydroid-container.service
 Wants=ModemManager.service
 PartOf=waydroid-container.service
 ConditionPathExists=@SBINDIR@/pmos-waydroid-location-bridge
+StartLimitIntervalSec=600
+StartLimitBurst=6
 
 [Service]
 Type=simple
 ExecStart=@SBINDIR@/pmos-waydroid-location-bridge --source mmcli --enable-gps --provider fused --apply
 Restart=on-failure
-RestartSec=5s
+RestartSec=30s
 KillSignal=SIGINT
 TimeoutStopSec=10s
 Environment=PYTHONUNBUFFERED=1

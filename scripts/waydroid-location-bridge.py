@@ -36,6 +36,12 @@ class LocationFix:
     source: str = "unknown"
 
 
+@dataclass(frozen=True)
+class ModemLocationState:
+    enabled: frozenset[str]
+    refresh_rate: int
+
+
 def _coordinate(value: str, hemisphere: str, latitude: bool) -> Optional[float]:
     if not value or hemisphere not in ("N", "S", "E", "W"):
         return None
@@ -336,19 +342,44 @@ def _ordered_modem_lines(output: str) -> list[str]:
     return gga + [line for line in lines if line not in gga]
 
 
+def _parse_modem_location_state(output: str) -> ModemLocationState:
+    """Parse the state needed to undo temporary high-rate GNSS collection."""
+
+    enabled_match = re.search(
+        r"^modem\.location\.enabled\s*:\s*(?P<enabled>.*?)\s*$",
+        output,
+        re.MULTILINE,
+    )
+    refresh_match = re.search(
+        r"^modem\.location\.gps\.refresh-rate\s*:\s*(?P<rate>\d+)\s*$",
+        output,
+        re.MULTILINE,
+    )
+    if enabled_match is None or refresh_match is None:
+        raise RuntimeError("ModemManager did not report restorable GPS state")
+    enabled_text = enabled_match.group("enabled").strip().lower()
+    enabled = (
+        frozenset()
+        if enabled_text in ("", "--", "none")
+        else frozenset(part.strip() for part in enabled_text.split(",") if part.strip())
+    )
+    return ModemLocationState(enabled, int(refresh_match.group("rate")))
+
+
+def _read_modem_location_state(modem: str) -> ModemLocationState:
+    result = _run(
+        ["mmcli", "-m", modem, "--location-status", "--output-keyvalue"],
+        dry_run=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("could not read ModemManager GPS state")
+    return _parse_modem_location_state(result.stdout)
+
+
 def _modem_lines(modem: str, enable_gps: bool, dry_run: bool) -> Iterator[str]:
-    if enable_gps:
-        command = [
-            "mmcli",
-            "-m",
-            modem,
-            "--location-enable-gps-raw",
-            "--location-enable-gps-nmea",
-        ]
-        if _run(command, dry_run=dry_run).returncode != 0:
-            raise RuntimeError("could not enable ModemManager GPS NMEA")
-        refresh = ["mmcli", "-m", modem, "--location-set-gps-refresh-rate=1"]
-        _run(refresh, dry_run=dry_run)
+    initial_state: Optional[ModemLocationState] = None
+    enabled_by_bridge: list[str] = []
+    refresh_changed = False
     location_get = [
         "mmcli",
         "-m",
@@ -356,41 +387,104 @@ def _modem_lines(modem: str, enable_gps: bool, dry_run: bool) -> Iterator[str]:
         "--location-get",
         "--output-keyvalue",
     ]
-    if dry_run:
-        print("$ poll every 1s: " + shlex.join(location_get))
-        return
+    try:
+        if enable_gps:
+            if dry_run:
+                print(
+                    "$ capture and restore on exit: "
+                    + shlex.join(
+                        [
+                            "mmcli",
+                            "-m",
+                            modem,
+                            "--location-status",
+                            "--output-keyvalue",
+                        ]
+                    )
+                )
+                enabled_by_bridge = ["gps-raw", "gps-nmea"]
+                refresh_changed = True
+            else:
+                initial_state = _read_modem_location_state(modem)
+                enabled_by_bridge = [
+                    source
+                    for source in ("gps-raw", "gps-nmea")
+                    if source not in initial_state.enabled
+                ]
+                refresh_changed = initial_state.refresh_rate != 1
 
-    # The QRTR/LOC implementation on the reference SDM845 updates
-    # --location-get but emits no --location-monitor records, even when D-Bus
-    # location signalling is temporarily enabled. Poll the read-only snapshot
-    # instead. Requiring the NMEA UTC field to advance before yielding proves
-    # that a cached position is live and prevents replay after GPS loses lock.
-    previous_utc: Optional[str] = None
-    while True:
-        try:
-            result = subprocess.run(
-                location_get,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired) as error:
-            raise RuntimeError("could not poll ModemManager GPS location") from error
-        if result.returncode != 0:
-            raise RuntimeError("ModemManager GPS location poll failed")
+            if enabled_by_bridge:
+                command = ["mmcli", "-m", modem]
+                command.extend(
+                    f"--location-enable-{source}" for source in enabled_by_bridge
+                )
+                if _run(command, dry_run=dry_run).returncode != 0:
+                    raise RuntimeError("could not enable ModemManager GPS NMEA")
+            if refresh_changed:
+                refresh = [
+                    "mmcli",
+                    "-m",
+                    modem,
+                    "--location-set-gps-refresh-rate=1",
+                ]
+                if _run(refresh, dry_run=dry_run).returncode != 0:
+                    raise RuntimeError("could not set ModemManager GPS refresh rate")
 
-        current_utc = _gps_utc_from_keyvalue(result.stdout)
-        if (
-            current_utc is not None
-            and previous_utc is not None
-            and current_utc != previous_utc
-        ):
-            yield from _ordered_modem_lines(result.stdout)
-        if current_utc is not None:
-            previous_utc = current_utc
-        time.sleep(1.0)
+        if dry_run:
+            print("$ poll every 1s: " + shlex.join(location_get))
+            return
+
+        # The QRTR/LOC implementation on the reference SDM845 updates
+        # --location-get but emits no --location-monitor records, even when D-Bus
+        # location signalling is temporarily enabled. Poll the read-only snapshot
+        # instead. Requiring the NMEA UTC field to advance before yielding proves
+        # that a cached position is live and prevents replay after GPS loses lock.
+        previous_utc: Optional[str] = None
+        while True:
+            try:
+                result = subprocess.run(
+                    location_get,
+                    check=False,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise RuntimeError("could not poll ModemManager GPS location") from error
+            if result.returncode != 0:
+                raise RuntimeError("ModemManager GPS location poll failed")
+
+            current_utc = _gps_utc_from_keyvalue(result.stdout)
+            if (
+                current_utc is not None
+                and previous_utc is not None
+                and current_utc != previous_utc
+            ):
+                yield from _ordered_modem_lines(result.stdout)
+            if current_utc is not None:
+                previous_utc = current_utc
+            time.sleep(1.0)
+    finally:
+        if dry_run and enable_gps:
+            print("$ restore captured ModemManager GPS sources and refresh rate")
+        elif initial_state is not None:
+            if refresh_changed:
+                _run(
+                    [
+                        "mmcli",
+                        "-m",
+                        modem,
+                        f"--location-set-gps-refresh-rate={initial_state.refresh_rate}",
+                    ],
+                    dry_run=False,
+                )
+            if enabled_by_bridge:
+                command = ["mmcli", "-m", modem]
+                command.extend(
+                    f"--location-disable-{source}" for source in enabled_by_bridge
+                )
+                _run(command, dry_run=False)
 
 
 def _gpsd_lines(dry_run: bool) -> Iterator[str]:
@@ -478,6 +572,13 @@ class WaydroidProvider:
         )
         if match:
             return match.group(1).lower()
+        default_match = re.search(
+            r"\bDefault mode\s*:\s*([a-z_-]+)",
+            result.stdout,
+            re.IGNORECASE,
+        )
+        if default_match:
+            return default_match.group(1).lower()
         if self.dry_run:
             # Dry-run commands have no output. Treat that as the Android
             # default so the complete reversible sequence is displayed.

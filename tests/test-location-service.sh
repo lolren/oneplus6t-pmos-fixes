@@ -9,8 +9,11 @@ grep -q '^After=ModemManager\.service waydroid-container\.service$' "$SERVICE"
 grep -q '^Wants=ModemManager\.service$' "$SERVICE"
 grep -q '^PartOf=waydroid-container\.service$' "$SERVICE"
 grep -q '^ConditionPathExists=@SBINDIR@/pmos-waydroid-location-bridge$' "$SERVICE"
+grep -q '^StartLimitIntervalSec=600$' "$SERVICE"
+grep -q '^StartLimitBurst=6$' "$SERVICE"
 grep -q '^ExecStart=@SBINDIR@/pmos-waydroid-location-bridge --source mmcli --enable-gps --provider fused --apply$' "$SERVICE"
 grep -q '^Restart=on-failure$' "$SERVICE"
+grep -q '^RestartSec=30s$' "$SERVICE"
 grep -q '^KillSignal=SIGINT$' "$SERVICE"
 
 # Installing the unit alone must not start GNSS or create an Android mock
