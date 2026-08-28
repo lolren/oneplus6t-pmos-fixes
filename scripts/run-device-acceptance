@@ -7,7 +7,12 @@ set -eu
 # power policy, writes a Waydroid overlay, reboots, or touches boot state.
 
 PROGRAM=${0##*/}
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+script_path=$0
+if command -v readlink >/dev/null 2>&1; then
+	resolved_path=$(readlink -f -- "$0" 2>/dev/null || true)
+	[ -n "$resolved_path" ] && script_path=$resolved_path
+fi
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd)
 compatible_file=${PMOS_ACCEPT_COMPATIBLE_FILE:-/proc/device-tree/compatible}
 output=
 with_camera=no
@@ -29,7 +34,13 @@ power_check=${PMOS_ACCEPT_POWER_CHECK:-$SCRIPT_DIR/check-power}
 waydroid_check=${PMOS_ACCEPT_WAYDROID_CHECK:-$SCRIPT_DIR/check-waydroid-health}
 messages_check=${PMOS_ACCEPT_MESSAGES_CHECK:-$SCRIPT_DIR/check-messages}
 gapps_check=${PMOS_ACCEPT_GAPPS_CHECK:-$SCRIPT_DIR/check-waydroid-gapps}
-camera_check=${PMOS_ACCEPT_CAMERA_CHECK:-$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh}
+if [ -n "${PMOS_ACCEPT_CAMERA_CHECK:-}" ]; then
+	camera_check=$PMOS_ACCEPT_CAMERA_CHECK
+elif [ -x "$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh" ]; then
+	camera_check=$SCRIPT_DIR/../tests/camera/validate-pipewire-af.sh
+else
+	camera_check=$SCRIPT_DIR/validate-pipewire-af.sh
+fi
 
 usage() {
 	cat <<EOF

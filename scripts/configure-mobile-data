@@ -2,7 +2,12 @@
 set -eu
 
 PROGRAM=${0##*/}
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+script_path=$0
+if command -v readlink >/dev/null 2>&1; then
+	resolved_path=$(readlink -f -- "$0" 2>/dev/null || true)
+	[ -n "$resolved_path" ] && script_path=$resolved_path
+fi
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 OVERLAY=${PMOS_MVNO_OVERLAY:-$PROJECT_DIR/data/mvno-apns.psv}
 PROVIDER_DB=${PMOS_PROVIDER_DB:-/usr/share/mobile-broadband-provider-info/serviceproviders.xml}

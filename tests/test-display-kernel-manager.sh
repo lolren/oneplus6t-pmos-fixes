@@ -50,6 +50,24 @@ run_manager() {
 		--keys-dir "$keys" "$@"
 }
 
+installed_root=$TEST_ROOT/installed-layout
+installed_scripts=$installed_root/libexec/scripts
+mkdir -p "$installed_scripts" "$installed_root/libexec/data" \
+	"$installed_root/bin"
+cp "$MANAGER" "$installed_scripts/manage-display-kernel"
+cp "$manifest" "$installed_root/libexec/data/display-kernel-r8-r9.psv"
+ln -s "$installed_scripts/manage-display-kernel" \
+	"$installed_root/bin/pmos-manage-display-kernel"
+installed_status=$(PATH="$ROOT/tests/fixtures/display-kernel-bin:/usr/bin:/bin" \
+	PMOS_DISPLAY_APK="$MOCK_APK" \
+	PMOS_DISPLAY_COMPATIBLE_FILE="$compatible" \
+	PMOS_DISPLAY_SUDO=env \
+	PMOS_DISPLAY_WORLD="$world" \
+	PMOS_DISPLAY_MOCK_STATE="$state" \
+	"$installed_root/bin/pmos-manage-display-kernel" status)
+printf '%s\n' "$installed_status" | grep -q '^generation=test-display-r8-r9$'
+printf '%s\n' "$installed_status" | grep -q '^state=rollback$'
+
 status=$(run_manager status)
 printf '%s\n' "$status" | grep -q '^installed_version=7.1_rc1-r8$'
 printf '%s\n' "$status" | grep -q '^state=rollback$'

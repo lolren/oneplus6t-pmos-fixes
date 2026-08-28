@@ -78,6 +78,26 @@ run_manager() {
 }
 
 set_rollback_state
+
+installed_root=$TEST_ROOT/installed-layout
+installed_scripts=$installed_root/libexec/scripts
+mkdir -p "$installed_scripts" "$installed_root/libexec/data" \
+	"$installed_root/bin"
+cp "$MANAGER" "$installed_scripts/manage-camera-generation"
+cp "$manifest" \
+	"$installed_root/libexec/data/camera-generation-r7-r5.psv"
+ln -s "$installed_scripts/manage-camera-generation" \
+	"$installed_root/bin/pmos-manage-camera-generation"
+installed_status=$(PATH="$MOCK_BIN:/usr/bin:/bin" \
+	PMOS_CAMERA_WORLD="$world" \
+	PMOS_CAMERA_COMPATIBLE_FILE="$compatible" \
+	PMOS_CAMERA_SUDO=sudo \
+	PMOS_MOCK_PACKAGE_STATE="$state" \
+	PMOS_MOCK_WORLD="$world" \
+	"$installed_root/bin/pmos-manage-camera-generation" status)
+printf '%s\n' "$installed_status" | grep -q '^generation=test-r7-r1$'
+printf '%s\n' "$installed_status" | grep -q '^state=rollback$'
+
 : >"$systemctl_log"
 : >"$smoke_log"
 initial_world_hash=$(hash_file "$world")

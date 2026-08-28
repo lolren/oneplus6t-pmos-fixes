@@ -68,4 +68,28 @@ grep -Fqx 'compatibility|1|'"$bad_output/compatibility.log" "$bad_output/summary
 grep -Fqx 'result=fail' "$bad_output/report.txt"
 [ ! -e "$bad_output/cellular-only.log" ]
 
+# Public commands are absolute symlinks into libexec. Verify that sibling
+# checks and the packaged camera validator are found from the resolved target.
+installed_root=$TEST_DIR/installed-layout
+installed_scripts=$installed_root/libexec/scripts
+mkdir -p "$installed_scripts" "$installed_root/bin"
+cp "$RUNNER" "$installed_scripts/run-device-acceptance"
+cp "$TEST_DIR/bin/mobile-data" "$installed_scripts/check-mobile-data"
+cp "$TEST_DIR/bin/audio" "$installed_scripts/check-audio-routing"
+cp "$TEST_DIR/bin/display" "$installed_scripts/check-display"
+cp "$TEST_DIR/bin/location" "$installed_scripts/check-location"
+cp "$TEST_DIR/bin/nfc" "$installed_scripts/check-nfc"
+cp "$TEST_DIR/bin/power" "$installed_scripts/check-power"
+cp "$TEST_DIR/bin/waydroid" "$installed_scripts/check-waydroid-health"
+cp "$TEST_DIR/bin/mobile-data" "$installed_scripts/validate-pipewire-af.sh"
+ln -s "$installed_scripts/run-device-acceptance" \
+	"$installed_root/bin/pmos-run-device-acceptance"
+installed_output=$TEST_DIR/installed-output
+PMOS_ACCEPT_COMPATIBLE_FILE="$TEST_DIR/compatible" \
+	"$installed_root/bin/pmos-run-device-acceptance" \
+	--output "$installed_output" --with-camera >/dev/null
+grep -Fqx 'result=pass' "$installed_output/report.txt"
+grep -Fqx "camera|0|$installed_output/camera.log" \
+	"$installed_output/summary.psv"
+
 printf '%s\n' 'device acceptance tests passed'

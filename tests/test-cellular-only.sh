@@ -209,4 +209,31 @@ make -s -C "$ROOT" install DESTDIR="$stage" PREFIX=/usr >/dev/null
 [ "$(readlink "$stage/usr/sbin/pmos-test-cellular-only")" = \
 	/usr/libexec/oneplus6t-pmos-fixes/scripts/test-cellular-only ]
 
+# Invoke through an installed-style absolute symlink without overriding the
+# sibling mobile checker. This catches $0-based lookup under /usr/sbin.
+installed_root=$TEST_DIR/installed-layout
+mkdir -p "$installed_root/libexec/scripts" "$installed_root/bin"
+cp "$PROBE" "$installed_root/libexec/scripts/test-cellular-only"
+cp "$BIN/mobile-check" "$installed_root/libexec/scripts/check-mobile-data"
+ln -s "$installed_root/libexec/scripts/test-cellular-only" \
+	"$installed_root/bin/pmos-test-cellular-only"
+printf '%s\n' disabled >"$STATE"
+: >"$LOG"
+PMOS_CELLULAR_ONLY_NMCLI=$BIN/nmcli \
+PMOS_CELLULAR_ONLY_IP=$BIN/ip \
+PMOS_CELLULAR_ONLY_CURL=$BIN/curl \
+PMOS_CELLULAR_ONLY_RESOLVECTL=$BIN/resolvectl \
+PMOS_CELLULAR_ONLY_GETENT=$BIN/getent \
+PMOS_CELLULAR_ONLY_WAYDROID=$BIN/waydroid \
+PMOS_CELLULAR_ONLY_SUDO=$BIN/sudo \
+PMOS_CELLULAR_ONLY_SLEEP=$BIN/sleep \
+PMOS_CELLULAR_ONLY_UID=1000 \
+PMOS_TEST_WIFI_STATE=$STATE \
+PMOS_TEST_ACTION_LOG=$LOG \
+PMOS_TEST_WIFI_UUIDS="$UUID1 $UUID2" \
+	"$installed_root/bin/pmos-test-cellular-only" --wait-seconds 10 \
+	>"$TEST_DIR/installed-layout.out"
+grep -Fqx 'connection=test-data' "$TEST_DIR/installed-layout.out"
+grep -Fqx 'result=pass' "$TEST_DIR/installed-layout.out"
+
 printf '%s\n' 'cellular-only tests passed'

@@ -85,4 +85,22 @@ if [ "$missing_db_status" -eq 0 ]; then
 fi
 printf '%s\n' "$missing_db" | grep -q 'provider database not found'
 
+# The packaged command is an absolute /usr/sbin symlink. Exercise the same
+# invocation shape so self-relative data lookup cannot silently regress to
+# /usr/data when the helper is run by its public name.
+installed_root=$(mktemp -d "${TMPDIR:-/tmp}/apn-installed-layout.XXXXXX")
+trap 'rm -rf "$installed_root"' EXIT HUP INT TERM
+mkdir -p "$installed_root/libexec/scripts" "$installed_root/libexec/data" \
+	"$installed_root/bin"
+cp "$CONFIGURE" "$installed_root/libexec/scripts/configure-mobile-data"
+cp "$OVERLAY" "$installed_root/libexec/data/mvno-apns.psv"
+ln -s "$installed_root/libexec/scripts/configure-mobile-data" \
+	"$installed_root/bin/pmos-configure-mobile-data"
+installed_smarty=$(PMOS_PROVIDER_DB=$FIXTURE \
+	"$installed_root/bin/pmos-configure-mobile-data" --dry-run \
+	--operator-code 23420 --gid1 0309)
+printf '%s\n' "$installed_smarty" | grep -q '^selection=mvno-overlay$'
+printf '%s\n' "$installed_smarty" | grep -q '^provider=SMARTY$'
+printf '%s\n' "$installed_smarty" | grep -q '^apn=mob.asm.net$'
+
 printf 'APN selection tests passed\n'
