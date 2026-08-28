@@ -1,0 +1,132 @@
+From 0c2bc9359e68216917875556b02b33a07d606d05 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Fri, 28 Aug 2026 13:53:41 +0100
+Subject: [PATCH] android: wait on post-processor source fences
+
+The EGL software ISP can return a native completion fence while GPU output is
+still in flight. Camera3 previously forwarded fences for direct streams but
+dispatched mapped YUV and JPEG workers immediately, allowing them to read
+partially rendered NV12 buffers. This appears as intermittent green and black
+horizontal lines in otherwise valid JPEGs.
+
+Collect every unique post-processor source and wait for its fence once before
+starting CPU workers. Direct-only streams keep their asynchronous release
+fence, while mixed streams are synchronized without racing multiple consumers
+against FrameBuffer::releaseFence().
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/android/camera_device.cpp | 75 +++++++++++++++++++++++++++--------
+ 1 file changed, 59 insertions(+), 16 deletions(-)
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 72b78c5..3adf789 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -10,7 +10,9 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <cstdint>
++#include <errno.h>
+ #include <fstream>
++#include <poll.h>
+ #include <set>
+ #include <sys/mman.h>
+ #include <unistd.h>
+@@ -42,6 +44,22 @@ LOG_DECLARE_CATEGORY(HAL)
+ 
+ namespace {
+ 
++bool waitPostProcessorSourceFence(FrameBuffer &source)
++{
++	std::unique_ptr<Fence> fence = source.releaseFence();
++	if (!fence || !fence->isValid())
++		return true;
++
++	constexpr int timeoutMs = 1000;
++	struct pollfd fds = { fence->fd().get(), POLLIN, 0 };
++	int ret;
++	do {
++		ret = poll(&fds, 1, timeoutMs);
++	} while (ret < 0 && errno == EINTR);
++
++	return ret == 1 && !(fds.revents & (POLLERR | POLLNVAL));
++}
++
+ /*
+  * The software ISP has to debayer every YUV preview frame before Android can
+  * display it. Waydroid commonly asks for a 1600x1200 YUV stream even though
+@@ -1428,22 +1446,6 @@ void CameraDevice::requestComplete(Request *request)
+ 	 * post-processing/compression fails.
+ 	 */
+ 	for (auto &buffer : descriptor->buffers_) {
+-		CameraStream *stream = buffer.stream;
+-
+-		/*
+-		 * Streams of type Direct have been queued to the
+-		 * libcamera::Camera and their acquire fences have
+-		 * already been waited on by the library.
+-		 *
+-		 * Acquire fences of streams of type Internal and Mapped
+-		 * will be handled during post-processing.
+-		 */
+-		if (stream->type() == CameraStream::Type::Direct) {
+-			/* If handling of the fence has failed restore buffer.fence. */
+-			std::unique_ptr<Fence> fence = buffer.frameBuffer->releaseFence();
+-			if (fence)
+-				buffer.fence = fence->release();
+-		}
+ 		buffer.status = Camera3RequestDescriptor::Status::Success;
+ 	}
+ 
+@@ -1462,6 +1464,47 @@ void CameraDevice::requestComplete(Request *request)
+ 		return;
+ 	}
+ 
++	/*
++	 * A software ISP may return a native completion fence instead of waiting
++	 * for its GPU work. Android can consume that fence for a direct stream, but
++	 * CPU post-processors must not map the same source before it signals. Wait
++	 * once per source before dispatching any YUV, JPEG or RGB worker. This also
++	 * avoids two mapped consumers racing to release the same fence.
++	 */
++	std::set<FrameBuffer *> postProcessorSources;
++	{
++		MutexLocker locker(descriptor->streamsProcessMutex_);
++		for (const auto &entry : descriptor->pendingStreamsToProcess_) {
++			CameraStream *stream = entry.first;
++			FrameBuffer *source = request->findBuffer(stream->stream());
++			if (source)
++				postProcessorSources.insert(source);
++		}
++	}
++
++	for (FrameBuffer *source : postProcessorSources) {
++		if (!waitPostProcessorSourceFence(*source)) {
++			LOG(HAL, Error)
++				<< "Failed waiting for post-processor source fence";
++			abortRequest(descriptor);
++			completeDescriptor(descriptor);
++			return;
++		}
++	}
++
++	/*
++	 * Return any remaining completion fences to Android. Sources consumed by
++	 * a CPU post-processor were synchronized above and no longer have one.
++	 */
++	for (auto &buffer : descriptor->buffers_) {
++		if (buffer.stream->type() != CameraStream::Type::Direct)
++			continue;
++
++		std::unique_ptr<Fence> fence = buffer.frameBuffer->releaseFence();
++		if (fence)
++			buffer.fence = fence->release();
++	}
++
+ 	/*
+ 	 * Notify shutter as soon as we have verified we have a valid request.
+ 	 *
+-- 
+2.49.0
+

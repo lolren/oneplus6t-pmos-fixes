@@ -89,6 +89,7 @@ test:
 		tests/test-waydroid-gpu-sync.sh \
 		tests/test-waydroid-rgb-preview.sh \
 		tests/test-waydroid-contiguous-nv12.sh \
+		tests/test-waydroid-postprocessor-fence.sh \
 		 tests/test-waydroid-gapps.sh \
 		tests/test-display-report.sh \
 		tests/test-camera-flash.sh \
@@ -120,6 +121,7 @@ test:
 	sh tests/test-waydroid-gpu-sync.sh
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-contiguous-nv12.sh
+	sh tests/test-waydroid-postprocessor-fence.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-display-report.sh
 	sh tests/test-display-kernel-manager.sh
