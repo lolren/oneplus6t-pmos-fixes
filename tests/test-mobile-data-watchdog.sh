@@ -84,6 +84,7 @@ stage=$TEST_DIR/stage
 make -s -C "$ROOT" install DESTDIR="$stage" PREFIX=/usr >/dev/null
 grep -q 'mobile-data-watchdog --repair' \
 	"$stage/usr/lib/systemd/system/oneplus6t-mobile-data-watchdog.service"
+[ "$(stat -c %a "$stage/usr/lib/systemd/system/oneplus6t-mobile-data-watchdog.service")" = 644 ]
 grep -q '^OnUnitActiveSec=5min$' \
 	"$stage/usr/lib/systemd/system/oneplus6t-mobile-data-watchdog.timer"
 [ -x "$stage/usr/libexec/oneplus6t-pmos-fixes/scripts/mobile-data-watchdog" ]

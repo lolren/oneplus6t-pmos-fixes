@@ -26,5 +26,7 @@ grep -q '^ConditionPathExists=/usr/sbin/pmos-waydroid-location-bridge$' \
 	"$stage/usr/lib/systemd/system/oneplus6t-waydroid-location.service"
 grep -q '^ExecStart=/usr/sbin/pmos-waydroid-location-bridge --source mmcli --enable-gps --provider fused --apply$' \
 	"$stage/usr/lib/systemd/system/oneplus6t-waydroid-location.service"
+[ "$(stat -c %a "$stage/usr/lib/systemd/system/oneplus6t-waydroid-location.service")" = 644 ]
+[ "$(stat -c %a "$stage/usr/lib/systemd/user/oneplus6t-audio-route.service")" = 644 ]
 
 printf '%s\n' 'location service tests passed'

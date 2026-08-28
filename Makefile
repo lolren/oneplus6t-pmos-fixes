@@ -6,6 +6,7 @@ WIREPLUMBER_DIR ?= $(PREFIX)/share/wireplumber/wireplumber.conf.d
 SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 SYSTEMD_SYSTEM_DIR ?= $(PREFIX)/lib/systemd/system
 INSTALL ?= install
+CHMOD ?= chmod
 
 SCRIPTS = \
 	scripts/configure-mobile-data \
@@ -166,12 +167,15 @@ install:
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 		config/systemd/user/oneplus6t-audio-route.service \
 		> "$(DESTDIR)$(SYSTEMD_USER_DIR)/oneplus6t-audio-route.service"
+	$(CHMOD) 0644 "$(DESTDIR)$(SYSTEMD_USER_DIR)/oneplus6t-audio-route.service"
 	sed 's|@SBINDIR@|$(SBINDIR)|g' \
 		config/systemd/oneplus6t-waydroid-location.service \
 		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
+	$(CHMOD) 0644 "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 		config/systemd/oneplus6t-mobile-data-watchdog.service \
 		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-mobile-data-watchdog.service"
+	$(CHMOD) 0644 "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-mobile-data-watchdog.service"
 	$(INSTALL) -m 0644 config/systemd/oneplus6t-mobile-data-watchdog.timer \
 		"$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/"
 	$(INSTALL) -m 0755 tests/camera/validate-pipewire-af.sh \
