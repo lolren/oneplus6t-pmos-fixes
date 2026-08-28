@@ -2658,4 +2658,6 @@ r52 manifest: 5c5ee54715a1d0e71cb4f6cbda1878969c360d1fa9858dc5c3d80c54eb001f25
 
 Fresh GitHub downloads match all four local release files byte for byte. The
 camera manifest verifies every archive entry. No photographs, exact locations,
-SIM identifiers, credentials or private device logs are release assets.
+SIM identifiers, credentials or private device logs are release assets. After
+acceptance, the Waydroid session and container stopped cleanly, the optional
+location bridge remained inactive and the rootfs mount count returned to zero.

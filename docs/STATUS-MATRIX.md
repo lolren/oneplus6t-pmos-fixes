@@ -74,7 +74,7 @@ The current post-acceptance state is:
 USB: postmarketOS CDC-NCM networking and SSH respond normally
 Fastboot/ADB: unavailable while the running phone exposes the pMOS USB gadget
 Kernel: r10 package booted as 7.1.0-rc1-sdm845
-Waydroid: r52 clean-Vanilla camera/r53 codec installed; Android 13 Vanilla verified; three cameras exposed
+Waydroid: r52 clean-Vanilla camera/r53 codec installed; Android 13 Vanilla verified; stopped cleanly with rootfs mounts 0
 Cellular: registered/connected; cellular-only DNS and HTTPS pass; Wi-Fi restored
 Recovery: emergency reboot complete; D-state tasks 0; current I/O pressure 0
 ```
