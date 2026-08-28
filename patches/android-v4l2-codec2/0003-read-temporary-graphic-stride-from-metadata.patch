@@ -1,0 +1,54 @@
+From 4f4a6d5d4c28794f76e4eff4a53c2b3bb6652458 Mon Sep 17 00:00:00 2001
+From: OnePlus6T codec build <build@example.invalid>
+Date: Fri, 28 Aug 2026 10:59:27 +0100
+Subject: [PATCH] fix: read temporary graphic stride without mapping
+
+---
+ components/V4L2EncodeComponent.cpp | 28 +++++++++++++++++++++-------
+ 1 file changed, 21 insertions(+), 7 deletions(-)
+
+diff --git a/components/V4L2EncodeComponent.cpp b/components/V4L2EncodeComponent.cpp
+index db6d87f..26f9b46 100644
+--- a/components/V4L2EncodeComponent.cpp
++++ b/components/V4L2EncodeComponent.cpp
+@@ -157,16 +157,30 @@ std::optional<uint32_t> getVideoFrameStride(VideoPixelFormat format, ui::Size si
+         return std::nullopt;
+     }
+ 
+-    const C2ConstGraphicBlock constBlock = block->share(C2Rect(size.width, size.height), C2Fence());
+-    VideoPixelFormat pixelFormat;
+-    std::optional<std::vector<VideoFramePlane>> planes =
+-            getVideoFrameLayout(constBlock, &pixelFormat);
+-    if (!planes || planes.value().empty()) {
+-        ALOGE("Failed to get video frame layout from block");
++    // C2AllocatorGralloc records the allocation stride in every Codec2 handle.
++    // Reading that metadata is sufficient here and, unlike mapping a throwaway
++    // block, does not import it into the graphics mapper.  Some minigbm/Mesa
++    // combinations cannot safely free such a mapped temporary allocation.
++    uint32_t allocationWidth = 0;
++    uint32_t allocationHeight = 0;
++    uint32_t allocationFormat = 0;
++    uint32_t stride = 0;
++    uint32_t generation = 0;
++    uint32_t igbpSlot = 0;
++    uint64_t usage = 0;
++    uint64_t igbpId = 0;
++    android::_UnwrapNativeCodec2GrallocMetadata(
++            block->handle(), &allocationWidth, &allocationHeight, &allocationFormat, &usage,
++            &stride, &generation, &igbpId, &igbpSlot);
++    if (allocationWidth < static_cast<uint32_t>(size.width) ||
++        allocationHeight < static_cast<uint32_t>(size.height) ||
++        stride < static_cast<uint32_t>(size.width)) {
++        ALOGE("Invalid graphic block metadata (allocation=%ux%u, stride=%u)", allocationWidth,
++              allocationHeight, stride);
+         return std::nullopt;
+     }
+ 
+-    return planes.value()[0].mStride;
++    return stride;
+ }
+ 
+ // Create an input frame from the specified graphic block.
+-- 
+2.49.0
+

@@ -6,7 +6,7 @@ usage() {
 usage: prepare-waydroid-v4l2-codec-sources OUTPUT_DIR
 
 Fetch the exact Android 13 source revisions used by the OnePlus 6T Waydroid
-V4L2 Codec2 build and apply this project's Qualcomm Venus patch. OUTPUT_DIR
+V4L2 Codec2 build and apply this project's Qualcomm Venus patches. OUTPUT_DIR
 must not already contain files.
 EOF
 }
@@ -22,6 +22,7 @@ project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
 codec_patch_dir=$project_dir/patches/android-v4l2-codec2
 codec_base_patch=$codec_patch_dir/0001-support-qualcomm-venus-single-plane-io.patch
 codec_layout_patch=$codec_patch_dir/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
+codec_stride_patch=$codec_patch_dir/0003-read-temporary-graphic-stride-from-metadata.patch
 
 if [ -e "$output_dir" ] &&
 	find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
@@ -36,7 +37,7 @@ for command in git find; do
 	fi
 done
 
-for codec_patch in "$codec_base_patch" "$codec_layout_patch"; do
+for codec_patch in "$codec_base_patch" "$codec_layout_patch" "$codec_stride_patch"; do
 	if [ ! -f "$codec_patch" ]; then
 		printf 'Missing codec patch: %s\n' "$codec_patch" >&2
 		exit 1
@@ -87,7 +88,8 @@ fetch_revision "$output_dir/minijail" \
 git -C "$output_dir/v4l2-codec2" \
 	-c user.name=OnePlus6T-codec-build \
 	-c user.email=build@example.invalid \
-	am --committer-date-is-author-date "$codec_base_patch" "$codec_layout_patch"
+	am --committer-date-is-author-date \
+	"$codec_base_patch" "$codec_layout_patch" "$codec_stride_patch"
 
 printf 'prepared source bundle: %s\n' "$output_dir"
 for source in \

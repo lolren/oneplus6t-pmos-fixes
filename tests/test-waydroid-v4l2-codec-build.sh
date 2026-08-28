@@ -7,6 +7,7 @@ BUILD=$ROOT/scripts/build-waydroid-v4l2-codec
 PACKAGE=$ROOT/scripts/package-waydroid-v4l2-codec
 BASE_PATCH=$ROOT/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
 LAYOUT_PATCH=$ROOT/patches/android-v4l2-codec2/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
+STRIDE_PATCH=$ROOT/patches/android-v4l2-codec2/0003-read-temporary-graphic-stride-from-metadata.patch
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/waydroid-codec-build-test.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 
@@ -30,6 +31,9 @@ grep -q 'mEncoder.reset();' "$LAYOUT_PATCH"
 encoder_reset_line=$(grep -n 'mEncoder.reset();' "$LAYOUT_PATCH" | tail -n1 | cut -d: -f1)
 converter_reset_line=$(grep -n 'mInputFormatConverter.reset();' "$LAYOUT_PATCH" | tail -n1 | cut -d: -f1)
 [ "$encoder_reset_line" -lt "$converter_reset_line" ]
+grep -q '^+.*_UnwrapNativeCodec2GrallocMetadata' "$STRIDE_PATCH"
+grep -q 'does not import it into the graphics mapper' "$STRIDE_PATCH"
+grep -q '^+.*return stride;' "$STRIDE_PATCH"
 grep -q -- '-ffile-prefix-map=' "$BUILD"
 grep -q 'Wl,--no-undefined' "$BUILD"
 grep -q 'Machine:.*AArch64' "$BUILD"
@@ -76,7 +80,8 @@ for installed in \
 	usr/libexec/oneplus6t-pmos-fixes/scripts/package-waydroid-v4l2-codec \
 	usr/libexec/oneplus6t-pmos-fixes/scripts/install-waydroid-v4l2-codec \
 	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch \
-	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
+	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0002-preserve-venus-input-layout-and-DMA-lifetime.patch \
+	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0003-read-temporary-graphic-stride-from-metadata.patch
 do
 	[ -f "$install_stage/$installed" ]
 done
