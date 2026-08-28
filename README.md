@@ -301,29 +301,31 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the [r36 bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12) is installed and its single-output preview passed all three cameras. |
 | Waydroid multi-output software ISP | Debayers one Bayer input once, keeps a linear RGB preview and coalesces NV12 encoder/analysis consumers with a centred crop; this removes the one-output limit and avoids repeated GPU readback. |
 | Waydroid private-preview cap | Limits only CameraX private previews to 1280x960 so 720p recording stays on a practical sensor mode; larger explicit YUV/JPEG photography modes remain available. |
+| Waydroid contiguous NV12 GPU target | Writes a compatible linear Y+UV allocation with one filtered GPU draw, avoiding RGBA readback and CPU colour conversion; unsupported layouts retain the safe libyuv fallback. |
 | Waydroid recording profiles and Codec2 policy | Publishes per-camera 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. |
-| Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated rear H.264/AAC recordings and clean teardown. The current illuminated clip averages 11.62 fps despite a nominal 29.97 fps, so performance work remains. |
+| Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated rear H.264/AAC recordings and clean teardown. The exact r49 camera clip averages 11.78 fps despite a nominal 29.97 fps, so performance work remains. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Waydroid SIGPIPE-safe provider teardown | A closed software-IPA socket is returned as an IPC error instead of terminating the Android camera provider. |
 | Waydroid reduced preview source candidate | Large 4:3/16:9 Android preview requests can use a smaller aspect-preserving software-ISP source while retaining full-size JPEG capture; phone acceptance is pending. |
 | Waydroid conditional preview mipmaps candidate | Equal-size and upscaled previews avoid regenerating an unnecessary EGL mipmap chain; true downscales retain mipmaps; phone acceptance is pending. |
 | Waydroid redundant-clear candidate | The GPU ISP skips two full-frame clears that are immediately overwritten by full-screen Bayer/scaler passes; shaders, buffers and fallback paths are unchanged; phone acceptance is pending. |
-| Waydroid NV12 fence-elision candidate | The GPU ISP avoids a second full GPU wait after synchronous RGBA readback and CPU NV12 conversion; direct RGB output keeps its fence; phone acceptance is pending. |
+| Waydroid NV12 fence-elision candidate | The fallback GPU ISP avoids a second full GPU wait after synchronous RGBA readback and CPU NV12 conversion; direct RGB and contiguous NV12 output keep completion fences; broader phone acceptance is pending. |
 | Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12. The follow-on native-fence candidate exports GPU completion to Android when supported and keeps a synchronous fallback; phone acceptance is pending. Download the [r37/r38 development bundles](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38). |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the previously accepted r8/r24/r7/r3 userspace camera
 baseline
 and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
-reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r44
+reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r49
 camera layer retains the r36 colour correction and now includes reproducible
-patches `0013`–`0015` for mixed RGB/NV12 streams and preview sizing. Kernel r10
-and Codec2 r53 are now installed. Three guarded rear recording cycles, including
-a cold Aperture relaunch, finalized without a Codec2 tombstone, Venus/SMMU
-fault, IRQ storm, blocked task or stale Waydroid mount. The first illuminated
-23.84-second H.264/AAC file decoded fully and had no former green layout band;
-its measured 11.62 fps remains a performance defect to address.
+patches `0013`–`0016` for mixed RGB/NV12 streams, preview sizing and direct
+contiguous NV12 output. Kernel r10 and Codec2 r53 are installed. The r49 source
+completed a clean 198-target Android build, repeated Camera2 probes and one
+24.93-second real H.264/AAC recording without a provider/Codec2 tombstone,
+Venus/SMMU fault, IRQ storm, blocked task or stale Waydroid mount. The clip
+decoded fully and had no former green layout band; its measured 11.78 fps
+remains a performance defect to address.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
 packages are now pinned and the signed AArch64 APK pair is published in the

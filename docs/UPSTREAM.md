@@ -99,6 +99,13 @@ useful input to that work, but it needs alignment with the upstream design.
 See the official [multipass RFC discussion](https://lists.libcamera.org/pipermail/libcamera-devel/2026-June/059567.html)
 and [RGB/Bayer conversion patch](https://lists.libcamera.org/pipermail/libcamera-devel/2026-June/059302.html).
 
+The Waydroid-only contiguous-NV12 patch `0016` is accepted downstream but is
+not ready to submit as a generic libcamera interface. Its one-target `GR88`
+layout is valid only after proving that Y and UV refer to one linear backing
+allocation with the expected offsets and pitch. Any upstream form should be
+coordinated with the multipass GPU-ISP work, gain focused DMA-BUF layout tests,
+and preserve the current non-contiguous/readback fallback.
+
 Do not upstream identity matrices as calibrated sensor tuning. They exist only
 to expose the generic saturation control and are explicitly uncalibrated.
 Likewise, the OnePlus gamma/contrast/saturation values are downstream defaults,

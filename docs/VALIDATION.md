@@ -2289,3 +2289,43 @@ database-derived profile with APN `mob.asm.net`. With Wi-Fi temporarily off,
 the default route moved to `qmapmux0.0`, DNS resolved and HTTPS returned 204.
 Wi-Fi was then re-enabled and reconnected while the cellular profile remained
 connected. No modem, SIM or subscriber identifier is stored in this evidence.
+
+## Waydroid camera r49 contiguous-NV12 acceptance
+
+Date: 2026-08-28. The r48 prototype proved that Waydroid's two NV12 planes are
+separate descriptors for one contiguous backing allocation. The accepted
+`0016` patch checks that relationship with descriptor identity or
+`fstat()` device/inode identity, requires the UV offset to follow the complete
+Y plane, and imports the allocation as one `DRM_FORMAT_GR88` framebuffer. One
+draw writes two adjacent luma bytes or one interleaved U/V pair. It retains
+five-tap luma sharpness, four-sample chroma filtering and a native completion
+fence; all unsupported layouts and GL failures retain the prior readback/libyuv
+fallback.
+
+With Aperture stopped and Package Manager updates removed from the measurement,
+three matched r44 probes averaged 12.18 Camera2 capture fps and 1.033 provider
+CPU-seconds per run. The functionally equivalent r48 prototype averaged 12.78
+fps and 0.930 CPU-seconds: approximately 4.9% higher source cadence and 10.0%
+less provider CPU in that scene. The final patch removes two unused prototype
+shaders and changes no executed direct-path shader or fallback behaviour.
+
+A fresh r49 ARMv7/API-33 build completed 198 targets. Three tests of the exact
+installed build all returned valid RGB/YUV and averaged 12.67 capture fps with
+0.977 provider CPU-seconds per run. The provider log confirmed the contiguous
+1280x720 target in every run. No fallback, fatal signal, Venus/SMMU fault, IRQ
+storm, blocked-I/O condition or safety-monitor fault appeared.
+
+One exact-build Aperture recording finalized, decoded completely and probes as
+H.264 yuv420p 720x1278 with 293 frames over 24.863678 seconds (11.784258 fps),
+plus mono 48 kHz AAC and a 24.928500-second container. Frames at 5 and 20
+seconds contain stable full-frame colour with no green layout band. The private
+clip is not committed. This accepts correctness and a bounded source/CPU
+improvement, not video-rate or Android image-quality parity.
+
+```text
+0016: 6d5e283d7b9a775100fec91f72c8e9474becf15dd7de320b0ce267148e7f1057
+archive: 2b969ddd79df780b865962dd3dfa568b6b64a94fc6766a02c8dcefd6128a85d7
+manifest: 8edaf8117e14f1ea134ec5a198bc7bff0d1ed30671c717da6ecd963cba4b3998
+camera HAL: 8d6d714bb1449cf3ffb42f66708a053f50c1e5c83c62890ca6b3c1cc9e6fec49
+libcamera: a9a52464f750989112537daa92706cbeb41553d63c06eeaa978a86c984cdd5ca
+```

@@ -1,0 +1,556 @@
+From e17f4ba098328e384d924cd5c8e706eec9be20f0 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Fri, 28 Aug 2026 13:04:28 +0100
+Subject: [PATCH] software_isp: render contiguous NV12 in one target
+
+Import a linear NV12 allocation as one GR88 framebuffer and write its
+luma and chroma rows in a single filtered draw. Keep the existing
+readback/libyuv path as a safe fallback for non-contiguous or unsupported
+buffers.
+
+This preserves the five-tap luma sharpness and 2x2 chroma averaging
+while avoiding GPU readback and CPU colour conversion on compatible
+Waydroid buffers.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ include/libcamera/internal/egl.h           |   8 +-
+ src/libcamera/egl.cpp                      |   2 +-
+ src/libcamera/shaders/meson.build          |   1 +
+ src/libcamera/shaders/nv12_contiguous.frag |  72 ++++++
+ src/libcamera/software_isp/debayer_egl.cpp | 244 ++++++++++++++++++++-
+ src/libcamera/software_isp/debayer_egl.h   |  20 ++
+ 6 files changed, 339 insertions(+), 8 deletions(-)
+ create mode 100644 src/libcamera/shaders/nv12_contiguous.frag
+
+diff --git a/include/libcamera/internal/egl.h b/include/libcamera/internal/egl.h
+index 53084e9..a655d2a 100644
+--- a/include/libcamera/internal/egl.h
++++ b/include/libcamera/internal/egl.h
+@@ -62,10 +62,10 @@ public:
+ 	 * from the GL format as before.
+ 	 */
+ 	eGLImage(GLint format, uint32_t width, uint32_t height, uint32_t stride,
+-		  GLenum texture_unit, uint32_t texture_unit_uniform_id,
+-		  uint32_t drm_format = 0)
++		 GLenum texture_unit, uint32_t texture_unit_uniform_id,
++		 uint32_t drm_format = 0, uint32_t offset = 0)
+ 		: format_(format), width_(width), height_(height), stride_(stride),
+-		  framesize_(stride * height),
++		  offset_(offset), framesize_(stride * height),
+ 		  texture_unit_uniform_id_(texture_unit_uniform_id),
+ 		  texture_unit_(texture_unit), drm_format_(drm_format)
+ 	{
+@@ -89,7 +89,7 @@ public:
+ 	uint32_t width_; /**< Image width in pixels */
+ 	uint32_t height_; /**< Image height in pixels */
+ 	uint32_t stride_; /**< Row stride in bytes */
+-	uint32_t offset_; /**< Buffer offset (reserved for future use) */
++	uint32_t offset_; /**< Byte offset of the image in its DMA-BUF */
+ 	uint32_t framesize_; /**< Total frame size in bytes (stride * height) */
+ 	uint32_t texture_unit_uniform_id_; /**< Shader uniform id for texture unit */
+ 	GLenum texture_unit_; /**< Texture unit associated with this image eg (GL_TEXTURE0) */
+diff --git a/src/libcamera/egl.cpp b/src/libcamera/egl.cpp
+index 828fe6c..d28f97e 100644
+--- a/src/libcamera/egl.cpp
++++ b/src/libcamera/egl.cpp
+@@ -235,7 +235,7 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
+ 		EGL_HEIGHT, (EGLint)eglImage.height_,
+ 		EGL_LINUX_DRM_FOURCC_EXT, drm_format,
+ 		EGL_DMA_BUF_PLANE0_FD_EXT, fd,
+-		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
++		EGL_DMA_BUF_PLANE0_OFFSET_EXT, (EGLint)eglImage.offset_,
+ 		EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)eglImage.stride_,
+ 		EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, 0,
+ 		EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, 0,
+diff --git a/src/libcamera/shaders/meson.build b/src/libcamera/shaders/meson.build
+index c7720c4..03c4c3d 100644
+--- a/src/libcamera/shaders/meson.build
++++ b/src/libcamera/shaders/meson.build
+@@ -7,6 +7,7 @@ shader_files = files([
+     'bayer_unpacked.frag',
+     'bayer_unpacked.vert',
+     'identity.vert',
++    'nv12_contiguous.frag',
+     'rgb_scale.frag',
+     'rgb_scale.vert',
+ ])
+diff --git a/src/libcamera/shaders/nv12_contiguous.frag b/src/libcamera/shaders/nv12_contiguous.frag
+new file mode 100644
+index 0000000..73af29e
+--- /dev/null
++++ b/src/libcamera/shaders/nv12_contiguous.frag
+@@ -0,0 +1,72 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Render one complete, linear NV12 allocation through a single GR88 target.
++ * Each framebuffer fragment stores either two adjacent luma bytes or one
++ * interleaved U/V pair.
++ */
++
++#ifdef GL_ES
++precision highp float;
++#endif
++
++varying vec2 textureOut;
++uniform sampler2D tex_rgb;
++uniform vec4 source_rect;
++uniform vec2 output_size;
++uniform float sharpness;
++
++float rgbToY(vec3 rgb)
++{
++	return dot(rgb, vec3(0.2578125, 0.50390625, 0.09765625))
++		+ 0.062745098;
++}
++
++void main(void)
++{
++	float row = floor(gl_FragCoord.y);
++
++	if (row < output_size.y) {
++		float sourceY = source_rect.y +
++			((row + 0.5) / output_size.y) * source_rect.w;
++		float pixelStepX = source_rect.z / output_size.x;
++		float pixelStepY = source_rect.w / output_size.y;
++		float x0 = textureOut.x - pixelStepX * 0.5;
++		float x1 = textureOut.x + pixelStepX * 0.5;
++		vec3 rgb0 = texture2D(tex_rgb, vec2(x0, sourceY)).rgb;
++		vec3 rgb1 = texture2D(tex_rgb, vec2(x1, sourceY)).rgb;
++		vec3 blur0 = (rgb0 * 4.0 + rgb1 +
++			texture2D(tex_rgb, vec2(x0 - pixelStepX, sourceY)).rgb +
++			texture2D(tex_rgb, vec2(x0, sourceY - pixelStepY)).rgb +
++			texture2D(tex_rgb, vec2(x0, sourceY + pixelStepY)).rgb) / 8.0;
++		vec3 blur1 = (rgb1 * 4.0 + rgb0 +
++			texture2D(tex_rgb, vec2(x1 + pixelStepX, sourceY)).rgb +
++			texture2D(tex_rgb, vec2(x1, sourceY - pixelStepY)).rgb +
++			texture2D(tex_rgb, vec2(x1, sourceY + pixelStepY)).rgb) / 8.0;
++		rgb0 = clamp(rgb0 + sharpness * (rgb0 - blur0), 0.0, 1.0);
++		rgb1 = clamp(rgb1 + sharpness * (rgb1 - blur1), 0.0, 1.0);
++		gl_FragColor = vec4(clamp(rgbToY(rgb0), 0.0, 1.0),
++					clamp(rgbToY(rgb1), 0.0, 1.0),
++					0.0, 1.0);
++		return;
++	}
++
++	float chromaRow = row - output_size.y;
++	float sourceY = source_rect.y +
++		((chromaRow + 0.5) / (output_size.y * 0.5)) * source_rect.w;
++	vec2 halfStep = source_rect.zw / output_size * 0.5;
++	vec3 rgb = (
++		texture2D(tex_rgb,
++			vec2(textureOut.x - halfStep.x, sourceY - halfStep.y)).rgb +
++		texture2D(tex_rgb,
++			vec2(textureOut.x + halfStep.x, sourceY - halfStep.y)).rgb +
++		texture2D(tex_rgb,
++			vec2(textureOut.x - halfStep.x, sourceY + halfStep.y)).rgb +
++		texture2D(tex_rgb,
++			vec2(textureOut.x + halfStep.x, sourceY + halfStep.y)).rgb) * 0.25;
++	float u = dot(rgb, vec3(-0.1484375, -0.2890625, 0.4375))
++		+ 0.501960784;
++	float v = dot(rgb, vec3(0.4375, -0.3671875, -0.0703125))
++		+ 0.501960784;
++	gl_FragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0),
++				0.0, 1.0);
++}
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 3bdd7f9..eb964cf 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -14,9 +14,12 @@
+ #include <memory>
+ #include <stdlib.h>
+ #include <string>
++#include <sys/stat.h>
+ #include <tuple>
+ #include <vector>
+ 
++#include <linux/drm_fourcc.h>
++
+ #include <libcamera/base/span.h>
+ #include <libcamera/base/utils.h>
+ 
+@@ -326,6 +329,48 @@ int DebayerEGL::initScaleShaders(PixelFormat outputFormat)
+ 	return 0;
+ }
+ 
++int DebayerEGL::initNv12Shaders()
++{
++	std::vector<std::string> shaderEnv;
++	GLuint vertexShaderId = 0;
++	GLuint fragmentShaderId = 0;
++
++	egl_.pushEnv(shaderEnv, "#version 100");
++
++	if (egl_.compileVertexShader(vertexShaderId, rgb_scale_vert, shaderEnv)) {
++		LOG(Debayer, Error) << "Compile NV12 vertex shader failed";
++		return -ENODEV;
++	}
++	utils::scope_exit vertexShaderGuard([&] { glDeleteShader(vertexShaderId); });
++
++	if (egl_.compileFragmentShader(fragmentShaderId,
++				       nv12_contiguous_frag, shaderEnv)) {
++		LOG(Debayer, Error) << "Compile contiguous NV12 shader failed";
++		return -ENODEV;
++	}
++	utils::scope_exit fragmentShaderGuard([&] {
++		glDeleteShader(fragmentShaderId);
++	});
++
++	if (egl_.linkProgram(nv12ProgramId_, vertexShaderId,
++			     fragmentShaderId)) {
++		LOG(Debayer, Error) << "Linking contiguous NV12 shader failed";
++		return -ENODEV;
++	}
++
++	nv12AttributeVertex_ = glGetAttribLocation(nv12ProgramId_, "vertexIn");
++	nv12AttributeTexture_ = glGetAttribLocation(nv12ProgramId_, "textureIn");
++	nv12TextureUniformRgb_ = glGetUniformLocation(nv12ProgramId_, "tex_rgb");
++	nv12SourceRectUniform_ =
++		glGetUniformLocation(nv12ProgramId_, "source_rect");
++	nv12OutputSizeUniform_ =
++		glGetUniformLocation(nv12ProgramId_, "output_size");
++	nv12SharpnessUniform_ =
++		glGetUniformLocation(nv12ProgramId_, "sharpness");
++
++	return 0;
++}
++
+ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
+ 			  [[maybe_unused]] bool ccmEnabled)
+@@ -402,9 +447,17 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 		unsigned int cropY = ((height_ - cropHeight) / 2) &
+ 				     ~(inputConfig_.patternSize.height - 1);
+ 		state.displayWindow = Rectangle(cropX, cropY, cropWidth, cropHeight);
++		/*
++		 * Bilinear sampling plus the explicit five-tap scale filter is enough
++		 * for reductions up to 2:1. Building a complete mipmap chain for those
++		 * common preview/video sizes costs several million extra texels per
++		 * frame on the SDM845 GPU without selecting a lower mip level.
++		 */
+ 		state.scaleUsesMipmaps =
+-			state.displayWindow.width > state.size.width ||
+-			state.displayWindow.height > state.size.height;
++			static_cast<uint64_t>(state.displayWindow.width) >
++				static_cast<uint64_t>(state.size.width) * 2 ||
++			static_cast<uint64_t>(state.displayWindow.height) >
++				static_cast<uint64_t>(state.size.height) * 2;
+ 
+ 		outputBufferCount_ += outputCfg.bufferCount;
+ 		anyScaleUsesMipmaps_ |= state.scaleUsesMipmaps;
+@@ -634,6 +687,48 @@ void DebayerEGL::setScaleShaderVariableValues(eGLImage &eglImageIn,
+ 	glUniform1f(scaleSharpnessUniform_, params.sharpness);
+ }
+ 
++void DebayerEGL::setNv12ShaderVariableValues(const DebayerParams &params)
++{
++	static const GLfloat vcoordinates[4][2] = {
++		{ -1.0f, -1.0f },
++		{ -1.0f, +1.0f },
++		{ +1.0f, +1.0f },
++		{ +1.0f, -1.0f },
++	};
++	const GLfloat left = static_cast<GLfloat>(displayWindow_.x) / width_;
++	const GLfloat top = static_cast<GLfloat>(displayWindow_.y) / height_;
++	const GLfloat right = static_cast<GLfloat>(displayWindow_.x +
++						   displayWindow_.width) /
++			      width_;
++	const GLfloat bottom = static_cast<GLfloat>(displayWindow_.y +
++						    displayWindow_.height) /
++			       height_;
++	scaleTextureCoordinates_[0][0] = left;
++	scaleTextureCoordinates_[0][1] = top;
++	scaleTextureCoordinates_[1][0] = left;
++	scaleTextureCoordinates_[1][1] = bottom;
++	scaleTextureCoordinates_[2][0] = right;
++	scaleTextureCoordinates_[2][1] = bottom;
++	scaleTextureCoordinates_[3][0] = right;
++	scaleTextureCoordinates_[3][1] = top;
++
++	glEnableVertexAttribArray(nv12AttributeVertex_);
++	glVertexAttribPointer(nv12AttributeVertex_, 2, GL_FLOAT, GL_TRUE,
++			      2 * sizeof(GLfloat), vcoordinates);
++	glEnableVertexAttribArray(nv12AttributeTexture_);
++	glVertexAttribPointer(nv12AttributeTexture_, 2, GL_FLOAT, GL_TRUE,
++			      2 * sizeof(GLfloat), scaleTextureCoordinates_);
++
++	egl_.activateBindTexture(*intermediateImage_);
++	glUniform1i(nv12TextureUniformRgb_,
++		    intermediateImage_->texture_unit_uniform_id_);
++	glUniform4f(nv12SourceRectUniform_, left, top, right - left,
++		    bottom - top);
++	glUniform2f(nv12OutputSizeUniform_, outputSize_.width,
++		    outputSize_.height);
++	glUniform1f(nv12SharpnessUniform_, params.sharpness);
++}
++
+ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
+ {
+ 	const SharedFD &fd = input->planes()[0].fd;
+@@ -718,12 +813,123 @@ eGLImage *DebayerEGL::getCachedOutputFrameBuffer(FrameBuffer *output)
+ 	return eglImageOut;
+ }
+ 
++bool DebayerEGL::renderNv12Direct(FrameBuffer *output,
++				  const DebayerParams &params)
++{
++	if (nv12DirectDisabled_ || outputSize_.width % 2 ||
++	    outputSize_.height % 2)
++		return false;
++
++	const Span<const FrameBuffer::Plane> planes = output->planes();
++	if (planes.empty())
++		return false;
++
++	const unsigned int yLength = outputConfig_.stride * outputSize_.height;
++	const unsigned int uvLength = yLength / 2;
++	const FrameBuffer::Plane &yPlane = planes[0];
++	const FrameBuffer::Plane &uvPlane = planes.size() > 1 ? planes[1]
++							      : planes[0];
++	const unsigned int yOffset = yPlane.offset;
++	const unsigned int uvOffset = planes.size() > 1
++					      ? uvPlane.offset
++					      : yPlane.offset + yLength;
++
++	if (yPlane.length < yLength ||
++	    (planes.size() > 1 && uvPlane.length < uvLength) ||
++	    (planes.size() == 1 && yPlane.length < yLength + uvLength))
++		return false;
++	struct stat yStatus = {};
++	struct stat uvStatus = {};
++	const bool sameDmaBuf =
++		yPlane.fd == uvPlane.fd ||
++		(fstat(yPlane.fd.get(), &yStatus) == 0 &&
++		 fstat(uvPlane.fd.get(), &uvStatus) == 0 &&
++		 yStatus.st_dev == uvStatus.st_dev &&
++		 yStatus.st_ino == uvStatus.st_ino);
++	if (!sameDmaBuf || uvOffset != yOffset + yLength) {
++		nv12DirectDisabled_ = true;
++		LOG(Debayer, Info)
++			<< "NV12 allocation is not contiguous; using readback conversion";
++		return false;
++	}
++
++	Nv12Target *target = nullptr;
++	for (Nv12Target &cached : nv12TargetCache_) {
++		if (cached.fd == yPlane.fd &&
++		    cached.yOffset == yOffset && cached.uvOffset == uvOffset) {
++			target = &cached;
++			break;
++		}
++	}
++
++	if (!target) {
++		if (nv12TargetCache_.size() >= outputBufferCount_)
++			nv12TargetCache_.pop_front();
++
++		auto image = std::make_unique<eGLImage>(
++			GL_RG, outputSize_.width / 2,
++			outputSize_.height + outputSize_.height / 2,
++			outputConfig_.stride, GL_TEXTURE1, 1,
++			DRM_FORMAT_GR88, yOffset);
++
++		if (egl_.createOutputDMABufTexture2D(*image, yPlane.fd.get())) {
++			nv12DirectDisabled_ = true;
++			nv12TargetCache_.clear();
++			LOG(Debayer, Info)
++				<< "Contiguous NV12 DMA-BUF rendering unavailable; "
++				   "using readback conversion";
++			return false;
++		}
++
++		nv12TargetCache_.push_back({ yPlane.fd, yOffset, uvOffset,
++					     std::move(image) });
++		target = &nv12TargetCache_.back();
++		if (!nv12DirectLogged_) {
++			LOG(Debayer, Info)
++				<< "Rendering contiguous NV12 with one DMA-BUF target: "
++				<< outputSize_ << ", stride " << outputConfig_.stride
++				<< ", planes " << planes.size()
++				<< ", Y offset " << yOffset
++				<< ", UV offset " << uvOffset;
++			nv12DirectLogged_ = true;
++		}
++	}
++
++	egl_.useProgram(nv12ProgramId_);
++	if (egl_.attachTextureToFBO(*target->image)) {
++		nv12DirectDisabled_ = true;
++		nv12TargetCache_.clear();
++		LOG(Debayer, Warning)
++			<< "Contiguous NV12 framebuffer became incomplete; "
++			   "using readback conversion";
++		return false;
++	}
++	setNv12ShaderVariableValues(params);
++	glViewport(0, 0, outputSize_.width / 2,
++		   outputSize_.height + outputSize_.height / 2);
++	glDrawArrays(GL_TRIANGLE_FAN, 0, DEBAYER_OPENGL_COORDS);
++
++	GLenum err = glGetError();
++	if (err != GL_NO_ERROR) {
++		nv12DirectDisabled_ = true;
++		nv12TargetCache_.clear();
++		LOG(Debayer, Warning)
++			<< "Contiguous NV12 rendering failed with GL error " << err
++			<< "; using readback conversion";
++		return false;
++	}
++
++	egl_.flushOutput();
++	return true;
++}
++
+ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output,
+ 			   const DebayerParams &params, bool renderInput,
+ 			   std::optional<MappedFrameBuffer> *inMapped,
+ 			   std::optional<DmaSyncer> *inDmaSyncer)
+ {
+ 	eGLImage *eglImageOut;
++	nv12RenderedDirect_ = false;
+ 
+ 	/* eGL context switch */
+ 	egl_.makeCurrent();
+@@ -754,6 +960,11 @@ int DebayerEGL::debayerGPU(FrameBuffer *input, FrameBuffer *output,
+ 		}
+ 	}
+ 
++	if (outputIsNv12_ && renderNv12Direct(output, params)) {
++		nv12RenderedDirect_ = true;
++		return 0;
++	}
++
+ 	eglImageOut = outputIsNv12_ ? nv12IntermediateImage_.get()
+ 				    : getCachedOutputFrameBuffer(output);
+ 	if (!eglImageOut)
+@@ -894,7 +1105,8 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input,
+ 		}
+ 		inputRendered = true;
+ 
+-		if (outputIsNv12_ && !convertRgbaToNv12(output)) {
++		if (outputIsNv12_ && !nv12RenderedDirect_ &&
++		    !convertRgbaToNv12(output)) {
+ 			LOG(Debayer, Error) << "GPU RGBA to NV12 conversion failed";
+ 			metadata.status = FrameMetadata::FrameError;
+ 			outputBufferReady.emit(output);
+@@ -910,6 +1122,14 @@ void DebayerEGL::process(uint32_t frame, FrameBuffer *input,
+ 				metadata.planes()[1].bytesused =
+ 					outputConfig_.stride * outputSize_.height / 2;
+ 			}
++			if (nv12RenderedDirect_) {
++				UniqueFD fence = egl_.exportOutputFence();
++				if (fence.isValid())
++					output->_d()->setFence(
++						std::make_unique<Fence>(std::move(fence)));
++				else
++					egl_.syncOutput();
++			}
+ 		} else {
+ 			metadata.planes()[0].bytesused = output->planes()[0].length;
+ 			UniqueFD fence = egl_.exportOutputFence();
+@@ -972,6 +1192,21 @@ int DebayerEGL::start()
+ 		return -EINVAL;
+ 	if (initScaleShaders(gpuOutputFormat))
+ 		return -EINVAL;
++	const bool hasNv12Output = std::any_of(
++		outputStates_.begin(), outputStates_.end(),
++		[](const OutputState &state) { return state.isNv12; });
++	nv12DirectDisabled_ = !hasNv12Output;
++	if (hasNv12Output && initNv12Shaders()) {
++		if (nv12ProgramId_) {
++			glDeleteProgram(nv12ProgramId_);
++			nv12ProgramId_ = 0;
++		}
++		nv12DirectDisabled_ = true;
++		LOG(Debayer, Info)
++			<< "Contiguous NV12 shader unavailable; using readback conversion";
++	}
++	nv12RenderedDirect_ = false;
++	nv12DirectLogged_ = false;
+ 
+ 	intermediateImage_ = std::make_unique<eGLImage>(GL_RGBA, width_, height_,
+ 							width_ * 4, GL_TEXTURE2, 2);
+@@ -1000,6 +1235,7 @@ int DebayerEGL::start()
+ 
+ void DebayerEGL::stop()
+ {
++	nv12TargetCache_.clear();
+ 	eglImageOutCache_.clear();
+ 	eglImageInCache_.clear();
+ 	intermediateImage_.reset();
+@@ -1010,6 +1246,8 @@ void DebayerEGL::stop()
+ 		glDeleteProgram(programId_);
+ 	if (scaleProgramId_)
+ 		glDeleteProgram(scaleProgramId_);
++	if (nv12ProgramId_)
++		glDeleteProgram(nv12ProgramId_);
+ }
+ 
+ SizeRange DebayerEGL::sizes(PixelFormat inputFormat, const Size &inputSize)
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index 99116b5..ddc6e57 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -68,6 +68,7 @@ private:
+ 	static int getOutputConfig(PixelFormat outputFormat, DebayerOutputConfig &config);
+ 	int initBayerShaders(PixelFormat inputFormat, PixelFormat outputFormat);
+ 	int initScaleShaders(PixelFormat outputFormat);
++	int initNv12Shaders();
+ 	int getShaderVariableLocations();
+ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
+ 	void setScaleShaderVariableValues(eGLImage &eGLImageIn,
+@@ -77,6 +78,8 @@ private:
+ 		       std::optional<MappedFrameBuffer> *mappedInputBuffer,
+ 		       std::optional<DmaSyncer> *inputBufferDmaSyncer);
+ 	bool convertRgbaToNv12(FrameBuffer *output);
++	bool renderNv12Direct(FrameBuffer *output, const DebayerParams &params);
++	void setNv12ShaderVariableValues(const DebayerParams &params);
+ 	void selectOutput(unsigned int index);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+@@ -87,10 +90,18 @@ private:
+ 	GLuint fragmentShaderId_ = 0;
+ 	GLuint programId_ = 0;
+ 	GLuint scaleProgramId_ = 0;
++	GLuint nv12ProgramId_ = 0;
+ 
+ 	/* Pointer to object representing input texture */
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageInCache_;
+ 	std::deque<std::pair<SharedFD, std::unique_ptr<eGLImage>>> eglImageOutCache_;
++	struct Nv12Target {
++		SharedFD fd;
++		unsigned int yOffset;
++		unsigned int uvOffset;
++		std::unique_ptr<eGLImage> image;
++	};
++	std::deque<Nv12Target> nv12TargetCache_;
+ 	std::unique_ptr<eGLImage> intermediateImage_;
+ 	std::unique_ptr<eGLImage> nv12IntermediateImage_;
+ 	std::vector<uint8_t> rgbaBuffer_;
+@@ -100,6 +111,9 @@ private:
+ 	bool scaleUsesMipmaps_ = false;
+ 	bool anyScaleUsesMipmaps_ = false;
+ 	bool scaleSwapsRedBlue_ = true;
++	bool nv12RenderedDirect_ = false;
++	bool nv12DirectDisabled_ = false;
++	bool nv12DirectLogged_ = false;
+ 
+ 	struct OutputState {
+ 		DebayerOutputConfig config;
+@@ -130,6 +144,12 @@ private:
+ 	GLint scaleTextureUniformRgb_;
+ 	GLint scaleTextureUniformStep_;
+ 	GLint scaleSharpnessUniform_;
++	GLint nv12AttributeVertex_;
++	GLint nv12AttributeTexture_;
++	GLint nv12TextureUniformRgb_;
++	GLint nv12SourceRectUniform_;
++	GLint nv12OutputSizeUniform_;
++	GLint nv12SharpnessUniform_;
+ 	GLfloat scaleTextureCoordinates_[4][2];
+ 
+ 	/* Per-frame AWB gains */
+-- 
+2.49.0
+
