@@ -298,6 +298,8 @@ and through an open Camera3 HAL in Waydroid.
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
+| Complete clean-image camera provider | Bundles the reviewed 32-bit legacy provider, implementation libraries and VINTF declaration and sets both host camera properties with exact rollback, so cameras work after a fresh ARM64 Vanilla initialization. |
+| Verified Google-free Waydroid | Pins an official Vanilla/MAINLINE image pair by archive and extracted-image hashes and verifies that GMS, GSF and Play Store are absent. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
 | Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the [r36 bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12) is installed and its single-output preview passed all three cameras. |
 | Waydroid multi-output software ISP | Debayers one Bayer input once, keeps a linear RGB preview and coalesces NV12 encoder/analysis consumers with a centred crop; this removes the one-output limit and avoids repeated GPU readback. |
@@ -319,9 +321,9 @@ and through an open Camera3 HAL in Waydroid.
 The repository retains the previously accepted r8/r24/r7/r3 userspace camera
 baseline
 and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
-reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r51
-safety layer retains the exact r50 camera binaries and r36 colour correction,
-and includes reproducible
+reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
+clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
+correction, adds the complete legacy provider, and includes reproducible
 patches `0013`–`0017` for mixed RGB/NV12 streams, preview sizing, direct
 contiguous NV12 output and source-fence-safe mapped post-processing. Kernel r10
 and Codec2 r53 are installed. The exact r50 source completed a clean 198-target
@@ -391,9 +393,10 @@ install it atomically with `sudo scripts/install-waydroid-camera`. That helper
 backs up only its managed targets and prints the exact rollback directory.
 Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
 package hashes, clean three-camera probe and rollback command.
-The current [r51 auxiliary-video safety release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r51-aux-video-safety)
-keeps the accepted r50 runtime but deliberately removes the unsafe camera-ID-2
-recording profiles; auxiliary preview and still capture remain available.
+The r51 auxiliary-video safety release remains historical evidence. The r52
+bundle keeps that safety policy and adds every provider/property dependency
+needed by a clean Vanilla image; auxiliary preview and still capture remain
+available while camera-ID-2 hardware encoding stays blocked.
 The arm64 hardware encoder is a second, independently rollback-safe overlay.
 Fetch its pinned Android 13 sources, build, package and install with:
 
@@ -415,9 +418,12 @@ runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md). The r53
 archive and manifest are byte-reproducible and published in the
 [r53 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r53);
 their exact hashes and the r51 historical release are recorded there.
-Optional Play Store/GAPPS initialization and its read-only package verifier are
-documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
-or APK is included in this repository.
+The default Google-free deployment, exact image hashes, update policy and
+read-only verifier are documented in
+[docs/WAYDROID-VANILLA.md](docs/WAYDROID-VANILLA.md). Optional Play Store/GAPPS
+initialization remains separate in
+[docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image or APK is
+included in this repository.
 
 Before any overlay operation, run
 `pmos-check-waydroid-health --status --processes`. It reports stale rootfs
@@ -567,6 +573,18 @@ device nodes and installed tag-reader tools without enabling polling. When
 an external-reader fallback. Run `pmos-check-nfc --poll` only for an explicit
 tag test. NFC tag reading and payment support remain unaccepted until the
 recovered phone can detect a real tag. See [docs/NFC.md](docs/NFC.md).
+
+### Battery and suspend
+
+The immediate drain found on the reference phone was a failed Waydroid
+location service restarting every five seconds. Runtime r25 fixes and
+rate-limits that path and leaves continuous GNSS bridging disabled by default.
+The phone now uses Google-free Waydroid with frozen-container idle behavior.
+`pmos-configure-power` previews, applies and exactly rolls back a battery-only
+five-minute suspend policy without changing AC behavior, governors, radios,
+charging limits or firmware. Unplugged measurements and suspend/resume
+acceptance are still required before claiming Android battery parity; see
+[docs/POWER.md](docs/POWER.md).
 
 ## Project status
 

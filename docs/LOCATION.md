@@ -132,6 +132,15 @@ created. Stop it before changing the Waydroid image:
 sudo systemctl disable --now oneplus6t-waydroid-location.service
 ```
 
+Runtime r25 treats Vanilla Android's `No operations / Default mode: deny`
+app-op output as the normal default state. It snapshots the modem's enabled
+location sources and GPS refresh interval, enables only missing sources, and
+restores both values on every exit. The unit waits 30 seconds between failures
+and permits only six starts per ten minutes. This prevents an incompatible
+Android response from becoming the five-second CPU/GNSS restart loop found
+during the 2026-08-28 power audit. Continuous one-second GNSS still has a real
+battery cost, so leave the service disabled unless Waydroid location is needed.
+
 This remains a mock-provider integration. It does not provide a vendor GNSS
 HAL, and applications that reject mock locations may still refuse the fix.
 

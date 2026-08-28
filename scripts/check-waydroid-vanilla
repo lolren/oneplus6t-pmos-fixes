@@ -2,18 +2,18 @@
 set -eu
 
 PROGRAM=${0##*/}
-waydroid_cmd=${PMOS_WAYDROID_GAPPS_WAYDROID:-waydroid}
-timeout_seconds=${PMOS_WAYDROID_GAPPS_TIMEOUT:-10}
-output=${PMOS_WAYDROID_GAPPS_OUTPUT:-}
+waydroid_cmd=${PMOS_WAYDROID_VANILLA_WAYDROID:-waydroid}
+timeout_seconds=${PMOS_WAYDROID_VANILLA_TIMEOUT:-10}
+output=${PMOS_WAYDROID_VANILLA_OUTPUT:-}
 problems=0
 
 usage() {
 	cat <<EOF
 Usage: $PROGRAM [--output FILE]
 
-Read-only check for the Android packages that make a Waydroid GAPPS image
-usable for Google Play services and the Play Store. It never initializes,
-stops, starts or modifies Waydroid.
+Read-only verification that the running Waydroid image is LineageOS VANILLA
+and that Google Play services, Google Services Framework and Play Store are
+absent. It never initializes, starts, stops or modifies Waydroid.
 EOF
 }
 
@@ -43,11 +43,11 @@ done
 
 case "$timeout_seconds" in
 ''|*[!0-9]*)
-	die 'PMOS_WAYDROID_GAPPS_TIMEOUT must be a positive integer'
+	die 'PMOS_WAYDROID_VANILLA_TIMEOUT must be a positive integer'
 	;;
 esac
 [ "$timeout_seconds" -gt 0 ] ||
-	die 'PMOS_WAYDROID_GAPPS_TIMEOUT must be a positive integer'
+	die 'PMOS_WAYDROID_VANILLA_TIMEOUT must be a positive integer'
 
 if [ -n "$output" ]; then
 	[ ! -e "$output" ] || die "refusing to overwrite: $output"
@@ -66,14 +66,9 @@ run_waydroid() {
 	fi
 }
 
-printf 'report=oneplus6t-waydroid-gapps\n'
+printf 'report=oneplus6t-waydroid-vanilla\n'
 printf 'waydroid_command=%s\n' "$waydroid_cmd"
 printf 'timeout_seconds=%s\n' "$timeout_seconds"
-if command -v timeout >/dev/null 2>&1; then
-	printf '%s\n' 'timeout_support=available'
-else
-	printf '%s\n' 'timeout_support=unavailable (command may not be bounded)'
-fi
 
 status_output=''
 status_exit=0
@@ -81,6 +76,7 @@ if status_output=$(run_waydroid status 2>&1); then
 	:
 else
 	status_exit=$?
+	problems=$((problems + 1))
 fi
 printf 'status_exit=%s\n' "$status_exit"
 if [ -n "$status_output" ]; then
@@ -99,37 +95,61 @@ read_property() {
 		printf '%s=%s\n' "$label" "$value"
 	else
 		printf '%s=unavailable\n' "$label"
+		problems=$((problems + 1))
 	fi
 }
 
 read_property android_release ro.build.version.release
+read_property build_incremental ro.build.version.incremental
+read_property security_patch ro.build.version.security_patch
 read_property android_abis ro.product.cpu.abilist
+read_property lineage_version ro.lineage.version
 
-check_package() {
+release_type=$(run_waydroid shell -- getprop ro.lineage.releasetype 2>/dev/null || true)
+printf 'lineage_release_type=%s\n' "${release_type:-unavailable}"
+if [ "$release_type" != VANILLA ]; then
+	problems=$((problems + 1))
+fi
+
+android_path=$(run_waydroid shell -- pm path android 2>/dev/null || true)
+if printf '%s\n' "$android_path" | grep -q '^package:'; then
+	printf '%s\n' 'package_manager=ready'
+else
+	printf '%s\n' 'package_manager=unavailable'
+	problems=$((problems + 1))
+fi
+
+check_package_absent() {
 	label=$1
 	package=$2
 	paths=$(run_waydroid shell -- pm path "$package" 2>/dev/null || true)
 	if printf '%s\n' "$paths" | grep -q '^package:'; then
 		printf '%s=present\n' "$label"
-	else
-		printf '%s=missing\n' "$label"
 		problems=$((problems + 1))
-	fi
-	if [ -n "$paths" ]; then
 		printf '%s_paths_begin\n' "$label"
 		printf '%s\n' "$paths"
 		printf '%s_paths_end\n' "$label"
+	else
+		printf '%s=absent\n' "$label"
 	fi
 }
 
-check_package gms com.google.android.gms
-check_package gsf com.google.android.gsf
-check_package play_store com.android.vending
+check_package_absent gms com.google.android.gms
+check_package_absent gsf com.google.android.gsf
+check_package_absent play_store com.android.vending
+
+gms_version=$(run_waydroid shell -- getprop ro.com.google.gmsversion 2>/dev/null || true)
+if [ -n "$gms_version" ]; then
+	printf 'google_gms_property=%s\n' "$gms_version"
+	problems=$((problems + 1))
+else
+	printf '%s\n' 'google_gms_property=absent'
+fi
 
 if [ "$problems" -eq 0 ]; then
-	printf '%s\n' 'gapps=verified'
+	printf '%s\n' 'vanilla=verified'
 	exit 0
 fi
 
-printf '%s\n' 'gapps=not-verified'
+printf '%s\n' 'vanilla=not-verified'
 exit 1

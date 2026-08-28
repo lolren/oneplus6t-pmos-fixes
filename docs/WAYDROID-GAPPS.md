@@ -1,9 +1,14 @@
 # Waydroid GAPPS and Play Store
 
-This is an optional image-initialization procedure for the OnePlus 6T
+This is an optional, non-default image-initialization procedure for the OnePlus 6T
 Waydroid setup. It is separate from the camera overlay: the camera bundle
 contains no Google software and this repository does not redistribute Google
 APK files or system images.
+
+The reference phone now uses the Google-free deployment in
+[WAYDROID-VANILLA.md](WAYDROID-VANILLA.md). GAPPS is retained here only for
+users who explicitly accept its background services, account requirements and
+additional battery cost.
 
 Waydroid supports a GAPPS system type through its initializer. See the
 [official Waydroid command-line documentation](https://github.com/waydroid/docs/blob/master/usage/waydroid-command-line-options.md)

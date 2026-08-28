@@ -1,0 +1,110 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat >&2 <<'EOF'
+usage: prepare-waydroid-camera-provider VENDOR_IMG OUTPUT_DIR
+
+Extract the 32-bit legacy Camera Provider service and implementation libraries
+from a verified Waydroid ARM vendor image. OUTPUT_DIR must not exist or must be
+empty. The source image is never mounted or modified.
+EOF
+}
+
+if [ "$#" -ne 2 ]; then
+	usage
+	exit 2
+fi
+
+vendor_img=$1
+output_dir=$2
+
+[ -f "$vendor_img" ] || {
+	printf 'Vendor image does not exist: %s\n' "$vendor_img" >&2
+	exit 1
+}
+
+case "$output_dir" in
+	''|/)
+		printf 'Refusing unsafe output directory: %s\n' "$output_dir" >&2
+		exit 1
+		;;
+	*[!A-Za-z0-9_./-]*)
+		printf 'Output directory contains unsupported characters: %s\n' \
+			"$output_dir" >&2
+		exit 1
+		;;
+esac
+
+if [ -e "$output_dir" ] &&
+	find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+	printf 'Refusing non-empty output directory: %s\n' "$output_dir" >&2
+	exit 1
+fi
+
+for command in debugfs find install readelf sha256sum; do
+	command -v "$command" >/dev/null 2>&1 || {
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	}
+done
+
+extract_file() {
+	source=$1
+	target=$2
+	mode=$3
+
+	install -d "$(dirname "$target")"
+	if ! debugfs -R "dump -p $source $target" "$vendor_img" >/dev/null 2>&1; then
+		printf 'Could not extract required provider file: %s\n' "$source" >&2
+		exit 1
+	fi
+	chmod "$mode" "$target"
+}
+
+extract_file \
+	/bin/hw/android.hardware.camera.provider@2.4-service \
+	"$output_dir/vendor/bin/hw/android.hardware.camera.provider@2.4-service" \
+	0755
+extract_file \
+	/lib/hw/android.hardware.camera.provider@2.4-impl.so \
+	"$output_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so" \
+	0644
+extract_file \
+	/lib/android.hardware.camera.provider@2.4-legacy.so \
+	"$output_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so" \
+	0644
+extract_file \
+	/lib/camera.device@1.0-impl.so \
+	"$output_dir/vendor/lib/hw/camera.device@1.0-impl.so" \
+	0644
+
+for file in \
+	"$output_dir/vendor/bin/hw/android.hardware.camera.provider@2.4-service" \
+	"$output_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so" \
+	"$output_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so" \
+	"$output_dir/vendor/lib/hw/camera.device@1.0-impl.so"
+do
+	header=$(readelf -h "$file")
+	printf '%s\n' "$header" | grep -q 'Class:.*ELF32' || {
+		printf 'Provider file is not ELF32: %s\n' "$file" >&2
+		exit 1
+	}
+	printf '%s\n' "$header" | grep -q "Data:.*little endian" || {
+		printf 'Provider file is not little-endian: %s\n' "$file" >&2
+		exit 1
+	}
+	printf '%s\n' "$header" | grep -q 'Machine:.*ARM' || {
+		printf 'Provider file is not ARM: %s\n' "$file" >&2
+		exit 1
+	}
+done
+
+(
+	cd "$output_dir"
+	sha256sum \
+		vendor/bin/hw/android.hardware.camera.provider@2.4-service \
+		vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so \
+		vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so \
+		vendor/lib/hw/camera.device@1.0-impl.so
+)

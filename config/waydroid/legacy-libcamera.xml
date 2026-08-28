@@ -1,0 +1,13 @@
+<manifest version="1.0" type="device">
+    <hal format="hidl">
+        <name>android.hardware.camera.provider</name>
+        <transport>hwbinder</transport>
+        <!--
+          Waydroid already declares camera.provider 2.7 for external/0.
+          A fragment cannot add a second minor version for the same HIDL
+          major version. Declare the distinct instance as 2.7; libvintf's
+          minor-version compatibility lets the 2.4 legacy service register.
+        -->
+        <fqname>@2.7::ICameraProvider/legacy/0</fqname>
+    </hal>
+</manifest>

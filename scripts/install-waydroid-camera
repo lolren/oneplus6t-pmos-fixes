@@ -20,10 +20,16 @@ backup_root=${WAYDROID_CAMERA_BACKUP_ROOT:-/var/lib/waydroid/backups}
 waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
 mountinfo_file=${WAYDROID_CAMERA_MOUNTINFO:-/proc/self/mountinfo}
 proc_root=${WAYDROID_CAMERA_PROC_ROOT:-/proc}
+base_prop=${WAYDROID_CAMERA_BASE_PROP:-/var/lib/waydroid/waydroid_base.prop}
+runtime_prop=${WAYDROID_CAMERA_RUNTIME_PROP:-/var/lib/waydroid/waydroid.prop}
 dry_run=0
 
 runtime_files() {
 	cat <<'EOF'
+vendor/bin/hw/android.hardware.camera.provider@2.4-service
+vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so
+vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so
+vendor/lib/hw/camera.device@1.0-impl.so
 vendor/lib/hw/camera.libcamera.so
 vendor/lib/libcamera.so
 vendor/lib/libcamera-base.so
@@ -35,6 +41,7 @@ vendor/etc/libcamera/camera_hal.yaml
 vendor/etc/libcamera/configuration.yaml
 vendor/etc/media_profiles.xml
 vendor/etc/media_profiles_V1_0.xml
+vendor/etc/vintf/manifest/legacy-libcamera.xml
 vendor_extra/etc/seccomp_policy/mediaswcodec.policy
 vendor/share/libcamera/ipa/simple/imx371.yaml
 vendor/share/libcamera/ipa/simple/imx376.yaml
@@ -50,7 +57,7 @@ overlay_targets() {
 
 install_mode_for_target() {
 	case "$1" in
-		vendor/libexec/*) printf '%s\n' 0755 ;;
+		vendor/bin/*|vendor/libexec/*) printf '%s\n' 0755 ;;
 		*) printf '%s\n' 0644 ;;
 	esac
 }
@@ -167,6 +174,37 @@ EOF
 	fi
 }
 
+validate_host_properties() {
+	for property_file in "$base_prop" "$runtime_prop"; do
+		if [ -L "$property_file" ] || [ ! -f "$property_file" ]; then
+			printf 'Waydroid property file is missing or unsafe: %s\n' \
+				"$property_file" >&2
+			exit 1
+		fi
+	done
+}
+
+write_camera_property() {
+	property_file=$1
+	tmp_file=$2
+	awk '
+		BEGIN { written = 0 }
+		/^ro\.hardware\.camera=/ {
+			if (!written) {
+				print "ro.hardware.camera=libcamera"
+				written = 1
+			}
+			next
+		}
+		{ print }
+		END {
+			if (!written)
+				print "ro.hardware.camera=libcamera"
+		}
+	' "$property_file" > "$tmp_file"
+	install -m 0644 "$tmp_file" "$property_file"
+}
+
 render_init() {
 	template=$config_dir/init.zz-oneplus6t-camera.rc.in
 	if [ ! -f "$template" ]; then
@@ -214,6 +252,9 @@ create_backup() {
 	done <<EOF
 $(overlay_targets)
 EOF
+	mkdir -p "$backup_dir/host-props"
+	cp -p "$base_prop" "$backup_dir/host-props/waydroid_base.prop"
+	cp -p "$runtime_prop" "$backup_dir/host-props/waydroid.prop"
 }
 
 write_installed_manifest() {
@@ -227,6 +268,7 @@ write_installed_manifest() {
 $(overlay_targets)
 EOF
 	) > "$backup_dir/installed.sha256"
+	sha256sum "$base_prop" "$runtime_prop" > "$backup_dir/host-props.sha256"
 }
 
 do_install() {
@@ -234,6 +276,7 @@ do_install() {
 	overlay_dir=$2
 	validate_stage "$stage_dir"
 	validate_overlay "$overlay_dir"
+	validate_host_properties
 	tmp_dir=$(mktemp -d)
 	trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 	render_init "$tmp_dir/init.zz-oneplus6t-camera.rc"
@@ -244,6 +287,8 @@ do_install() {
 		printf 'dry-run: would back up to %s\n' "$backup_dir"
 		printf 'dry-run: would install %s runtime files plus the provider override\n' \
 			"$(runtime_files | wc -l | tr -d ' ')"
+		printf 'dry-run: would set ro.hardware.camera=libcamera in %s and %s\n' \
+			"$base_prop" "$runtime_prop"
 		return
 	fi
 
@@ -263,6 +308,8 @@ $(runtime_files)
 EOF
 	copy_file "$tmp_dir/init.zz-oneplus6t-camera.rc" \
 		"$overlay_dir/system/etc/init/init.zz-oneplus6t-camera.rc" 0644
+	write_camera_property "$base_prop" "$tmp_dir/waydroid_base.prop"
+	write_camera_property "$runtime_prop" "$tmp_dir/waydroid.prop"
 	write_installed_manifest "$overlay_dir" "$backup_dir"
 	cat "$backup_dir/installed.sha256"
 }
@@ -306,6 +353,18 @@ do_rollback() {
 				;;
 		esac
 	done < "$backup_dir/presence.tsv"
+	if [ -d "$backup_dir/host-props" ]; then
+		validate_host_properties
+		for property_name in waydroid_base.prop waydroid.prop; do
+			[ -f "$backup_dir/host-props/$property_name" ] || {
+				printf 'Backup property file is missing: %s\n' \
+					"$backup_dir/host-props/$property_name" >&2
+				exit 1
+			}
+		done
+		install -m 0644 "$backup_dir/host-props/waydroid_base.prop" "$base_prop"
+		install -m 0644 "$backup_dir/host-props/waydroid.prop" "$runtime_prop"
+	fi
 	printf 'rolled back: %s\n' "$backup_dir"
 }
 

@@ -5,11 +5,13 @@ Waydroid on the OnePlus 6T. It uses the mainline kernel cameras and libcamera's
 software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
-The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The installed r51 safety overlay exposes three Android cameras and retains the
-exact r50 binaries, Mesa EGL software ISP, DMA-heap fallback, JPEG sizing and
-r36 NV12 colour fix. It advertises recording only for the accepted main and
-front cameras; auxiliary preview, YUV and JPEG remain enabled.
+The reference phone runs Waydroid 1.6.3 with the pinned Android 13 ARM64
+Vanilla/MAINLINE image pair in [WAYDROID-VANILLA.md](WAYDROID-VANILLA.md).
+The r52 camera bundle is complete on a clean image: it carries the required
+32-bit legacy provider service and implementation in addition to the accepted
+r51/r50 Camera3 stack. It exposes three Android cameras and advertises
+recording only for the accepted main and front cameras; auxiliary preview,
+YUV and JPEG remain enabled.
 Patches `0013`–`0017` add multi-output processing, retain a fast linear RGB
 preview beside coalesced NV12 consumers and cap private previews to a sensor
 mode suitable for video. Patch `0016` writes a compatible contiguous NV12
@@ -24,6 +26,7 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 
 | Feature | What it brings |
 | --- | --- |
+| Clean-image provider bundle | Includes the reviewed 32-bit legacy provider service, implementation libraries and VINTF declaration, so a fresh ARM64 Vanilla image does not depend on leftovers from an older Waydroid generation. |
 | Three-camera enumeration | Android applications can open the main rear, secondary rear and front sensors instead of seeing no camera provider. |
 | Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path. |
 | minigbm plane parsing | The HAL reads Waydroid's real buffer offsets, strides and sizes, preventing corrupt mappings and one-plane assumptions. |
@@ -87,13 +90,18 @@ camera UI by themselves; an Android camera application consumes them.
   Its `@VIDEO_GID@` placeholder must become the numeric postmarketOS `video`
   GID; the `zz` prefix makes the ordering explicit. It also selects the
   reviewed recording-profile file and Codec2 path during Android early init.
+- `config/waydroid/legacy-libcamera.xml` declares the provider's `legacy/0`
+  HIDL instance to Android's framework compatibility matrix.
 - `config/waydroid/media_profiles.xml` declares conservative 480p/720p
   H.264/AAC profiles for the accepted main/front IDs. It intentionally omits
   the auxiliary ID until a non-Venus path or kernel/Codec2 fix is accepted.
 - `config/waydroid/mediaswcodec.policy` is the device-specific additive
   seccomp fragment required by Mesa's software encoder path.
+- `scripts/prepare-waydroid-camera-provider` extracts and verifies the four
+  required ELF32 ARM provider files from a separately hash-verified official
+  Waydroid ARM vendor image without mounting or modifying it.
 - `scripts/build-waydroid-camera` creates a clean Android ARMv7 libcamera build
-  and runtime staging tree.
+  and complete runtime staging tree, including that provider prefix.
 - `scripts/package-waydroid-camera` creates a tarball and matching file
   manifest from a staging tree.
 - `scripts/install-waydroid-camera` performs a target-scoped backup, install
@@ -119,9 +127,10 @@ The Android series depends on the generic frame-duration and autofocus work. It
 is intentionally separate from pmaports because Android HAL code and its ABI
 dependencies do not belong in the native Alpine package.
 
-Optional GAPPS/Play Store initialization and the read-only package verifier are
-documented in [WAYDROID-GAPPS.md](WAYDROID-GAPPS.md). The verifier is separate
-from the camera overlay and does not download, initialize or modify Waydroid.
+The accepted Google-free image, exact hashes and read-only verifier are in
+[WAYDROID-VANILLA.md](WAYDROID-VANILLA.md). Optional GAPPS/Play Store setup is
+kept separately in [WAYDROID-GAPPS.md](WAYDROID-GAPPS.md); neither verifier
+downloads, initializes or modifies Waydroid.
 
 ## Build requirements
 
@@ -149,8 +158,7 @@ The runtime phone must have:
 
 - OnePlus 6T postmarketOS edge with the documented SDM845 camera kernel stack;
 - Waydroid 1.6.3 or a reviewed compatible version;
-- an Android 13 ARMv7 mainline image;
-- `/vendor/bin/hw/android.hardware.camera.provider@2.4-service`; and
+- the accepted Android 13 ARM64 Vanilla/MAINLINE image with its ARMv7 ABI;
 - root access for the overlay installation.
 
 Do not install these ARMv7 Android libraries into native `/usr/lib`.
@@ -241,9 +249,27 @@ all go directly to Android keep the asynchronous fence path.
 
 ## Build a runtime bundle
 
+The clean-image bundle takes its generic legacy provider from the official
+Waydroid ARM vendor archive
+`lineage-18.1-20250628-MAINLINE-waydroid_arm-vendor.zip`. Verify its SHA-256
+`4178016188dd9871058af6fced3c66a42ad4c3fb89a8e5735e144f95ac609f9c`
+before extracting `vendor.img`, then prepare an isolated prefix:
+
+```sh
+scripts/prepare-waydroid-camera-provider \
+  /private/stage/waydroid-arm-vendor.img \
+  /private/stage/waydroid-provider-prefix
+```
+
+The preparer requires `debugfs` and `readelf`, refuses a non-empty output,
+checks every extracted file is little-endian ELF32 ARM, and prints their
+SHA-256 values. The accepted provider hashes are recorded in the r52 release;
+do not substitute provider files from OxygenOS or an unrelated Android build.
+
 ```sh
 export ANDROID_NDK_ROOT=/path/to/Android/Sdk/ndk/29.0.14206865
 export WAYDROID_DEPS_PREFIX=/path/to/android-armv7-dependencies
+export WAYDROID_PROVIDER_PREFIX=/private/stage/waydroid-provider-prefix
 export ANDROID_API=33
 export WAYDROID_SOFTISP_GPU=enabled
 
@@ -254,7 +280,7 @@ export WAYDROID_SOFTISP_GPU=enabled
 
 /path/to/oneplus6t-pmos-fixes/scripts/package-waydroid-camera \
   /path/to/stage-waydroid-camera \
-  /path/to/oneplus6t-camera-r51-aux-safety
+  /path/to/oneplus6t-camera-r52-vanilla-complete
 ```
 
 The helper configures only the simple pipeline/IPA and generic Android HAL,
@@ -270,10 +296,15 @@ or empty; this prevents mixing signed IPAs or libraries from different builds.
 At minimum, retain these runtime files together:
 
 ```text
+vendor/bin/hw/android.hardware.camera.provider@2.4-service
+vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so
+vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so
+vendor/lib/hw/camera.device@1.0-impl.so
 vendor/etc/libcamera/camera_hal.yaml
 vendor/etc/libcamera/configuration.yaml
 vendor/etc/media_profiles.xml
 vendor/etc/media_profiles_V1_0.xml
+vendor/etc/vintf/manifest/legacy-libcamera.xml
 vendor_extra/etc/seccomp_policy/mediaswcodec.policy
 vendor/lib/hw/camera.libcamera.so
 vendor/lib/libcamera.so
@@ -345,11 +376,13 @@ sudo scripts/install-waydroid-camera \
   /tmp/waydroid-camera-r35-gpu
 ```
 
-The installer manages the 13 runtime files plus
-`system/etc/init/init.zz-oneplus6t-camera.rc`. It creates a dated backup under
+The installer manages the 21 runtime files plus
+`system/etc/init/init.zz-oneplus6t-camera.rc` and the host
+`waydroid_base.prop`/`waydroid.prop` camera property. It creates a dated backup under
 `/var/lib/waydroid/backups/` and prints its path. Set
 `WAYDROID_CAMERA_BACKUP_ROOT` to use another backup root. Shared objects, YAML
-and the signature are mode 0644; the software-IPA proxy is mode 0755. The
+and the signature are mode 0644; provider executables and the software-IPA
+proxy are mode 0755. The
 provider override runs as Android's `cameraserver`, adds the host video GID so
 it can open the mainline media devices, and writes bounded diagnostic logs to
 `/data/local/tmp/libcamera-provider.log` inside Android.
@@ -955,6 +988,49 @@ verify both hashes above, extract into a new empty staging directory and run
 the guarded installer only while the Waydroid session and container are
 stopped. Do not substitute the older r50 profile files.
 
+## r52 clean-Vanilla acceptance
+
+The GAPPS-to-Vanilla migration exposed a packaging dependency that an in-place
+r51 upgrade could not reveal. The old Waydroid tree already contained a
+32-bit legacy provider and both host camera properties; a fresh ARM64 Vanilla
+image did not. The framework therefore had no usable camera provider even
+though every project-built Camera3 library was present.
+
+The r52 candidate includes the four verified provider files, VINTF manifest
+and the existing 16 r51 runtime files. The guarded installer now manages 21
+runtime files, sets exactly one `ro.hardware.camera=libcamera` line in both
+host property files, and saves their exact originals beside the overlay
+backup. Its fixture test performs a real install and rollback, proving that an
+old provider/property state is restored and newly introduced targets are
+removed.
+
+The source provider came from the hash-verified official Waydroid ARM
+2025-06-28 MAINLINE vendor image. Its accepted file hashes are:
+
+```text
+provider service: 289d25aac2976c7846f7d1ab5190fc13518bd7818220422c4e159a35f3058034
+provider implementation: 4afca5a19384f1f988918245dcf36e7a4a8862880fb70119c65f6f3cacd1c06c
+legacy provider module: 06ee026271182a55e28f765dca4edd8111b839eca61d5532d575a9a076cc0c8a
+camera.device implementation: 94fa320d31e441de2d9af4ce2fe18ec9ffddc6f38fe41754737021a064eefcd2
+VINTF manifest: cdd30a3f1792b9408f0d55850fc5453dca16e39fcafa252005dba881cc07b982
+r52 candidate archive: 57a7f015461c2c5a3544401592307de78d5b991c3ac78b21eecb9d8662b8652e
+r52 candidate manifest: 5c5ee54715a1d0e71cb4f6cbda1878969c360d1fa9858dc5c3d80c54eb001f25
+```
+
+On the clean accepted Vanilla image, Android reports the provider `running`,
+the external provider with zero devices and the intended legacy provider with
+three devices. Isolated Camera2 `preview` and displayed `surface` profiles
+passed on IDs 0, 1 and 2. IDs 0/1 delivered roughly 1.6–1.8 displayed FPS;
+ID 2 reached 9.0 displayed FPS while its ImageReader diagnostic path was 2.2
+FPS. This confirms the user's Waydroid preview lag and places the main
+bottleneck in the provider/software-ISP path rather than a universal
+SurfaceFlinger limit. All three surface samples covered full RGB range, and no
+kernel, IOMMU, GPU, Venus, provider or Android fatal event followed the runs.
+
+These are functional and diagnostic results, not image-quality or Android
+performance parity. A private face/colour-chart comparison and full JPEG run
+remain required. Hardware encoding on camera ID 2 remains prohibited.
+
 ## Rollback
 
 Stop the Waydroid session and container, then pass the exact backup directory
@@ -967,8 +1043,9 @@ sudo waydroid container start
 waydroid session start
 ```
 
-The script restores every backed-up file to its original relative overlay path
-and removes only targets explicitly recorded as absent before installation.
+The script restores every backed-up file and both host property files to their
+exact prior state and removes only overlay targets explicitly recorded as
+absent before installation.
 Require the prior camera count and provider state after restarting.
 
 Never replace the complete Waydroid overlay with an old copy: it may contain

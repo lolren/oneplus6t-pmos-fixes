@@ -1,0 +1,142 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+set -eu
+
+PROGRAM=${0##*/}
+gsettings_cmd=${PMOS_POWER_POLICY_GSETTINGS:-gsettings}
+state_root=${PMOS_POWER_POLICY_STATE_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/oneplus6t-pmos-fixes}
+state_file=$state_root/power-policy.tsv
+timeout_seconds=${PMOS_POWER_POLICY_TIMEOUT:-300}
+mode=dry-run
+
+schema=org.gnome.settings-daemon.plugins.power
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [--dry-run|--apply|--rollback] [--timeout SECONDS]
+
+Configure a reversible battery-only Phosh/GNOME power policy. The policy dims
+when idle, asks for the power-saver profile at low battery, and suspends after
+five minutes of battery inactivity by default. AC behavior, CPU limits,
+charging limits, radios, boot state and firmware are not changed.
+
+--apply stores the current values before changing them. --rollback restores
+that exact backup and removes it only after every setting is restored.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--dry-run) mode=dry-run; shift ;;
+	--apply) mode=apply; shift ;;
+	--rollback) mode=rollback; shift ;;
+	--timeout)
+		[ "$#" -ge 2 ] || die '--timeout requires seconds'
+		timeout_seconds=$2
+		shift 2
+		;;
+	-h|--help) usage; exit 0 ;;
+	*) usage >&2; die "unknown option: $1" ;;
+	esac
+done
+
+case "$timeout_seconds" in
+''|*[!0-9]*) die 'timeout must be an integer from 60 through 3600' ;;
+esac
+[ "$timeout_seconds" -ge 60 ] && [ "$timeout_seconds" -le 3600 ] ||
+	die 'timeout must be an integer from 60 through 3600'
+
+command -v "$gsettings_cmd" >/dev/null 2>&1 ||
+	die "gsettings command not found: $gsettings_cmd"
+
+settings() {
+	printf '%s\n' \
+		'idle-dim|true' \
+		'power-saver-profile-on-low-battery|true' \
+		"sleep-inactive-battery-timeout|$timeout_seconds" \
+		"sleep-inactive-battery-type|'suspend'"
+}
+
+read_value() {
+	"$gsettings_cmd" get "$schema" "$1"
+}
+
+set_value() {
+	key=$1
+	value=$2
+	"$gsettings_cmd" set "$schema" "$key" "$value"
+}
+
+validate_value() {
+	key=$1
+	expected=$2
+	actual=$(read_value "$key")
+	[ "$actual" = "$expected" ] ||
+		die "setting did not take effect: $key (expected $expected, got $actual)"
+}
+
+printf 'report=oneplus6t-power-policy\n'
+printf 'mode=%s\n' "$mode"
+printf 'battery_suspend_timeout_seconds=%s\n' "$timeout_seconds"
+printf '%s\n' 'ac_policy=unchanged'
+
+if [ "$mode" = rollback ]; then
+	[ -f "$state_file" ] || die "rollback state does not exist: $state_file"
+	tab=$(printf '\t')
+	while IFS="$tab" read -r key value; do
+		case "$key" in
+		idle-dim|power-saver-profile-on-low-battery|sleep-inactive-battery-timeout|sleep-inactive-battery-type) ;;
+		*) die "invalid rollback key: $key" ;;
+		esac
+		[ -n "$value" ] || die "empty rollback value: $key"
+		set_value "$key" "$value"
+		validate_value "$key" "$value"
+		printf 'restored_%s=%s\n' "$key" "$value"
+	done < "$state_file"
+	rm -f -- "$state_file"
+	printf '%s\n' 'result=rolled-back'
+	exit 0
+fi
+
+while IFS='|' read -r key desired; do
+	current=$(read_value "$key")
+	printf 'current_%s=%s\n' "$key" "$current"
+	printf 'desired_%s=%s\n' "$key" "$desired"
+done <<EOF
+$(settings)
+EOF
+
+if [ "$mode" = dry-run ]; then
+	printf '%s\n' 'result=dry-run'
+	exit 0
+fi
+
+[ ! -e "$state_file" ] ||
+	die "rollback state already exists; use --rollback before replacing it: $state_file"
+mkdir -p -- "$state_root"
+chmod 0700 -- "$state_root"
+: > "$state_file"
+chmod 0600 -- "$state_file"
+
+while IFS='|' read -r key desired; do
+	current=$(read_value "$key")
+	printf '%s\t%s\n' "$key" "$current" >> "$state_file"
+done <<EOF
+$(settings)
+EOF
+
+while IFS='|' read -r key desired; do
+	set_value "$key" "$desired"
+	validate_value "$key" "$desired"
+	printf 'applied_%s=%s\n' "$key" "$desired"
+done <<EOF
+$(settings)
+EOF
+
+printf 'rollback_state=%s\n' "$state_file"
+printf '%s\n' 'result=applied'

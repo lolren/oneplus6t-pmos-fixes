@@ -8,6 +8,7 @@ usage() {
 		'Required environment:' \
 		'  ANDROID_NDK_ROOT       Android NDK root (tested: 29.0.14206865)' \
 		'  WAYDROID_DEPS_PREFIX   ARMv7 Android static dependency prefix' \
+		'  WAYDROID_PROVIDER_PREFIX  Output from prepare-waydroid-camera-provider' \
 		'' \
 		'Optional environment:' \
 		'  ANDROID_API            Android API level (default: 33)' \
@@ -26,8 +27,9 @@ android_api=${ANDROID_API:-33}
 softisp_gpu=${WAYDROID_SOFTISP_GPU:-auto}
 ndk_root=${ANDROID_NDK_ROOT:-}
 deps_prefix=${WAYDROID_DEPS_PREFIX:-}
+provider_prefix=${WAYDROID_PROVIDER_PREFIX:-}
 
-if [ -z "$ndk_root" ] || [ -z "$deps_prefix" ]; then
+if [ -z "$ndk_root" ] || [ -z "$deps_prefix" ] || [ -z "$provider_prefix" ]; then
 	usage >&2
 	exit 2
 fi
@@ -86,7 +88,11 @@ for required in \
 	"$deps_prefix/lib/pkgconfig/libcrypto.pc" \
 	"$deps_prefix/lib/pkgconfig/libexif.pc" \
 	"$deps_prefix/lib/pkgconfig/libjpeg.pc" \
-	"$deps_prefix/lib/pkgconfig/libyuv.pc"
+	"$deps_prefix/lib/pkgconfig/libyuv.pc" \
+	"$provider_prefix/vendor/bin/hw/android.hardware.camera.provider@2.4-service" \
+	"$provider_prefix/vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so" \
+	"$provider_prefix/vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so" \
+	"$provider_prefix/vendor/lib/hw/camera.device@1.0-impl.so"
 do
 	if [ ! -e "$required" ]; then
 		printf 'Missing required Android build input: %s\n' "$required" >&2
@@ -101,7 +107,7 @@ for command in cmake meson ninja openssl pkg-config python3 sha256sum; do
 	fi
 done
 
-case "$toolchain$deps_prefix" in
+case "$toolchain$deps_prefix$provider_prefix" in
 	*"'"*)
 		printf '%s\n' 'NDK and dependency paths containing a single quote are unsupported.' >&2
 		exit 1
@@ -169,6 +175,17 @@ DESTDIR="$stage_dir" meson install -C "$build_dir"
 install -Dm0644 "$stage_dir/vendor/lib/libcamera-hal.so" \
 	"$stage_dir/vendor/lib/hw/camera.libcamera.so"
 install -Dm0755 "$libcxx" "$stage_dir/vendor/lib/libc++_shared.so"
+install -Dm0755 \
+	"$provider_prefix/vendor/bin/hw/android.hardware.camera.provider@2.4-service" \
+	"$stage_dir/vendor/bin/hw/android.hardware.camera.provider@2.4-service"
+for provider_library in \
+	android.hardware.camera.provider@2.4-impl.so \
+	android.hardware.camera.provider@2.4-legacy.so \
+	camera.device@1.0-impl.so
+do
+	install -Dm0644 "$provider_prefix/vendor/lib/hw/$provider_library" \
+		"$stage_dir/vendor/lib/hw/$provider_library"
+done
 install -Dm0644 "$project_dir/config/waydroid/camera_hal.yaml" \
 	"$stage_dir/vendor/etc/libcamera/camera_hal.yaml"
 install -Dm0644 "$project_dir/config/waydroid/configuration.yaml" \
@@ -179,12 +196,18 @@ install -Dm0644 "$project_dir/config/waydroid/media_profiles.xml" \
 	"$stage_dir/vendor/etc/media_profiles_V1_0.xml"
 install -Dm0644 "$project_dir/config/waydroid/mediaswcodec.policy" \
 	"$stage_dir/vendor_extra/etc/seccomp_policy/mediaswcodec.policy"
+install -Dm0644 "$project_dir/config/waydroid/legacy-libcamera.xml" \
+	"$stage_dir/vendor/etc/vintf/manifest/legacy-libcamera.xml"
 for tuning in imx371.yaml imx376.yaml imx519.yaml; do
 	install -Dm0644 "$project_dir/config/libcamera/simple/$tuning" \
 		"$stage_dir/vendor/share/libcamera/ipa/simple/$tuning"
 done
 
 sha256sum \
+	"$stage_dir/vendor/bin/hw/android.hardware.camera.provider@2.4-service" \
+	"$stage_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-impl.so" \
+	"$stage_dir/vendor/lib/hw/android.hardware.camera.provider@2.4-legacy.so" \
+	"$stage_dir/vendor/lib/hw/camera.device@1.0-impl.so" \
 	"$stage_dir/vendor/lib/hw/camera.libcamera.so" \
 	"$stage_dir/vendor/lib/libcamera.so" \
 	"$stage_dir/vendor/lib/libcamera-base.so" \
@@ -196,6 +219,7 @@ sha256sum \
 	"$stage_dir/vendor/etc/libcamera/configuration.yaml" \
 	"$stage_dir/vendor/etc/media_profiles.xml" \
 	"$stage_dir/vendor/etc/media_profiles_V1_0.xml" \
+	"$stage_dir/vendor/etc/vintf/manifest/legacy-libcamera.xml" \
 	"$stage_dir/vendor_extra/etc/seccomp_policy/mediaswcodec.policy" \
 	"$stage_dir/vendor/share/libcamera/ipa/simple/imx371.yaml" \
 	"$stage_dir/vendor/share/libcamera/ipa/simple/imx376.yaml" \

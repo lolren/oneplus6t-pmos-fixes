@@ -20,6 +20,7 @@ SCRIPTS = \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
 	scripts/pmos-safe-upgrade \
+	scripts/configure-power \
 	scripts/check-power \
 	scripts/measure-power \
 	scripts/check-nfc \
@@ -28,6 +29,7 @@ SCRIPTS = \
 	scripts/manage-display-kernel \
 	scripts/check-waydroid-health \
 	scripts/check-waydroid-gapps \
+	scripts/check-waydroid-vanilla \
 	scripts/camera-flash \
 	scripts/run-waydroid-camera-probe \
 	scripts/compare-waydroid-camera-probes \
@@ -40,6 +42,7 @@ PYTHON_SCRIPTS = \
 	scripts/waydroid-location-bridge.py
 
 HOST_BUILD_SCRIPTS = \
+	scripts/prepare-waydroid-camera-provider \
 	scripts/build-waydroid-camera \
 	scripts/package-waydroid-camera \
 	scripts/install-waydroid-camera \
@@ -84,13 +87,16 @@ test:
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-v4l2-codec-installer.sh \
 		tests/test-waydroid-v4l2-codec-build.sh \
+		tests/test-waydroid-provider-preparer.sh \
 		tests/test-waydroid-probe-runner.sh \
 		tests/test-waydroid-probe-compare.sh \
 		tests/test-waydroid-gpu-sync.sh \
 		tests/test-waydroid-rgb-preview.sh \
 		tests/test-waydroid-contiguous-nv12.sh \
 		tests/test-waydroid-postprocessor-fence.sh \
-		 tests/test-waydroid-gapps.sh \
+		tests/test-waydroid-gapps.sh \
+		tests/test-waydroid-vanilla.sh \
+		tests/test-power-policy.sh \
 		tests/test-display-report.sh \
 		tests/test-camera-flash.sh \
 		tests/test-device-acceptance.sh \
@@ -109,6 +115,7 @@ test:
 	./tests/test-audio-routing-check.sh
 	./tests/test-power-report.sh
 	./tests/test-power-sampler.sh
+	./tests/test-power-policy.sh
 	./tests/test-nfc-report.sh
 	./tests/test-location-report.sh
 	./tests/test-waydroid-health.sh
@@ -116,6 +123,7 @@ test:
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-v4l2-codec-installer.sh
 	sh tests/test-waydroid-v4l2-codec-build.sh
+	sh tests/test-waydroid-provider-preparer.sh
 	sh tests/test-waydroid-probe-runner.sh
 	sh tests/test-waydroid-probe-compare.sh
 	sh tests/test-waydroid-gpu-sync.sh
@@ -123,6 +131,7 @@ test:
 	sh tests/test-waydroid-contiguous-nv12.sh
 	sh tests/test-waydroid-postprocessor-fence.sh
 	sh tests/test-waydroid-gapps.sh
+	sh tests/test-waydroid-vanilla.sh
 	sh tests/test-display-report.sh
 	sh tests/test-display-kernel-manager.sh
 	./tests/test-camera-flash.sh
@@ -158,6 +167,7 @@ install:
 	$(INSTALL) -m 0644 config/waydroid/camera_hal.yaml \
 		config/waydroid/configuration.yaml \
 		config/waydroid/init.zz-oneplus6t-camera.rc.in \
+		config/waydroid/legacy-libcamera.xml \
 		config/waydroid/media_profiles.xml \
 		config/waydroid/mediaswcodec.policy \
 		"$(DESTDIR)$(LIBEXECDIR)/config/waydroid/"
@@ -226,6 +236,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"
 	ln -sfn "$(LIBEXECDIR)/scripts/pmos-safe-upgrade" \
 		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
+	ln -sfn "$(LIBEXECDIR)/scripts/configure-power" \
+		"$(DESTDIR)$(SBINDIR)/pmos-configure-power"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-power" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-power"
 	ln -sfn "$(LIBEXECDIR)/scripts/measure-power" \
@@ -244,6 +256,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-health"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-gapps" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-gapps"
+	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-vanilla" \
+		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-vanilla"
 	ln -sfn "$(LIBEXECDIR)/scripts/run-waydroid-camera-probe" \
 		"$(DESTDIR)$(SBINDIR)/pmos-run-waydroid-camera-probe"
 	ln -sfn "$(LIBEXECDIR)/scripts/compare-waydroid-camera-probes" \

@@ -11,24 +11,24 @@ cat >"$FAKE_WAYDROID" <<'EOF'
 #!/bin/sh
 set -eu
 
-command_key=${1-}:${2-}:${3-}:${4-}
+command_key=${1-}:${2-}:${3-}:${4-}:${5-}
 case "$command_key" in
-status:::)
+status::::)
 	printf '%s\n' 'Session: RUNNING'
 	;;
-shell:getprop:ro.build.version.release:)
+shell:--:getprop:ro.build.version.release:)
 	printf '%s\n' '13'
 	;;
-shell:getprop:ro.product.cpu.abilist:)
+shell:--:getprop:ro.product.cpu.abilist:)
 	printf '%s\n' 'armeabi-v7a,armeabi'
 	;;
-shell:pm:path:com.google.android.gms)
+shell:--:pm:path:com.google.android.gms)
 	printf '%s\n' 'package:/system/priv-app/GmsCore/GmsCore.apk'
 	;;
-shell:pm:path:com.google.android.gsf)
+shell:--:pm:path:com.google.android.gsf)
 	printf '%s\n' 'package:/system/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk'
 	;;
-shell:pm:path:com.android.vending)
+shell:--:pm:path:com.android.vending)
 	if [ "${FAKE_WAYDROID_MODE:-all}" = missing-store ]; then
 		exit 1
 	fi

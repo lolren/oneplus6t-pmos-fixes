@@ -2531,3 +2531,66 @@ The exact assets are published in the
 A fresh GitHub download matches both local release files byte for byte and its
 `sha256sum -c SHA256SUMS` check passes. No private coordinates, SIM identifiers,
 photographs or device logs are release assets.
+
+## Google-free Waydroid, clean-image camera and power audit
+
+Date: 2026-08-28. The prior GAPPS Waydroid tree and user data were retained as
+a recoverable generation; they were not deleted. The replacement uses the
+official 2026-04-03 ARM64 Vanilla system and MAINLINE vendor archives. Archive
+SHA-256 values are `c4b45fad36bee7c0db8a1d9315a5be0035520c53d3d005a807735ae9b7ee79cf`
+and `1e6d33d464277ea3964e4658001c8882f21325616d6bcc66d473bc9ee1e246c7`.
+The installed extracted image hashes are
+`e9d0a498105feb5e00895066dee90d738b3961ba334416f26498e357ee966b2e`
+and `b18a05747db565c134db48031caeec3ce4bd9e0ce8f88ef9c679f3ef9e24e39a`.
+Waydroid records the explicit image path, `suspend_action = freeze` and no OTA
+channels, making image updates a controlled generation change.
+
+The live `check-waydroid-vanilla` report passes. Android identifies itself as
+LineageOS `VANILLA`, Android 13, build `eng.aleast.20260403.040932`, security
+patch `2026-02-01`, with ARM64 and ARMv7 ABIs. Package Manager is responsive;
+GMS, GSF and Play Store are absent and `ro.com.google.gmsversion` is empty.
+The test suite rejects a non-Vanilla release type, an unavailable Package
+Manager, any of those packages, or a GMS property, preventing an unresponsive
+container from being mistaken for a Google-free image.
+
+The clean image revealed that r51 had depended on four legacy-provider files
+and two host properties left by the previous image. The r52 candidate now
+extracts those files from a separately hash-verified official Waydroid ARM
+vendor image, verifies each as little-endian ELF32 ARM, includes its VINTF
+manifest, and sets `ro.hardware.camera=libcamera` in both property files. The
+guarded installer backs up all managed targets and both property files. A real
+fixture install/rollback restores duplicate old property lines byte-for-byte,
+restores an old provider/init fragment, and removes only files recorded absent.
+
+After r52 installation, the provider remained `running` and Android enumerated
+three legacy cameras. Isolated Camera2 preview and displayed-surface tests all
+ended valid. The measured preview/display rates were 1.76/1.84 FPS on ID 0,
+1.80/1.64 FPS on ID 1, and 2.19/9.01 FPS on ID 2. The difference confirms real
+Waydroid provider/software-ISP cost and avoids attributing every slowdown to
+SurfaceFlinger. RGB surface samples covered the full channel range. No kernel
+Venus/IOMMU/GPU/camera fault, provider death or Android fatal event appeared.
+No encoding test was run on camera ID 2.
+
+The power audit found a failed optional location service restarting every five
+seconds; it had reached 381 restarts and consumed about 0.58 CPU seconds per
+attempt. The service was disabled immediately. Runtime r25 accepts Vanilla's
+default app-op output, snapshots and restores ModemManager GPS sources and the
+refresh interval, backs off to 30-second restarts and limits bursts. Its 16
+bridge/service tests pass. With the loop gone, an idle camera probe stopped and
+Waydroid running/frozen, a live process sample reported about 96% CPU idle.
+
+The kernel exposes the expected SDM845 CPU-idle/PSCI, RPMh domain, schedutil,
+generic PM and runtime-PM support. It exposes `s2idle` rather than a separate
+`deep` choice. The fuel gauge currently estimates 3.192 Ah full versus 3.640 Ah
+design. The new per-user power helper changes only battery idle dim,
+low-battery profile selection and a 300-second battery suspend action, stores
+mode-0600 exact rollback state, and leaves AC/radios/governors/charging/boot
+untouched. Fixture apply, repeated-apply refusal, exact rollback and timeout
+bounds pass. A detached RTC-bounded `s2idle` test then took USB networking
+offline and returned automatically. Kernel suspend stats changed to one
+success with every failure counter at zero; Wi-Fi and cellular reconnected,
+the display and camera nodes returned, and a post-resume Waydroid ID-0 surface
+probe passed at 1.94 FPS with no fatal fault. The 300-second battery-only policy
+was applied and its original 900-second state retained. Repeated cycles and
+unplugged drain remain the physical acceptance gate; Android-equivalent battery
+life is not claimed.
