@@ -25,13 +25,15 @@ is not in a configured repository, installation uses
 `apk add --allow-untrusted`; the package's ordinary dependencies remain
 resolved through the target's configured repositories.
 
-The package depends on the current owners of `ip`, `mmcli`, `nmcli` and the
-Mobile Broadband Provider database. Runtime r17 and later select postmarketOS's
-PipeWire UI backend and the PipeWire-Pulse systemd socket; this replaces the
-conflicting real PulseAudio daemon while preserving `pactl` through
-`pulseaudio-utils`. `curl`, `resolvectl` and systemd time tools remain optional:
-diagnostics degrade safely when they are absent, and the time helper reports an
-explicit error outside a systemd installation.
+The package depends on the current owners of `getent`, `curl`, `ip`, `mmcli`,
+`nmcli` and the Mobile Broadband Provider database. Runtime r17 and later
+select postmarketOS's PipeWire UI backend and the PipeWire-Pulse systemd
+socket; this replaces the conflicting real PulseAudio daemon while preserving
+`pactl` through `pulseaudio-utils`. The cellular-only acceptance command uses
+`resolvectl` when it is already present and otherwise falls back to `getent`,
+avoiding a hard dependency on systemd-resolved. Other diagnostics continue to
+degrade safely when optional systemd tools are absent, and the time helper
+reports an explicit error outside a systemd installation.
 
 Runtime r19 is built from commit `92e7c20`. Two clean `abuild` runs from
 different absolute source paths with `SOURCE_DATE_EPOCH=1787888364` produced
@@ -112,7 +114,10 @@ explicit kernel-NCI tag test.
 The package also installs `pmos-run-device-acceptance`, which combines the
 individual reports into a private evidence directory. Its camera, Messages,
 GAPPS and NFC-poll checks are opt-in; the default run does not mutate the
-phone. See `docs/ACCEPTANCE.md`.
+phone. The packaged `pmos-test-cellular-only` and the runner's two
+cellular-only options are also opt-in: they briefly disable Wi-Fi, verify
+native and optional Waydroid traffic, then restore the exact initial Wi-Fi
+radio/profile state. See `docs/ACCEPTANCE.md`.
 
 Before upstreaming this recipe:
 

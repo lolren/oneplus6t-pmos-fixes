@@ -80,6 +80,37 @@ sudo ./scripts/configure-mobile-data
 ./scripts/check-mobile-data
 ```
 
+`check-mobile-data` binds its probes to the modem interface, so it remains
+useful while Wi-Fi is preferred. To prove the system-wide fallback path as
+well, run the explicit cellular-only test:
+
+```sh
+./scripts/test-cellular-only
+```
+
+It snapshots the initial Wi-Fi radio state and every active Wi-Fi profile
+UUID, disables Wi-Fi, waits for the system default route to match the modem
+bearer, and verifies native DNS and HTTPS. It restores the original Wi-Fi
+radio/profile state on normal, failure and signal exits. If Wi-Fi was already
+disabled, it leaves it disabled. A failed preflight makes no network change.
+
+When Waydroid is already running, include its NAT path:
+
+```sh
+./scripts/test-cellular-only --with-waydroid
+```
+
+This additionally checks raw IPv4 and DNS-name connectivity inside Android.
+For a normal login user, sudo is validated before Wi-Fi changes and used only
+for `waydroid status`/`waydroid shell`; root runs those commands directly. The
+test does not start Waydroid, create or recycle a bearer, edit an APN, or touch
+boot state. It can briefly interrupt network applications, so it is never part
+of the default observational acceptance run.
+
+With the runtime package installed, use `pmos-test-cellular-only` in place of
+the source path. A bounded wait can be selected with `--wait-seconds N`, where
+`N` is 10 through 180 seconds.
+
 The profile is bound to the detected SIM operator with
 `gsm.sim-operator-id`, uses unlimited autoconnect retries, and follows the IP
 mode recorded in the reviewed rule. SMARTY's current official instructions
@@ -194,6 +225,12 @@ The checker finds the active modem instead of assuming modem zero, identifies
 the cellular default-route interface, and binds transport tests to it. A
 successful run reports LTE state plus any available IPv4/IPv6 tests, cellular
 DNS and cellular HTTPS.
+
+The separate cellular-only test requires `curl`; it uses `resolvectl` when
+available and otherwise the portable `getent` resolver path. Its
+machine-readable report includes the selected cellular interface, native
+default route, resolver method, HTTPS result, optional Waydroid results and
+Wi-Fi restoration result.
 
 An IPv6 skip is informational when the carrier supplies only IPv4. A raw IP
 ping succeeding while DNS/HTTPS fails usually points to incorrect system time;

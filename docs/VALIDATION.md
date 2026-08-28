@@ -2052,3 +2052,32 @@ The bundle is source/package validated and remains opt-in. It has not been
 installed or image-quality accepted on the reference phone because that phone
 still exposes the pre-reboot wedged USB/SSH session. Keep r26/r14 and the
 device-accepted runtime/UI baseline available for rollback.
+
+## Guarded cellular-only acceptance automation
+
+Date: 2026-08-28. `test-cellular-only` now turns the earlier manual Wi-Fi-off
+SMARTY/Waydroid acceptance sequence into an explicit, machine-readable check.
+Before mutation it reads the Wi-Fi radio state, captures and validates every
+active wireless profile UUID, verifies required commands and, when requested,
+validates sudo for the Waydroid-only probes. It then disables Wi-Fi, reuses the
+interface-bound mobile checker, requires the ordinary native default route to
+match that cellular interface, and verifies DNS plus HTTPS. A running Waydroid
+session can additionally be required to pass raw-IP and DNS-name probes.
+
+Wi-Fi restoration is trap-backed on normal, failure and signal exits. A
+partially successful `nmcli radio wifi off`, cellular-check failure, resolver
+failure or later probe failure still runs restoration. Initial radio-disabled
+state remains disabled; initial radio-enabled state is re-enabled and each
+captured UUID is explicitly reactivated. A restoration failure changes the
+overall result to failure. The script never creates/cycles a modem profile,
+starts Waydroid or modifies boot state.
+
+Fixture tests pass for the success path, non-root Waydroid sudo boundary,
+systemd-resolved and `getent` resolver paths, initial Wi-Fi-disabled state,
+mobile failure, partial Wi-Fi-disable failure, active-profile-query failure,
+sudo-preflight failure and Wi-Fi-restore failure. Package staging verifies the
+installed command link. The acceptance runner's opt-in native and Waydroid
+flags are fixture-tested while its default remains observational. The complete
+repository `make test` suite passes. Live execution against the newly inserted
+SIM remains gated by the unchanged wedged SSH channel and requires a physical
+phone reboot first.

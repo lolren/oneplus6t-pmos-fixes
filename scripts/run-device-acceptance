@@ -13,11 +13,14 @@ output=
 with_camera=no
 with_messages=no
 with_gapps=no
+cellular_only=no
+cellular_only_waydroid=no
 nfc_poll=no
 close_camera_apps=no
 stability_seconds=60
 
 mobile_data_check=${PMOS_ACCEPT_MOBILE_DATA_CHECK:-$SCRIPT_DIR/check-mobile-data}
+cellular_only_check=${PMOS_ACCEPT_CELLULAR_ONLY_CHECK:-$SCRIPT_DIR/test-cellular-only}
 audio_check=${PMOS_ACCEPT_AUDIO_CHECK:-$SCRIPT_DIR/check-audio-routing}
 display_check=${PMOS_ACCEPT_DISPLAY_CHECK:-$SCRIPT_DIR/check-display}
 location_check=${PMOS_ACCEPT_LOCATION_CHECK:-$SCRIPT_DIR/check-location}
@@ -41,15 +44,21 @@ Options:
   --with-camera            run the bounded all-sensor autofocus/stability test
   --with-messages          launch Chatty and verify its D-Bus window
   --with-gapps             verify the optional Waydroid Google packages
+  --cellular-only          briefly disable and restore Wi-Fi while proving the
+                           native default route, DNS and HTTPS use cellular
+  --cellular-only-waydroid run the cellular-only check and also prove a
+                           running Waydroid instance has raw-IP and DNS access
   --nfc-poll               explicitly poll for an NFC reader/tag
   --close-camera-apps      allow the camera test to stop camera applications
   --stability-seconds N    camera rear-camera window, 10..300 (default: 60)
   --help                   show this help
 
 The camera test restarts only the graphical user's PipeWire/WirePlumber
-services and is therefore opt-in. Location and NFC evidence can contain
-private coordinates or tag identifiers; keep the output directory private.
-No option flashes, reboots, changes partitions or modifies boot state.
+services and is therefore opt-in. Both cellular-only options temporarily
+disable Wi-Fi and restore its original radio/profile state, so they are also
+opt-in. Location and NFC evidence can contain private coordinates or tag
+identifiers; keep the output directory private. No option flashes, reboots,
+changes partitions or modifies boot state.
 EOF
 }
 
@@ -75,6 +84,15 @@ while [ "$#" -gt 0 ]; do
 		;;
 	--with-gapps)
 		with_gapps=yes
+		shift
+		;;
+	--cellular-only)
+		cellular_only=yes
+		shift
+		;;
+	--cellular-only-waydroid)
+		cellular_only=yes
+		cellular_only_waydroid=yes
 		shift
 		;;
 	--nfc-poll)
@@ -161,6 +179,13 @@ else
 fi
 
 run_check mobile-data "$mobile_data_check"
+if [ "$cellular_only" = yes ]; then
+	if [ "$cellular_only_waydroid" = yes ]; then
+		run_check cellular-only "$cellular_only_check" --with-waydroid
+	else
+		run_check cellular-only "$cellular_only_check"
+	fi
+fi
 run_check audio-routing "$audio_check"
 run_check display "$display_check"
 run_check location "$location_check"

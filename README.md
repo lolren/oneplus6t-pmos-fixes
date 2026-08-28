@@ -38,6 +38,20 @@ sudo ./scripts/configure-mobile-data
 ./scripts/check-mobile-data
 ```
 
+To prove that ordinary native traffic really falls back to cellular, run the
+guarded Wi-Fi-off check. Add Waydroid only when its session is already running:
+
+```sh
+./scripts/test-cellular-only
+./scripts/test-cellular-only --with-waydroid
+```
+
+The command records the active Wi-Fi profile UUIDs before changing anything,
+briefly disables Wi-Fi, checks the cellular default route, DNS and HTTPS, then
+restores the original radio/profile state on success, failure or interruption.
+It does not create or recycle a modem bearer. The Waydroid option validates
+sudo before Wi-Fi is touched and elevates only the Android shell probes.
+
 When installed as a package, the configurator also enables the five-minute
 `oneplus6t-mobile-data-watchdog.timer`. The watchdog checks only the UUID that
 this project records, does nothing to healthy or ordinarily inactive profiles,
@@ -151,8 +165,11 @@ pmos-run-device-acceptance --output "$HOME/oneplus6t-acceptance/run-1"
 
 Add `--with-camera --close-camera-apps` for the bounded all-sensor focus and
 stability test, `--with-messages` for Chatty activation, or
-`--with-gapps` for the optional Waydroid Play Store package check. The
-runner keeps per-check logs and `summary.psv`; see
+`--with-gapps` for the optional Waydroid Play Store package check. Use
+`--cellular-only` to prove native Wi-Fi fallback or
+`--cellular-only-waydroid` to include a running Android container. Both
+cellular-only modes restore the original Wi-Fi state. The runner keeps
+per-check logs and `summary.psv`; see
 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for the safety boundary and privacy
 notes.
 

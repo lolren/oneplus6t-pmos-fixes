@@ -50,6 +50,24 @@ pmos-run-device-acceptance \
 explicitly invokes the NFC reader and may change its state; use it only when a
 tag is available.
 
+`--cellular-only` adds an explicit native fallback test. It records the active
+Wi-Fi profile UUIDs, briefly disables Wi-Fi, requires the default route, DNS
+and HTTPS to use the connected modem bearer, and restores the original Wi-Fi
+state on every exit path:
+
+```sh
+pmos-run-device-acceptance \
+  --output "$HOME/oneplus6t-acceptance/cellular-run" \
+  --cellular-only
+```
+
+Use `--cellular-only-waydroid` instead to also require an already-running
+Waydroid session and prove raw-IP and DNS-name access inside Android. The
+cellular helper validates sudo before changing Wi-Fi and elevates only its
+Waydroid commands, so the acceptance runner itself remains in the graphical
+user session. Neither option starts Waydroid or cycles/configures the modem.
+The resulting `cellular-only.log` records whether restoration passed.
+
 The camera run requires the same conditions as
 `tests/camera/validate-pipewire-af.sh`: a graphical session, active PipeWire
 and WirePlumber, no competing camera stream and the installed matching camera

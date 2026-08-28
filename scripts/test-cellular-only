@@ -1,0 +1,261 @@
+#!/bin/sh
+set -eu
+
+# Prove that native postmarketOS and, optionally, Waydroid can use the cellular
+# bearer while Wi-Fi is unavailable. Wi-Fi radio/profile state is restored on
+# every normal, failure and signal exit path.
+
+LC_ALL=C
+export LC_ALL
+
+PROGRAM=${0##*/}
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+NMCLI=${PMOS_CELLULAR_ONLY_NMCLI:-nmcli}
+IP=${PMOS_CELLULAR_ONLY_IP:-ip}
+CURL=${PMOS_CELLULAR_ONLY_CURL:-curl}
+RESOLVECTL=${PMOS_CELLULAR_ONLY_RESOLVECTL:-resolvectl}
+GETENT=${PMOS_CELLULAR_ONLY_GETENT:-getent}
+WAYDROID=${PMOS_CELLULAR_ONLY_WAYDROID:-waydroid}
+SUDO=${PMOS_CELLULAR_ONLY_SUDO:-sudo}
+SLEEP=${PMOS_CELLULAR_ONLY_SLEEP:-sleep}
+MOBILE_CHECK=${PMOS_CELLULAR_ONLY_MOBILE_CHECK:-$SCRIPT_DIR/check-mobile-data}
+effective_uid=${PMOS_CELLULAR_ONLY_UID:-$(id -u)}
+
+with_waydroid=no
+wait_seconds=60
+wifi_restore_needed=no
+wifi_restore_done=no
+wifi_uuids=
+waydroid_with_sudo=no
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Temporarily disable Wi-Fi, prove that the system default route, DNS and HTTPS
+use the connected cellular bearer, then restore the original Wi-Fi state.
+
+Options:
+  --with-waydroid       also require a running Waydroid session and prove its
+                        raw-IP and DNS-name connectivity; when run as a normal
+                        user, validate sudo before changing Wi-Fi and elevate
+                        only the Waydroid shell probes
+  --wait-seconds N      wait 10..180 seconds for the cellular default route
+                        (default: 60)
+  --help                show this help
+
+Run from the phone's normal booted postmarketOS environment. The command never
+cycles a modem bearer, edits a NetworkManager profile, starts Waydroid, or
+changes a boot/partition state. It may briefly interrupt Wi-Fi traffic. The
+original Wi-Fi radio state and active Wi-Fi profile UUIDs are restored even if
+a probe fails or the command is interrupted.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--with-waydroid)
+		with_waydroid=yes
+		shift
+		;;
+	--wait-seconds)
+		[ "$#" -ge 2 ] || die '--wait-seconds requires a value'
+		wait_seconds=$2
+		shift 2
+		;;
+	--help|-h)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		die "unknown option: $1"
+		;;
+	esac
+done
+
+case "$wait_seconds" in
+""|*[!0-9]*) die '--wait-seconds must be an integer' ;;
+esac
+[ "$wait_seconds" -ge 10 ] && [ "$wait_seconds" -le 180 ] || \
+	die '--wait-seconds must be between 10 and 180'
+case "$effective_uid" in
+""|*[!0-9]*) die 'effective UID must be an integer' ;;
+esac
+
+for required in "$NMCLI" "$IP" "$CURL" "$SLEEP" "$MOBILE_CHECK"; do
+	command -v "$required" >/dev/null 2>&1 || die "missing required command: $required"
+done
+if command -v "$RESOLVECTL" >/dev/null 2>&1; then
+	dns_method=resolvectl
+elif command -v "$GETENT" >/dev/null 2>&1; then
+	dns_method=getent
+else
+	die 'DNS verification requires resolvectl or getent'
+fi
+if [ "$with_waydroid" = yes ]; then
+	command -v "$WAYDROID" >/dev/null 2>&1 || die "missing required command: $WAYDROID"
+	if [ "$effective_uid" -ne 0 ]; then
+		command -v "$SUDO" >/dev/null 2>&1 || die 'sudo is required for Waydroid probes'
+		"$SUDO" -v || die 'could not validate sudo before the cellular-only test'
+		waydroid_with_sudo=yes
+	fi
+fi
+
+run_waydroid() {
+	if [ "$waydroid_with_sudo" = yes ]; then
+		"$SUDO" "$WAYDROID" "$@"
+	else
+		"$WAYDROID" "$@"
+	fi
+}
+
+wifi_initial=$("$NMCLI" radio wifi 2>/dev/null) || die 'could not read Wi-Fi radio state'
+case "$wifi_initial" in
+enabled|disabled) ;;
+*) die "unexpected Wi-Fi radio state: $wifi_initial" ;;
+esac
+
+if [ "$wifi_initial" = enabled ]; then
+	active_connections=$("$NMCLI" -t -f UUID,TYPE connection show --active \
+		2>/dev/null) || die 'could not read active NetworkManager connections'
+	wifi_uuids=$(printf '%s\n' "$active_connections" | \
+		awk -F: '$2 == "802-11-wireless" { print $1 }')
+	for uuid in $wifi_uuids; do
+		printf '%s\n' "$uuid" | grep -Eq \
+			'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$' || \
+			die 'NetworkManager returned an unsafe Wi-Fi profile UUID'
+	done
+fi
+
+restore_wifi() {
+	[ "$wifi_restore_done" = no ] || return 0
+	wifi_restore_done=yes
+	if [ "$wifi_restore_needed" != yes ]; then
+		printf '%s\n' 'wifi_restore=not-required'
+		return 0
+	fi
+
+	restore_status=0
+	"$NMCLI" radio wifi on >/dev/null 2>&1 || restore_status=1
+	if [ "$restore_status" -eq 0 ]; then
+		for uuid in $wifi_uuids; do
+			"$NMCLI" --wait 30 connection up uuid "$uuid" >/dev/null 2>&1 || \
+				restore_status=1
+		done
+	fi
+	if [ "$restore_status" -eq 0 ] &&
+	   [ "$("$NMCLI" radio wifi 2>/dev/null || true)" = enabled ]; then
+		printf '%s\n' 'wifi_restore=pass'
+		return 0
+	fi
+	printf '%s\n' 'wifi_restore=fail'
+	return 1
+}
+
+restore_on_exit() {
+	status=$?
+	trap - EXIT HUP INT TERM
+	if ! restore_wifi; then
+		status=1
+	fi
+	exit "$status"
+}
+
+trap restore_on_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+printf '%s\n' 'report=oneplus6t-cellular-only'
+printf 'wifi_initial=%s\n' "$wifi_initial"
+if [ "$wifi_initial" = enabled ]; then
+	wifi_restore_needed=yes
+	"$NMCLI" radio wifi off >/dev/null || die 'could not disable Wi-Fi radio'
+	[ "$("$NMCLI" radio wifi 2>/dev/null || true)" = disabled ] || \
+		die 'Wi-Fi radio did not become disabled'
+	printf '%s\n' 'wifi_disable=pass'
+	"$SLEEP" 2
+else
+	printf '%s\n' 'wifi_disable=already-disabled'
+fi
+
+mobile_output=
+if ! mobile_output=$("$MOBILE_CHECK" 2>&1); then
+	printf '%s\n' "$mobile_output"
+	die 'cellular interface-bound checks failed'
+fi
+printf '%s\n' "$mobile_output"
+data_iface=$(printf '%s\n' "$mobile_output" | awk -F= \
+	'$1 == "data_interface" { print $2; exit }')
+case "$data_iface" in
+""|*[!A-Za-z0-9_.:@-]*) die 'mobile checker returned an unsafe data interface' ;;
+esac
+
+route_interface() {
+	result=$("$IP" -4 route get 1.1.1.1 2>/dev/null || true)
+	if [ -z "$result" ]; then
+		result=$("$IP" -6 route get 2606:4700:4700::1111 2>/dev/null || true)
+	fi
+	printf '%s\n' "$result" | awk '
+		{ for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit } }
+	'
+}
+
+elapsed=0
+default_iface=
+while [ "$elapsed" -lt "$wait_seconds" ]; do
+	default_iface=$(route_interface)
+	[ "$default_iface" = "$data_iface" ] && break
+	"$SLEEP" 1
+	elapsed=$((elapsed + 1))
+done
+[ "$default_iface" = "$data_iface" ] || \
+	die "system default route did not move to cellular interface $data_iface"
+printf 'native_default_interface=%s\n' "$default_iface"
+printf '%s\n' 'native_default_route=pass'
+
+if [ "$dns_method" = resolvectl ]; then
+	"$RESOLVECTL" query postmarketos.org >/dev/null || die 'native DNS lookup failed'
+else
+	"$GETENT" ahosts postmarketos.org >/dev/null || die 'native DNS lookup failed'
+fi
+printf 'native_dns_method=%s\n' "$dns_method"
+printf '%s\n' 'native_dns=pass'
+https_code=$("$CURL" -L --fail --connect-timeout 10 --max-time 30 \
+	-sS -o /dev/null -w '%{http_code}' https://postmarketos.org) || \
+	die 'native HTTPS request failed'
+case "$https_code" in
+200|204) ;;
+*) die "native HTTPS returned status $https_code" ;;
+esac
+printf 'native_https=%s\n' "$https_code"
+
+if [ "$with_waydroid" = yes ]; then
+	waydroid_status=$(run_waydroid status 2>/dev/null || true)
+	printf '%s\n' "$waydroid_status" | grep -Eq '^Session:[[:space:]]+RUNNING$' || \
+		die 'Waydroid session is not running'
+	printf '%s\n' "$waydroid_status" | grep -Eq '^Container:[[:space:]]+RUNNING$' || \
+		die 'Waydroid container is not running'
+	run_waydroid shell ping -c 3 -W 3 1.1.1.1 >/dev/null || \
+		die 'Waydroid cellular raw-IP probe failed'
+	printf '%s\n' 'waydroid_ipv4=pass'
+	run_waydroid shell ping -c 1 -W 5 postmarketos.org >/dev/null || \
+		die 'Waydroid cellular DNS/name probe failed'
+	printf '%s\n' 'waydroid_dns=pass'
+else
+	printf '%s\n' 'waydroid=skipped'
+fi
+
+if ! restore_wifi; then
+	trap - EXIT HUP INT TERM
+	die 'failed to restore original Wi-Fi state'
+fi
+trap - EXIT HUP INT TERM
+printf '%s\n' 'result=pass'

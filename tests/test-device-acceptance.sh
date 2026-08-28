@@ -20,25 +20,28 @@ make_check() {
 	chmod 0755 "$path"
 }
 
-for check in mobile-data audio display location nfc power waydroid; do
+for check in mobile-data cellular-only audio display location nfc power waydroid; do
 	make_check "$check"
 done
 
 output=$TEST_DIR/output
 PMOS_ACCEPT_COMPATIBLE_FILE="$TEST_DIR/compatible" \
 PMOS_ACCEPT_MOBILE_DATA_CHECK="$TEST_DIR/bin/mobile-data" \
+PMOS_ACCEPT_CELLULAR_ONLY_CHECK="$TEST_DIR/bin/cellular-only" \
 PMOS_ACCEPT_AUDIO_CHECK="$TEST_DIR/bin/audio" \
 PMOS_ACCEPT_DISPLAY_CHECK="$TEST_DIR/bin/display" \
 PMOS_ACCEPT_LOCATION_CHECK="$TEST_DIR/bin/location" \
 PMOS_ACCEPT_NFC_CHECK="$TEST_DIR/bin/nfc" \
 PMOS_ACCEPT_POWER_CHECK="$TEST_DIR/bin/power" \
 PMOS_ACCEPT_WAYDROID_CHECK="$TEST_DIR/bin/waydroid" \
-	"$RUNNER" --output "$output" --nfc-poll
+	"$RUNNER" --output "$output" --nfc-poll --cellular-only-waydroid
 
 grep -Fqx 'compatibility|0|'"$output/compatibility.log" "$output/summary.psv"
 grep -Fqx 'nfc|0|'"$output/nfc.log" "$output/summary.psv"
+grep -Fqx 'cellular-only|0|'"$output/cellular-only.log" "$output/summary.psv"
 grep -Fqx 'result=pass' "$output/report.txt"
 grep -Fqx -- '--poll' "$output/nfc.log"
+grep -Fqx -- '--with-waydroid' "$output/cellular-only.log"
 
 if "$RUNNER" --output "$output" >/dev/null 2>&1; then
 	printf '%s\n' 'device acceptance unexpectedly overwrote evidence' >&2
@@ -50,6 +53,7 @@ bad_output=$TEST_DIR/bad-output
 set +e
 PMOS_ACCEPT_COMPATIBLE_FILE="$TEST_DIR/wrong-compatible" \
 PMOS_ACCEPT_MOBILE_DATA_CHECK="$TEST_DIR/bin/mobile-data" \
+PMOS_ACCEPT_CELLULAR_ONLY_CHECK="$TEST_DIR/bin/cellular-only" \
 PMOS_ACCEPT_AUDIO_CHECK="$TEST_DIR/bin/audio" \
 PMOS_ACCEPT_DISPLAY_CHECK="$TEST_DIR/bin/display" \
 PMOS_ACCEPT_LOCATION_CHECK="$TEST_DIR/bin/location" \
@@ -62,5 +66,6 @@ set -e
 [ "$status" -ne 0 ]
 grep -Fqx 'compatibility|1|'"$bad_output/compatibility.log" "$bad_output/summary.psv"
 grep -Fqx 'result=fail' "$bad_output/report.txt"
+[ ! -e "$bad_output/cellular-only.log" ]
 
 printf '%s\n' 'device acceptance tests passed'

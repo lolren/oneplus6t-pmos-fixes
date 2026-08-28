@@ -11,6 +11,7 @@ SCRIPTS = \
 	scripts/configure-mobile-data \
 	scripts/remove-mobile-data \
 	scripts/check-mobile-data \
+	scripts/test-cellular-only \
 	scripts/mobile-data-watchdog \
 	scripts/configure-daily-use \
 	scripts/configure-time-sync \
@@ -72,9 +73,10 @@ test:
 		tests/fixtures/mobile-watchdog-nmcli \
 		tests/fixtures/mobile-watchdog-mmcli \
 		tests/fixtures/mobile-watchdog-ip \
-			 tests/test-apn-selection.sh tests/test-messages-check.sh \
+		tests/test-apn-selection.sh tests/test-messages-check.sh \
 		tests/test-mobile-data-watchdog.sh \
-			tests/test-ssh-recovery.sh \
+		tests/test-cellular-only.sh \
+		tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-v4l2-codec-installer.sh \
 		tests/test-waydroid-v4l2-codec-build.sh \
@@ -92,6 +94,7 @@ test:
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
 	./tests/test-mobile-data-watchdog.sh
+	./tests/test-cellular-only.sh
 	./tests/test-daily-use.sh
 	./tests/test-messages-check.sh
 	./tests/test-ssh-recovery.sh
@@ -198,6 +201,8 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-configure-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/remove-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-remove-mobile-data"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-mobile-data" "$(DESTDIR)$(SBINDIR)/pmos-check-mobile-data"
+	ln -sfn "$(LIBEXECDIR)/scripts/test-cellular-only" \
+		"$(DESTDIR)$(SBINDIR)/pmos-test-cellular-only"
 	ln -sfn "$(LIBEXECDIR)/scripts/mobile-data-watchdog" \
 		"$(DESTDIR)$(SBINDIR)/pmos-mobile-data-watchdog"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-daily-use" "$(DESTDIR)$(SBINDIR)/pmos-configure-daily-use"

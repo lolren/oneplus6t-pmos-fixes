@@ -10,6 +10,8 @@ The current scripts may:
 - create or delete a NetworkManager profile that they own;
 - enable normal system time synchronization;
 - perform bounded connectivity tests;
+- explicitly disable Wi-Fi for a cellular-only acceptance test after recording
+  its radio/profile state, provided every exit path restores that state;
 - inspect camera/media state and private captures without publishing them;
 - inspect Waydroid mounts, load and I/O pressure with
   `pmos-check-waydroid-health` without changing services or storage;
@@ -98,3 +100,9 @@ not assume that sending a signal succeeded; repeat the report after recovery.
 The mobile-data rollback script reads the UUID recorded at installation and
 refuses to delete a non-GSM profile. Existing user-created profiles are left
 untouched.
+
+The cellular-only test is a temporary acceptance action, not configuration. It
+must capture active Wi-Fi profile UUIDs before disabling the radio, restore the
+radio and those exact profiles after success/failure/interruption, and report a
+restoration failure as an overall failure. It must not cycle the modem, change
+the APN profile, start Waydroid, reboot or touch boot state.
