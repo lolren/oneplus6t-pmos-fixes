@@ -505,8 +505,8 @@ index 0000000..b6685e7
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=14
-+_commit="af69a7151b8fcba1d0650fd911f42e340279e8d0"
++pkgrel=15
++_commit="6813a64b499177d3d0ef5272b019c6da53400fba"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -567,7 +567,7 @@ index 0000000..b6685e7
 +}
 +
 +sha512sums="
-+e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a  advanced-snapshot-0.1.0.tar.gz
++49252237523317fdd3e27aa4edb60c6ed932a0108757a32208f385d6698c07401bfd9f172045c57ad2af6b7109003dc061527e428d5663931b8685ec3a2771ad  advanced-snapshot-0.1.0.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch

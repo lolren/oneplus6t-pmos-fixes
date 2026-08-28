@@ -1,0 +1,14 @@
+schema|1
+generation|oneplus6t-r26-r15
+compatible|oneplus,fajita
+signing-key|pmos@local-6a8b0868.rsa.pub|31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+candidate|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1
+candidate|advanced-snapshot|0.1.0-r15|aarch64|advanced-snapshot-0.1.0-r15.apk|16581bcf5c96aa74c522c4f51bbd5cb03711a3e41abd02f00a6d9eec7cf61705
+candidate|advanced-snapshot-lang|0.1.0-r15|noarch|advanced-snapshot-lang-0.1.0-r15.apk|dec0ec0c229848a0e157e2eba49ab9e74d30423e69ae76bbd73773eea97b61d2
+candidate|libcamera|99990.7.2-r26|aarch64|libcamera-99990.7.2-r26.apk|9d7f18701c19db365e981d0e6e741ce87232ccb7f022b47ac525fc90aac60552
+candidate|libcamera-ipa|99990.7.2-r26|aarch64|libcamera-ipa-99990.7.2-r26.apk|1a2d6228ed4afe9ac5c90500caa92f7c7370799ebbe89c9770da747a615e18d3
+rollback|pipewire-spa-libcamera|1.6.8-r7|aarch64|pipewire-spa-libcamera-1.6.8-r7.apk|c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1
+rollback|advanced-snapshot|0.1.0-r11|aarch64|advanced-snapshot-0.1.0-r11.apk|f4dafe29a4682df10b4649fee3110dac419c8179098e0a9762f48a2251cf7c1b
+rollback|advanced-snapshot-lang|0.1.0-r11|noarch|advanced-snapshot-lang-0.1.0-r11.apk|40a9a822421d5640ce14f1046006bbb5b92b022862d977de0d7d14cf30f2c95a
+rollback|libcamera|99990.7.2-r24|aarch64|libcamera-99990.7.2-r24.apk|80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9
+rollback|libcamera-ipa|99990.7.2-r24|aarch64|libcamera-ipa-99990.7.2-r24.apk|12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8
