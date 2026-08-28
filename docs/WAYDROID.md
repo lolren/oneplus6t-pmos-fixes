@@ -855,6 +855,10 @@ camera.libcamera.so: 8d6d714bb1449cf3ffb42f66708a053f50c1e5c83c62890ca6b3c1cc9e6
 libcamera.so: a9a52464f750989112537daa92706cbeb41553d63c06eeaa978a86c984cdd5ca
 ```
 
+The exact archive and manifest are published in the
+[r49 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r49-contiguous-nv12).
+Downloading both assets again produced the hashes above.
+
 ## Rollback
 
 Stop the Waydroid session and container, then pass the exact backup directory
