@@ -57,6 +57,21 @@ grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAM
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
 
+skip_log=$TEST_DIR/waydroid-skip.log
+skip_result=$TEST_DIR/result-skip.txt
+: >"$skip_log"
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$skip_log" \
+	PMOS_WAYDROID_PROBE_SKIP_INSTALL=yes \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	"$RUNNER" "$apk" preview "$skip_result" >"$TEST_DIR/skip-stdout"
+grep -q 'shell -- pm path dev.lolren.waydroidcameraprobe' "$skip_log"
+if grep -q 'shell -- pm install' "$skip_log"; then
+	printf '%s\n' 'skip-install probe unexpectedly invoked package install' >&2
+	exit 1
+fi
+grep -q 'PROBE_DONE profile=preview valid=1 total=1' "$skip_result"
+
 result_720p=$TEST_DIR/result-720p.txt
 PATH="$TEST_DIR/bin:$PATH" \
 	WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \

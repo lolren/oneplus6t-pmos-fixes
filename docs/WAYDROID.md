@@ -101,7 +101,9 @@ camera UI by themselves; an Android camera application consumes them.
   archive manifest, target-scoped install and exact rollback for the hardware
   encoder service.
 - `scripts/run-waydroid-camera-probe` installs the probe APK, starts one of its
-  validation/performance profiles and waits for a saved `PROBE_DONE` result.
+  validation/performance profiles and waits for a saved `PROBE_DONE` result;
+  repeated A/B runs can verify and reuse the installed package instead of
+  updating it between samples.
 - `tests/waydroid-camera-probe/` builds the validation APK.
 
 The Android series depends on the generic frame-duration and autofocus work. It

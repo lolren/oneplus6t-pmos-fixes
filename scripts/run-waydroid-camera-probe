@@ -4,6 +4,7 @@ set -eu
 program=${0##*/}
 timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
 camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
+skip_install=${PMOS_WAYDROID_PROBE_SKIP_INSTALL:-no}
 
 usage() {
 	printf '%s\n' \
@@ -61,13 +62,22 @@ case "$camera_id" in
 	[ -z "$camera_id" ] || die 'PMOS_WAYDROID_PROBE_CAMERA_ID must be numeric'
 	;;
 esac
+case "$skip_install" in
+yes|no) ;;
+*) die 'PMOS_WAYDROID_PROBE_SKIP_INSTALL must be yes or no' ;;
+esac
 [ -z "$output" ] || [ ! -e "$output" ] || die "refusing to overwrite: $output"
 
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
 
-apk_bytes=$(wc -c <"$apk" | tr -d ' ')
-[ "$apk_bytes" -gt 0 ] || die "APK is empty: $apk"
-waydroid shell -- pm install -r -S "$apk_bytes" <"$apk"
+if [ "$skip_install" = no ]; then
+	apk_bytes=$(wc -c <"$apk" | tr -d ' ')
+	[ "$apk_bytes" -gt 0 ] || die "APK is empty: $apk"
+	waydroid shell -- pm install -r -S "$apk_bytes" <"$apk"
+else
+	waydroid shell -- pm path dev.lolren.waydroidcameraprobe >/dev/null ||
+		die 'probe package is not installed in Waydroid'
+fi
 waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe

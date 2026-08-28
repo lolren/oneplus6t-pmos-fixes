@@ -173,7 +173,10 @@ permission, stops any previous
 probe instance, clears only the probe's old generated result, waits for
 `PROBE_DONE`, and refuses to overwrite an existing host result file. The runner
 allows twenty minutes for `full` and eight minutes for the shorter profiles.
-Set `PMOS_WAYDROID_PROBE_TIMEOUT` to override that limit. To isolate one
+Set `PMOS_WAYDROID_PROBE_TIMEOUT` to override that limit. For repeated matched
+performance runs, set `PMOS_WAYDROID_PROBE_SKIP_INSTALL=yes` after the first
+successful install; the runner verifies that the package exists, but avoids an
+unnecessary Package Manager update between samples. To isolate one
 numeric Camera2 ID during diagnosis, set `PMOS_WAYDROID_PROBE_CAMERA_ID`, for
 example:
 
