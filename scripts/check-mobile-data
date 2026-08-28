@@ -46,8 +46,11 @@ for bearer_path in $bearer_paths; do
 		}')
 	[ "$bearer_connected" = yes ] || continue
 	[ -n "$bearer_iface" ] && [ "$bearer_iface" != -- ] || continue
-	if ip -4 route show default dev "$bearer_iface" | grep -q . || \
-	   ip -6 route show default dev "$bearer_iface" | grep -q .; then
+	# NetworkManager normally installs WWAN routes in an interface-specific
+	# policy table while Wi-Fi is also active. Searching only the main table
+	# incorrectly reports a healthy bearer as disconnected.
+	if ip -4 route show table all default dev "$bearer_iface" | grep -q . || \
+	   ip -6 route show table all default dev "$bearer_iface" | grep -q .; then
 		data_iface=$bearer_iface
 		break
 	fi
@@ -102,11 +105,6 @@ fi
 
 [ "$has_ip" = yes ] || die "cellular interface has no global IP address"
 
-if command -v resolvectl >/dev/null 2>&1; then
-	resolvectl query --interface="$data_iface" postmarketos.org >/dev/null || die "cellular DNS resolution failed"
-	printf 'dns=ok\n'
-fi
-
 if [ "$has_ipv4" = yes ]; then
 	curl_family=-4
 	default_iface=$(ip -4 route show default | awk 'NR == 1 { print $5 }')
@@ -114,6 +112,19 @@ else
 	curl_family=-6
 	default_iface=$(ip -6 route show default | awk 'NR == 1 { print $5 }')
 fi
+if command -v resolvectl >/dev/null 2>&1; then
+	if resolvectl query --interface="$data_iface" postmarketos.org >/dev/null 2>&1; then
+		printf 'dns=ok\n'
+	elif [ "$default_iface" != "$data_iface" ]; then
+		# NetworkManager can defer publishing WWAN DNS to systemd-resolved
+		# until Wi-Fi stops owning the system default route. The guarded
+		# cellular-only test verifies that transition and the carrier DNS.
+		printf 'dns=deferred (cellular is not system default)\n'
+	else
+		die "cellular DNS resolution failed"
+	fi
+fi
+
 if command -v curl >/dev/null 2>&1; then
 	code=$(curl --interface "$data_iface" "$curl_family" --connect-timeout 10 --max-time 20 -sS -o /dev/null -w '%{http_code}' https://postmarketos.org)
 	[ "$code" = 200 ] || die "cellular HTTPS returned status $code"

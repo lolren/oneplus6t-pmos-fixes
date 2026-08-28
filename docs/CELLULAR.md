@@ -80,9 +80,13 @@ sudo ./scripts/configure-mobile-data
 ./scripts/check-mobile-data
 ```
 
-`check-mobile-data` binds its probes to the modem interface, so it remains
-useful while Wi-Fi is preferred. To prove the system-wide fallback path as
-well, run the explicit cellular-only test:
+`check-mobile-data` recognises NetworkManager's per-interface policy route and
+binds its ping and HTTPS transport to the modem interface, so it remains
+useful while Wi-Fi is preferred. NetworkManager may intentionally defer
+publishing the carrier DNS to systemd-resolved until cellular becomes the
+system default; the check reports this as `dns=deferred`, not as a broken
+bearer. To prove the system-wide route and carrier-DNS fallback path as well,
+run the explicit cellular-only test:
 
 ```sh
 ./scripts/test-cellular-only

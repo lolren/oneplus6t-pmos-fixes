@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+command_name=${0##*/}
+printf '%s|%s\n' "$command_name" "$*" >>"$PMOS_MOBILE_CHECK_FIXTURE_LOG"
+
+case "$command_name" in
+nmcli)
+	printf '%s\n' 'qrtr0:gsm:connected:test-data'
+	;;
+mmcli)
+	case "$*" in
+	-L)
+		printf '%s\n' '/org/freedesktop/ModemManager1/Modem/0'
+		;;
+	'-m 0 -K')
+		cat <<'EOF'
+modem.generic.state                       : connected
+modem.generic.access-technologies.value[1]: lte
+modem.generic.signal-quality.value        : 80
+modem.generic.bearers.value[1]            : /org/freedesktop/ModemManager1/Bearer/1
+modem.3gpp.registration-state             : home
+modem.3gpp.operator-name                  : Test Network
+modem.3gpp.packet-service-state           : attached
+EOF
+		;;
+	'-b 1 -K')
+		cat <<'EOF'
+bearer.status.connected : yes
+bearer.status.interface : qmapmux0.0
+EOF
+		;;
+	*) exit 1 ;;
+	esac
+	;;
+ip)
+	case "$*" in
+	'-4 route show table all default dev qmapmux0.0')
+		printf '%s\n' 'default via 198.51.100.1 table 1430 dev qmapmux0.0'
+		;;
+	'-6 route show table all default dev qmapmux0.0') ;;
+	'-o -4 address show dev qmapmux0.0 scope global')
+		printf '%s\n' '6: qmapmux0.0 inet 198.51.100.2/30 scope global qmapmux0.0'
+		;;
+	'-o -6 address show dev qmapmux0.0 scope global') ;;
+	'-4 route show default')
+		printf '%s\n' 'default via 192.0.2.1 dev wlan0'
+		;;
+	'-6 route show default') ;;
+	*) exit 1 ;;
+	esac
+	;;
+ping)
+	;;
+resolvectl)
+	[ "${PMOS_TEST_RESOLVECTL_FAIL:-no}" != yes ]
+	;;
+curl)
+	printf '200'
+	;;
+*)
+	exit 1
+	;;
+esac

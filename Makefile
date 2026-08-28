@@ -75,7 +75,9 @@ test:
 		tests/fixtures/mobile-watchdog-nmcli \
 		tests/fixtures/mobile-watchdog-mmcli \
 		tests/fixtures/mobile-watchdog-ip \
+		tests/fixtures/mobile-check-command \
 		tests/test-apn-selection.sh tests/test-messages-check.sh \
+		tests/test-mobile-data-check.sh \
 		tests/test-mobile-data-watchdog.sh \
 		tests/test-cellular-only.sh \
 		tests/test-ssh-recovery.sh \
@@ -95,6 +97,7 @@ test:
 		tests/test-display-kernel-manager.sh \
 		packaging/APKBUILD
 	./tests/test-apn-selection.sh
+	./tests/test-mobile-data-check.sh
 	./tests/test-mobile-data-watchdog.sh
 	./tests/test-cellular-only.sh
 	./tests/test-daily-use.sh
