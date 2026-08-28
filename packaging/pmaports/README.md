@@ -5,7 +5,7 @@ pmaports: six SDM845 kernel patches, seventeen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r14 Advanced Snapshot
+device-specific identifier. The current patch carries the r15 Advanced Snapshot
 source recipe and its verified AArch64 package pair, the
 libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
@@ -20,7 +20,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`3f71542ce57df687f25838715fb569f9ecc658c76f1bdd9d6ad3032437ac2ff8`.
+`4a78fa3b865f7f5675edb5b17495199b1de5ccf3a226f5bdb77eed9e243769ec`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -49,19 +49,19 @@ Applying the integration patch to the reviewed base produces:
   the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r14` plus
-  `advanced-snapshot-lang-0.1.0-r14` (Software HDR source/package candidate;
+- `advanced-snapshot-0.1.0-r15` plus
+  `advanced-snapshot-lang-0.1.0-r15` (handheld-aligned Software HDR candidate;
   the exact AArch64 APK pair is signed and verified, but not installed); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
-The r14 application recipe is pinned to Advanced Snapshot commit
-`af69a7151b8fcba1d0650fd911f42e340279e8d0`. Its GitHub source archive SHA-512
+The r15 application recipe is pinned to Advanced Snapshot commit
+`6813a64b499177d3d0ef5272b019c6da53400fba`. Its GitHub source archive SHA-512
 is
-`e5973d2b5e72d154e6243ded37d26b88328c50be66f5e83b7038794f41df6e0c6cfe4d6e890485b2cd2e6c83d1ecffe1343b09bcd9f815087c5fd99799d64e0a`.
-The source build passed the pinned GTK compilation, 22 unit tests and clippy.
+`49252237523317fdd3e27aa4edb60c6ed932a0108757a32208f385d6698c07401bfd9f172045c57ad2af6b7109003dc061527e428d5663931b8685ec3a2771ad`.
+The source build passed the pinned GTK compilation, 27 unit tests and clippy.
 The signed AArch64 pair passed the independent package validator and is listed
 in the reference artifacts below.
 
@@ -72,23 +72,25 @@ uninstalled until the phone transport is usable and the live manual-exposure
 test passes. Keep the signed r24/r25 APKs for rollback.
 
 The complete opt-in userspace transition is described by
-`data/camera-generation-r26-r14.psv`. Its five-package candidate updates the
+`data/camera-generation-r26-r15.psv`. Its five-package candidate updates the
 r24 `libcamera`/IPA pair and the r11 Advanced Snapshot pair together, retains
 PipeWire r7, and keeps the exact r24/r11 packages as rollback. The generation
 manager verifies the candidate key before its offline simulation. It is not
 the default generation until the phone's live camera and lifecycle checks
-pass. The earlier `camera-generation-r26-r13.psv` remains available for exact
-r13 reproduction.
+pass. The earlier r26/r14 and r26/r13 manifests remain available for exact
+reproduction.
 
-The r14 Software HDR helper is intentionally opt-in. It merges three
-exposure-bracketed JPEGs in linear light and writes one result atomically; it
-does not provide Android-vendor motion alignment, lens shading, calibrated
-colour or proprietary ISP processing. Review the complete candidate with:
+The r15 Software HDR helper is intentionally opt-in. It aligns bounded global
+camera translation against the middle exposure, merges three bracketed JPEGs
+in linear light and writes one result atomically. It does not compensate
+independently moving subjects, rotation, parallax or non-rigid motion, and it
+does not provide Android-vendor lens shading, calibrated colour or proprietary
+ISP processing. Review the complete candidate with:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r26-r14 \
-  --manifest data/camera-generation-r26-r14.psv \
+  --stage /absolute/path/to/camera-r26-r15 \
+  --manifest data/camera-generation-r26-r15.psv \
   install
 ```
 
@@ -121,6 +123,8 @@ colour or proprietary ISP processing. Review the complete candidate with:
 | `advanced-snapshot-lang-0.1.0-r13.apk` (manual-exposure compile-fixed candidate) | `a03b0a561e4355a4da506e29f0d8b7f16173da694155391e465a3dbfeaab1bd3` |
 | `advanced-snapshot-0.1.0-r14.apk` (Software HDR candidate) | `0df78733ec2fc3469dd11a4be274a0fb1bbbb9921dbf18601f99e6b0fa58b0ec` |
 | `advanced-snapshot-lang-0.1.0-r14.apk` (Software HDR candidate) | `25d01d10d69099c6c6d837a0cdd30c8724b3e831bf8fbbdf0730e36d75b4d98f` |
+| `advanced-snapshot-0.1.0-r15.apk` (handheld-HDR-alignment candidate) | `16581bcf5c96aa74c522c4f51bbd5cb03711a3e41abd02f00a6d9eec7cf61705` |
+| `advanced-snapshot-lang-0.1.0-r15.apk` (handheld-HDR-alignment candidate) | `dec0ec0c229848a0e157e2eba49ab9e74d30423e69ae76bbd73773eea97b61d2` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.

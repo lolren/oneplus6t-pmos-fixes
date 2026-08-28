@@ -441,11 +441,11 @@ is source/package validated but not hardware-accepted, so the default manager
 manifest remains r7/r5.
 
 The current opt-in lower-stack candidate is available from the
-[camera-r26-r14 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r14).
-Use it with `data/camera-generation-r26-r14.psv`; it updates the matching
-libcamera/IPA r26 pair and Advanced Snapshot r14 while retaining the exact
-r24/r11 rollback stage. r14 adds the opt-in Software HDR helper, which merges
-three bracketed JPEG exposures in linear light. It remains source/package
+[camera-r26-r15 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r15).
+Use it with `data/camera-generation-r26-r15.psv`; it updates the matching
+libcamera/IPA r26 pair and Advanced Snapshot r15 while retaining the exact
+r24/r11 rollback stage. r15 aligns bounded whole-frame handheld translation
+before its opt-in linear-light Software HDR merge. It remains source/package
 validated rather than hardware-accepted, and the default manager manifest
 stays r7/r5 until live camera and lifecycle testing is possible.
 
@@ -480,11 +480,13 @@ Open **Advanced Snapshot** for the truthful reticle: amber means scanning,
 green means libcamera reported `Focused`, and red means `Failed` or a transport
 error. The fixed-focus front camera has no focus gesture.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r14
+The sliders affect both preview and saved output. The Advanced Snapshot r15
 candidate also exposes opt-in Software HDR when its helper is installed; it
-uses three bracketed JPEG captures and a linear-light merge. This is not the
-same as Android-vendor HDR: motion alignment, lens shading, calibrated colour,
-temporal denoise and proprietary ISP processing remain outside the open stack.
+uses three bracketed JPEG captures, confidence-gated global-translation
+alignment and a linear-light merge. This is not the same as Android-vendor HDR:
+local/non-rigid subject motion, rotation, parallax, lens shading, calibrated
+colour, temporal denoise and proprietary ISP processing remain outside the
+open stack.
 
 ### Safe postmarketOS updates
 

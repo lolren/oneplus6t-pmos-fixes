@@ -143,20 +143,22 @@ two Advanced Snapshot packages); PipeWire remains unchanged. The same
 simulation-first and rollback requirements apply as to the three-package
 generations.
 
-`data/camera-generation-r26-r14.psv` is the current opt-in lower-stack and UI
+`data/camera-generation-r26-r15.psv` is the current opt-in lower-stack and UI
 candidate. It upgrades `libcamera` and `libcamera-ipa` from r24 to r26 and
-Advanced Snapshot from r11 to r14 in one transaction, while retaining
-PipeWire r7. The r14 application adds an opt-in Software HDR path: three
-exposure-bracketed JPEGs are merged in linear light and the result is written
-atomically. It does not provide Android-vendor motion alignment, lens shading,
-calibrated colour or proprietary ISP processing.
+Advanced Snapshot from r11 to r15 in one transaction, while retaining
+PipeWire r7. The r15 application aligns bounded whole-frame camera translation
+against the middle exposure before merging three bracketed JPEGs in linear
+light and writing the result atomically. Independently moving subjects,
+rotation, parallax, non-rigid motion, calibrated colour and proprietary ISP
+processing remain outside this open implementation. The r26/r14 manifest and
+prerelease remain available as the exact previous generation.
 
 The signed AArch64 stage is published as the
-[`camera-r26-r14` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r14).
+[`camera-r26-r15` prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r15).
 Its archive SHA-256 is
-`5d278feb47feb55d57625a20fef793d2eebab7acab67140aa2ce700e8e3de3b1` and the
+`8c3f7f7a822970a25bd4b79ea63774736b6b13d49fd965232a714fa32ea56222` and the
 `SHA256SUMS` file SHA-256 is
-`b36d9ec268e351aa168e790b05aa72a23ba518a7ba4b81b2b2ddc53707aa37a6`.
+`77f5a20bf569b353b1fb8995d9a7fab52d1a6ca0e0d2fce72ff00eedae452499`.
 The candidate keeps the exact r24/r11 runtime/UI baseline as rollback and is
 still opt-in until the phone passes live preview, focus, exposure, HDR, video,
 display and lifecycle tests.
@@ -165,8 +167,8 @@ Review it with:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r26-r14 \
-  --manifest data/camera-generation-r26-r14.psv \
+  --stage /absolute/path/to/camera-r26-r15 \
+  --manifest data/camera-generation-r26-r15.psv \
   install
 ```
 

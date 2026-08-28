@@ -2001,3 +2001,54 @@ It packages the APN/watchdog, PipeWire routing, diagnostics, safeguards and
 camera/Waydroid build-install tooling, but does not silently install a camera
 or Codec2 candidate. Exact APK installation and cold-boot acceptance on the
 reference phone remain pending its physical recovery.
+
+## Advanced Snapshot r15 handheld HDR alignment generation
+
+Date: 2026-08-28. The pmaports integration now pins Advanced Snapshot source
+commit `6813a64b499177d3d0ef5272b019c6da53400fba`, recipe revision r15 and source
+archive SHA-512
+`49252237523317fdd3e27aa4edb60c6ed932a0108757a32208f385d6698c07401bfd9f172045c57ad2af6b7109003dc061527e428d5663931b8685ec3a2771ad`.
+The complete integration patch applies cleanly to reviewed pmaports base
+`875bddba6538818f2c3c9849e184f40688ad5140`; its SHA-256 is
+`4a78fa3b865f7f5675edb5b17495199b1de5ccf3a226f5bdb77eed9e243769ec`.
+The generated aport is byte-identical to the standalone reviewed recipe.
+
+The HDR helper registers each outer exposure against the middle frame with a
+bounded, confidence-gated global translation. Exposure-resistant luminance
+gradients, a bounded thumbnail search and sparse full-resolution refinement
+handle small handheld camera shifts while ambiguous matches safely stay at
+zero. Moving subjects, rotation, scale, parallax and non-rigid motion remain
+outside scope; no vendor-ISP parity is claimed.
+
+The native Alpine/pMOS build passed 27 workspace tests, strict Clippy, all five
+Meson release gates and staged installation. A clean AArch64/musl package build
+repeated the same 27 tests under QEMU. The independent package validator
+accepted signatures, architecture, exact file ownership, resource namespace,
+desktop/D-Bus/AppStream/schema metadata, language splitting and zero overlap
+with GNOME Snapshot:
+
+```text
+advanced-snapshot-0.1.0-r15.apk: 16581bcf5c96aa74c522c4f51bbd5cb03711a3e41abd02f00a6d9eec7cf61705
+advanced-snapshot-lang-0.1.0-r15.apk: dec0ec0c229848a0e157e2eba49ab9e74d30423e69ae76bbd73773eea97b61d2
+public-key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+`data/camera-generation-r26-r15.psv` binds the r15 pair to the existing signed
+libcamera/IPA r26 and PipeWire r7 candidates and retains the exact r24/r11
+rollback. All 10 APK hashes match the manifest; every APK and both offline
+repository indexes verify with the packaged key. Candidate and rollback
+indexes each contain exactly five expected package/version/architecture
+records. The complete repository test suite passed after adding the manifest.
+
+Two archives built from the same verified stage with fixed path order,
+ownership, timestamp `1787889756` and gzip metadata are byte-identical:
+
+```text
+oneplus6t-camera-r26-r15-aarch64.tar.gz: 8c3f7f7a822970a25bd4b79ea63774736b6b13d49fd965232a714fa32ea56222
+SHA256SUMS: 77f5a20bf569b353b1fb8995d9a7fab52d1a6ca0e0d2fce72ff00eedae452499
+```
+
+The bundle is source/package validated and remains opt-in. It has not been
+installed or image-quality accepted on the reference phone because that phone
+still exposes the pre-reboot wedged USB/SSH session. Keep r26/r14 and the
+device-accepted runtime/UI baseline available for rollback.
