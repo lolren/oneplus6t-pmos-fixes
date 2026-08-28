@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -eq 1 ] && [ "$1" = -u ]
+printf '%s\n' "${PMOS_DISPLAY_MOCK_UID:-1000}"

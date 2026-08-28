@@ -41,7 +41,9 @@ Options:
 status is read-only. install and rollback always verify the manifest, package
 hashes, APK signatures, repository-index signatures and exact apk operation
 before changing anything. --apply is required to change the installed kernel.
-The script never reboots, changes firmware or writes a partition.
+The manager never invokes fastboot, changes slots or reboots. An applied kernel
+APK runs the normal postmarketOS package trigger, which rebuilds and writes the
+active postmarketOS boot image; retain the verified rollback before applying.
 EOF
 }
 
@@ -275,10 +277,14 @@ verify_repository_index() {
 	index_check_root=$(mktemp -d "${TMPDIR:-/tmp}/oneplus6t-display-index-check.XXXXXX") || \
 		die 'could not create temporary index-check root'
 	index_check_failed=no
+	index_init_mode=
+	if [ "$(id -u)" -ne 0 ]; then
+		index_init_mode=--usermode
+	fi
 	if ! mkdir -p "$index_check_root/etc/apk/keys" || \
 		! cp "$keys_dir/$signing_key_name" \
 			"$index_check_root/etc/apk/keys/$signing_key_name" || \
-		! "$apk_command" --root "$index_check_root" add --initdb --usermode \
+		! "$apk_command" --root "$index_check_root" add --initdb $index_init_mode \
 			--no-network --no-interactive >>"$repository_signature_log" 2>&1 || \
 		! "$apk_command" --root "$index_check_root" --arch "$ARCH" \
 			--no-network --no-interactive \
@@ -447,5 +453,6 @@ printf 'state=%s\n' "$target_channel"
 printf 'world_before_sha256=%s\n' "$world_before_hash"
 printf 'world_after_sha256=%s\n' "$world_after_hash"
 printf 'evidence=%s\n' "$evidence"
+printf '%s\n' 'boot_image_update=package-trigger'
 printf '%s\n' 'manual_reboot_required=yes'
 printf '%s\n' 'Reboot manually after reviewing the evidence; the manager never reboots.'

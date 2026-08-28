@@ -127,7 +127,56 @@ same simulation with `rollback`, then repeat it with `--apply` and reboot
 manually. Do not mix this kernel stage with a different manifest or copy its
 kernel files directly into `/boot`.
 
-The package was compiled and signature-checked on the host, but the reference
-phone has not accepted r9: its current CDC-NCM link has no SSH banner and no
-usable ADB or fastboot transport. Until that gate is cleared, r9 is a
-rollback-safe candidate, not a proven display fix.
+Kernel r9 is retained as historical display-candidate evidence. It was
+superseded on the reference phone by r10 below; neither package is claimed as a
+brightness fix until the brightness-specific acceptance sequence passes.
+
+## Installed r10 Venus recovery safety generation
+
+Codec teardown diagnosis exposed a separate safety problem: after a Venus
+firmware/session error, the level-triggered recovery interrupt could retrigger
+continuously and let its FIFO IRQ thread starve unrelated storage work. Kernel
+r10 retains all r9 display changes and adds
+`0007-media-qcom-venus-bound-firmware-recovery-IRQ-work.patch`. Only while the
+core is already in `sys_error`, it processes at most 32 message/debug packets
+per IRQ pass and adds a bounded 10–20 ms delay before another asserted
+interrupt can run. Normal encode IRQ handling is unchanged. This is damage
+containment, not a substitute for fixing a userspace or firmware fault.
+
+The exact artifacts are:
+
+```text
+kernel r10 APK: f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e
+kernel r8 rollback APK: 232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e
+standalone 0007 patch: 0a3ad2342397670183dd3ddddd8d85dff306fa954bca0fdab26e9046c03faa36
+pmaports integration: ce5daeadec278087ee0d334b0c9819c71022e9bb70f056adaf14762924c65d06
+```
+
+`data/kernel-r8-r10.psv` binds those APKs, the OnePlus 6T compatibility string
+and the pinned public key. Simulate first, then explicitly apply only after the
+evidence lists one kernel upgrade:
+
+```sh
+pmos-manage-display-kernel \
+  --stage /absolute/path/to/kernel-r8-r10 \
+  --manifest /path/to/oneplus6t-pmos-fixes/data/kernel-r8-r10.psv \
+  install
+
+pmos-manage-display-kernel \
+  --stage /absolute/path/to/kernel-r8-r10 \
+  --manifest /path/to/oneplus6t-pmos-fixes/data/kernel-r8-r10.psv \
+  --apply install
+```
+
+The apply transaction runs the normal postmarketOS kernel package trigger,
+which rebuilt and wrote the active `/boot/boot.img`. The manager does not call
+fastboot, change slot metadata, touch bootloader/firmware or reboot. Retain the
+r8 stage because rollback performs the same package-managed boot-image update
+and also needs a manual reboot.
+
+The reference phone booted r10 as `7.1.0-rc1-sdm845`. Three guarded Waydroid
+Venus recording cycles then completed and cleanly tore down with no firmware
+error, SMMU fault, IRQ storm, I/O pressure or blocked task. That accepts r10's
+ordinary boot/camera compatibility; the error-containment branch correctly did
+not run in a healthy encode. Repeated brightness sweeps, lock/unlock and
+suspend/resume remain the separate display acceptance gate.

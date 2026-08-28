@@ -16,6 +16,10 @@ The current scripts may:
 - inspect Waydroid mounts, load and I/O pressure with
   `pmos-check-waydroid-health` without changing services or storage;
 - build kernel or userspace packages on the host without installing them;
+- simulate or explicitly apply the exact manifest-verified r10/r8 kernel
+  transition through `pmos-manage-display-kernel`. Applying a kernel APK runs
+  the normal postmarketOS trigger that rebuilds and writes the active
+  postmarketOS boot image, so the signed rollback must already be present;
 - simulate or explicitly apply the exact manifest-verified native r7/r5,
   r7/r4, r7/r1 and r6/r0 camera generations through
   `manage-camera-generation`;
@@ -27,13 +31,14 @@ The current scripts may:
 
 ## Prohibited scope
 
-These scripts must never:
+Except for that exact package-managed kernel transition, these scripts must
+never:
 
 - invoke `qbootctl`;
 - change A/B slot metadata;
 - modify GPT attributes or partition tables;
 - change UFS boot LUN configuration;
-- flash bootloader or firmware partitions;
+- directly flash a boot, bootloader or firmware partition;
 - write through EDL; or
 - reboot while storage or flashing operations are active.
 
@@ -66,10 +71,16 @@ world identity constraint; simulate its removal and require reverse dependencies
 to retain the installed plugin before removing only that constraint. The guarded
 commands are in `packaging/pmaports/README.md`.
 
-Because the rebuilt r8 kernel keeps the same release string, its package replaces
+Because the rebuilt kernel keeps the same release string, its package replaces
 modules under the running kernel's module directory. After a successful kernel
 package transaction, do not open the camera or load/unload modules before the
 approved reboot.
+
+`pmos-manage-display-kernel` verifies both package and repository signatures,
+hashes, device compatibility and a one-package simulation before apply. It
+never invokes fastboot, EDL, raw block-device tools, slot controls or reboot.
+Its apply/rollback transaction is nevertheless a boot-image write through the
+package trigger and must not be described as userspace-only.
 
 Any future low-level change requires verified stock recovery material, a
 device-specific backup, an explicit rollback procedure, and separate user

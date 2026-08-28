@@ -68,6 +68,7 @@ all: test
 test:
 	sh -n $(SCRIPTS) $(HOST_BUILD_SCRIPTS) $(HOST_DIAGNOSTIC_SCRIPTS) $(CAMERA_TEST_SCRIPTS) \
 		tests/fixtures/camera-generation-bin/* \
+		tests/fixtures/display-kernel-bin/* \
 		tests/fixtures/camera-generation-smoke \
 		tests/fixtures/nfctool \
 		tests/fixtures/audio-systemctl \
@@ -182,6 +183,7 @@ install:
 		"$(DESTDIR)$(LIBEXECDIR)/scripts/"
 	$(INSTALL) -m 0644 data/mvno-apns.psv "$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 data/display-kernel-r8-r9.psv \
+		data/kernel-r8-r10.psv \
 		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 data/camera-generation-r7-r1.psv \
 		data/camera-generation-r7-r2.psv \

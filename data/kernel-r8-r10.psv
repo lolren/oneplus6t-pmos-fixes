@@ -1,0 +1,6 @@
+schema|1
+generation|oneplus6t-venus-safety-r8-r10
+compatible|oneplus,fajita
+signing-key|pmos@local-6a8b0868.rsa.pub|31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+candidate|linux-postmarketos-qcom-sdm845|7.1_rc1-r10|aarch64|linux-postmarketos-qcom-sdm845-7.1_rc1-r10.apk|f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e
+rollback|linux-postmarketos-qcom-sdm845|7.1_rc1-r8|aarch64|linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk|232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e

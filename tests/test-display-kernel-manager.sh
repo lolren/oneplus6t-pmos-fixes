@@ -4,8 +4,16 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 MANAGER=$ROOT/scripts/manage-display-kernel
 MOCK_APK=$ROOT/tests/fixtures/display-kernel-bin/apk
+R10_MANIFEST=$ROOT/data/kernel-r8-r10.psv
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/display-kernel-manager-test.XXXXXX")
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
+
+grep -q '^generation|oneplus6t-venus-safety-r8-r10$' "$R10_MANIFEST"
+grep -q '^candidate|linux-postmarketos-qcom-sdm845|7.1_rc1-r10|aarch64|.*|f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e$' \
+	"$R10_MANIFEST"
+grep -q '^rollback|linux-postmarketos-qcom-sdm845|7.1_rc1-r8|aarch64|.*|232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e$' \
+	"$R10_MANIFEST"
+grep -q 'data/kernel-r8-r10.psv' "$ROOT/Makefile"
 
 stage=$TEST_ROOT/stage
 keys=$TEST_ROOT/keys
@@ -81,6 +89,7 @@ printf '%s\n' "$simulation" | grep -q '^target_version=7.1_rc1-r9$'
 
 applied=$(run_manager --evidence "$TEST_ROOT/install-apply" --apply install)
 printf '%s\n' "$applied" | grep -q '^state=candidate$'
+printf '%s\n' "$applied" | grep -q '^boot_image_update=package-trigger$'
 printf '%s\n' "$applied" | grep -q '^manual_reboot_required=yes$'
 [ "$(cat "$state")" = '7.1_rc1-r9' ]
 
@@ -96,5 +105,18 @@ if run_manager --evidence "$TEST_ROOT/signature-failure" install \
 	exit 1
 fi
 grep -Fq 'package signature verification failed' "$TEST_ROOT/signature-failure.log"
+
+unset PMOS_DISPLAY_MOCK_SIGNATURE_FAILURE
+printf '%s\n' '7.1_rc1-r8' >"$state"
+PMOS_DISPLAY_MOCK_UID=0
+PMOS_DISPLAY_MOCK_APK_LOG=$TEST_ROOT/root-apk.log
+export PMOS_DISPLAY_MOCK_UID PMOS_DISPLAY_MOCK_APK_LOG
+root_simulation=$(run_manager --evidence "$TEST_ROOT/root-simulation" install)
+printf '%s\n' "$root_simulation" | grep -q '^mode=simulation$'
+grep -q '^initdb|' "$PMOS_DISPLAY_MOCK_APK_LOG"
+if grep -q -- '--usermode' "$PMOS_DISPLAY_MOCK_APK_LOG"; then
+	printf '%s\n' 'root repository verification unexpectedly used --usermode' >&2
+	exit 1
+fi
 
 printf '%s\n' 'display kernel manager tests passed'

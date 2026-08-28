@@ -1,7 +1,7 @@
 # Reproducible OnePlus 6T camera packages
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
-pmaports: six SDM845 kernel patches, seventeen libcamera patches, three tuning
+pmaports: seven SDM845 kernel patches, seventeen libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, three Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
@@ -10,8 +10,10 @@ source recipe and its verified AArch64 package pair, the
 libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
 the previously signed app generations remain available as rollback baselines.
-It also carries the opt-in Samsung panel brightness-serialization patch as
-kernel r9, with kernel r8 retained as its rollback package.
+It also carries the Samsung panel brightness-serialization patch and bounded
+Qualcomm Venus firmware-error recovery as kernel r10, with kernel r8 retained
+as its rollback package. r10 is installed and booted on the reference phone;
+brightness-specific acceptance remains separate from codec safety acceptance.
 The phone's accepted runtime baseline remains Advanced Snapshot r1 and
 libcamera r24 until recovery and a fresh device check.
 
@@ -20,7 +22,7 @@ libcamera r24 until recovery and a fresh device check.
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`4a78fa3b865f7f5675edb5b17495199b1de5ccf3a226f5bdb77eed9e243769ec`.
+`ce5daeadec278087ee0d334b0c9819c71022e9bb70f056adaf14762924c65d06`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -42,8 +44,9 @@ completed for aarch64.
 
 Applying the integration patch to the reviewed base produces:
 
-- `linux-postmarketos-qcom-sdm845-7.1_rc1-r9` (display brightness-serialization
-  candidate; r8 remains the rollback package);
+- `linux-postmarketos-qcom-sdm845-7.1_rc1-r10` (display brightness
+  serialization plus bounded Venus firmware-error recovery; r8 remains the
+  rollback package);
 - `libcamera-99990.7.2-r26` and `libcamera-ipa-99990.7.2-r26` (manual-exposure
   source candidate; r25 remains the latest built AF reference and r24 remains
   the installed rollback);
@@ -99,7 +102,8 @@ ISP processing. Review the complete candidate with:
 | Package | SHA-256 |
 | --- | --- |
 | `linux-postmarketos-qcom-sdm845-7.1_rc1-r8.apk` | `232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e` |
-| `linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk` (display candidate) | `6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957` |
+| `linux-postmarketos-qcom-sdm845-7.1_rc1-r9.apk` (historical display candidate) | `6049f30fb9ed0b5576f309720bfd75ea4d8faded4eadf10fc887d3d0a0aeb957` |
+| `linux-postmarketos-qcom-sdm845-7.1_rc1-r10.apk` (installed display/Venus safety generation) | `f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e` |
 | `libcamera-99990.7.2-r24.apk` | `80b3d0e0f55c492783bb95f031d2464dcf3e201e94ce9ea4dbfe7bc1473ef7b9` |
 | `libcamera-ipa-99990.7.2-r24.apk` | `12023c5e4fb52588d531c3d643fa16ba7a992ef4ae3cbd0d6de235d0efcf79b8` |
 | `libcamera-99990.7.2-r25.apk` (AF reference candidate) | `ccdfaf820ba6362cfbb4dae3ded92eb9e18542afcdde1596eb8bed91e9e7323f` |

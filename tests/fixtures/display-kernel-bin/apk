@@ -28,8 +28,20 @@ list)
 	printf '%s-%s aarch64 {mock} (MIT) [installed]\n' "$package" "$version"
 	;;
 add)
+	init_arguments=$*
 	for argument in "$@"; do
 		[ "$argument" != --initdb ] || {
+			if [ -n "${PMOS_DISPLAY_MOCK_APK_LOG:-}" ]; then
+				printf 'initdb|%s\n' "$init_arguments" >>"$PMOS_DISPLAY_MOCK_APK_LOG"
+			fi
+			case " $init_arguments " in
+			*' --usermode '*)
+				[ "${PMOS_DISPLAY_MOCK_UID:-1000}" -ne 0 ] || {
+					printf '%s\n' 'root initdb must not use --usermode' >&2
+					exit 1
+				}
+				;;
+			esac
 			printf '%s\n' 'OK: mock initdb'
 			exit 0
 		}

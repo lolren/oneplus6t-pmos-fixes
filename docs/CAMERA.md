@@ -5,7 +5,7 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r8, libcamera/IPA r24, `pipewire-spa-libcamera` r7 and Snapshot r3 are
+Kernel r10, libcamera/IPA r24, `pipewire-spa-libcamera` r7 and Snapshot r3 are
 installed on the reference phone, with Advanced Snapshot r1 beside Snapshot.
 The complete baseline was built for aarch64, hash-verified, simulated offline
 and installed without a reboot. Exact r23 libcamera packages are the immediate
@@ -13,8 +13,10 @@ r24 rollback, and the complete r20/r6/r2 set is also retained. The matching
 PipeWire r7 and Advanced Snapshot r1 generation passed coherent all-sensor
 acceptance and retains r6/r0 for rollback. The r21
 libcamera build is also retained as diagnostic evidence but is superseded
-because its fixed highlight ceiling weakened positive EV compensation. Nothing
-in this work flashes a partition, changes a boot slot or reboots the phone.
+because its fixed highlight ceiling weakened positive EV compensation. Kernel
+r8 is retained as the verified rollback. Installing r10 through `apk` ran the
+normal postmarketOS trigger that updated the active boot image; no bootloader,
+slot metadata or firmware was changed, and the reboot was a separate action.
 
 ## Hardware map
 
