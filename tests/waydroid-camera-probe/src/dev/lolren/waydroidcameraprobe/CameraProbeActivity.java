@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -21,10 +22,13 @@ import android.media.CamcorderProfile;
 import android.media.EncoderProfiles;
 import android.media.Image;
 import android.media.ImageReader;
+import android.media.MediaMetadataRetriever;
+import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.Range;
 import android.util.Rational;
@@ -55,6 +59,7 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_SURFACE_YUV = "surface-yuv";
     private static final String PROFILE_RECORD = "record";
     private static final String PROFILE_RECORD_YUV_720P = "record-yuv-720p";
+    private static final String PROFILE_ENCODE_720P = "encode-720p";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
@@ -64,6 +69,7 @@ public final class CameraProbeActivity extends Activity {
     private static final int MIN_PRIVATE_TIMING_FRAMES = 30;
     private static final long CAMERA_TIMEOUT_MS = 120000;
     private static final long FULL_CAMERA_TIMEOUT_MS = 360000;
+    private static final long ENCODE_DURATION_MS = 10000;
 
     private final List<String> results = new ArrayList<>();
     private final Set<Integer> afStates = new TreeSet<>();
@@ -112,9 +118,12 @@ public final class CameraProbeActivity extends Activity {
     private boolean jpegAccepted;
     private boolean privateAccepted;
     private boolean surfacePixelSamplePending;
+    private boolean recorderStarted;
+    private boolean recorderAccepted;
     private String yuvResult;
     private String jpegResult;
     private String surfacePixelResult;
+    private String recorderResult;
     private String exposureResult;
     private Rational exposureStep;
     private Range<Integer> selectedFpsRange;
@@ -134,6 +143,10 @@ public final class CameraProbeActivity extends Activity {
     private TextureView textureView;
     private SurfaceTexture previewTexture;
     private Surface previewSurface;
+    private MediaRecorder mediaRecorder;
+    private Surface recorderSurface;
+    private File encodedFile;
+    private Runnable recorderStop;
     private final AtomicBoolean surfaceSamplePending = new AtomicBoolean();
     private Runnable timeout;
 
@@ -193,6 +206,12 @@ public final class CameraProbeActivity extends Activity {
 
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             finishProbe("camera permission was not granted");
+            return;
+        }
+        if (needsEncodedVideo()
+                && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                        != PackageManager.PERMISSION_GRANTED) {
+            finishProbe("record-audio permission was not granted");
             return;
         }
 
@@ -305,6 +324,9 @@ public final class CameraProbeActivity extends Activity {
         jpegResult = null;
         surfacePixelSamplePending = false;
         surfacePixelResult = null;
+        recorderStarted = false;
+        recorderAccepted = false;
+        recorderResult = null;
         exposureResult = null;
         exposureStep = null;
         selectedFpsRange = null;
@@ -333,6 +355,18 @@ public final class CameraProbeActivity extends Activity {
         focusRegions = null;
         afStates.clear();
         exposureMetadata.clear();
+
+        /*
+         * The OnePlus 6T auxiliary rear stream reproducibly drives the
+         * current Venus/V4L2 Codec2 stack into a firmware-recovery IRQ storm
+         * after encoder stop. Refuse that one destructive combination before
+         * allocating a camera or codec; YUV/JPEG/preview profiles remain safe.
+         */
+        if (needsEncodedVideo() && "2".equals(id)) {
+            failCamera(token, id,
+                    "auxiliary hardware encoding is disabled after a Venus teardown fault");
+            return;
+        }
 
         try {
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
@@ -365,7 +399,31 @@ public final class CameraProbeActivity extends Activity {
              */
             if (privateSizes == null || privateSizes.length == 0)
                 privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888);
-            Size privateSize = choosePrivateProbeSize(privateSizes, size);
+            CamcorderProfile recordingProfile = null;
+            Size privateSize;
+            if (needsEncodedVideo()) {
+                int numericId;
+                try {
+                    numericId = Integer.parseInt(id);
+                } catch (NumberFormatException error) {
+                    failCamera(token, id, "encoded recording requires a numeric camera ID");
+                    return;
+                }
+                if (!CamcorderProfile.hasProfile(numericId, CamcorderProfile.QUALITY_720P)) {
+                    failCamera(token, id, "720p CamcorderProfile is unavailable");
+                    return;
+                }
+                recordingProfile = CamcorderProfile.get(
+                        numericId, CamcorderProfile.QUALITY_720P);
+                privateSize = new Size(recordingProfile.videoFrameWidth,
+                        recordingProfile.videoFrameHeight);
+                if (!containsSize(privateSizes, privateSize)) {
+                    failCamera(token, id, "720p encoder size is unavailable: " + privateSize);
+                    return;
+                }
+            } else {
+                privateSize = choosePrivateProbeSize(privateSizes, size);
+            }
             if (privateSize == null) {
                 failCamera(token, id, "no PRIVATE output size");
                 return;
@@ -418,8 +476,15 @@ public final class CameraProbeActivity extends Activity {
             }
             Range<Integer>[] fpsRanges = characteristics.get(
                     CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-            selectedFpsRange = needsRecordTemplate()
-                    ? chooseRecordFpsRange(fpsRanges)
+            /*
+             * Let MediaRecorder and camera timestamps negotiate the real
+             * cadence for an encoded run. Forcing a nominal profile rate on
+             * the capture request is known to make MediaRecorder.stop() fail
+             * on otherwise valid Camera2 sessions, and the auxiliary sensor
+             * advertises 15 FPS in its profile but no fixed [15, 15] AE range.
+             */
+            selectedFpsRange = needsEncodedVideo() ? null
+                    : needsRecordTemplate() ? chooseRecordFpsRange(fpsRanges)
                     : choosePreviewFpsRange(fpsRanges);
             sensorExposureRange = characteristics.get(
                     CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
@@ -463,12 +528,15 @@ public final class CameraProbeActivity extends Activity {
                         ImageFormat.PRIVATE, 3);
                 privateReader.setOnImageAvailableListener(r -> onPrivateImage(token, r), handler);
             }
+            if (needsEncodedVideo())
+                prepareMediaRecorder(id, recordingProfile);
 
             timeout = () -> failCamera(token, id,
                     "timed out: profile=" + profile
                             + " yuv=" + yuvAccepted + "/" + yuvFrames
                             + " jpeg=" + jpegAccepted + "/" + jpegRequested
                             + " private=" + privateAccepted + "/" + privateFrames
+                            + " recorder=" + recorderAccepted + "/" + recorderStarted
                             + " afStates=" + afStates
                             + " exposureWarm=" + exposureWarm
                             + " warmupFrames=" + warmupFrames
@@ -501,6 +569,8 @@ public final class CameraProbeActivity extends Activity {
                         surfaces.add(yuvReader.getSurface());
                     if (jpegReader != null)
                         surfaces.add(jpegReader.getSurface());
+                    if (recorderSurface != null)
+                        surfaces.add(recorderSurface);
                     opened.createCaptureSession(surfaces,
                             sessionStateCallback(token, id, opened), handler);
                 } catch (Exception e) {
@@ -537,6 +607,8 @@ public final class CameraProbeActivity extends Activity {
                             ? previewSurface : privateReader.getSurface());
                     if (yuvReader != null)
                         previewRequest.addTarget(yuvReader.getSurface());
+                    if (recorderSurface != null)
+                        previewRequest.addTarget(recorderSurface);
                     applyAutomaticControls(previewRequest, false);
                     configured.setRepeatingRequest(previewRequest.build(),
                             captureCallback(token), handler);
@@ -548,8 +620,17 @@ public final class CameraProbeActivity extends Activity {
                                 ? previewSurface : privateReader.getSurface());
                         if (yuvReader != null)
                             trigger.addTarget(yuvReader.getSurface());
+                        if (recorderSurface != null)
+                            trigger.addTarget(recorderSurface);
                         applyAutomaticControls(trigger, true);
                         configured.capture(trigger.build(), captureCallback(token), handler);
+                    }
+                    if (needsEncodedVideo()) {
+                        mediaRecorder.start();
+                        recorderStarted = true;
+                        final long startedAt = SystemClock.elapsedRealtime();
+                        recorderStop = () -> stopEncodedRecording(token, id, startedAt);
+                        handler.postDelayed(recorderStop, ENCODE_DURATION_MS);
                     }
                 } catch (Exception e) {
                     failCamera(token, id,
@@ -638,6 +719,112 @@ public final class CameraProbeActivity extends Activity {
         request.set(CaptureRequest.CONTROL_AF_TRIGGER,
                 trigger ? CaptureRequest.CONTROL_AF_TRIGGER_START
                         : CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+    }
+
+    private void prepareMediaRecorder(String id, CamcorderProfile recordingProfile)
+            throws Exception {
+        encodedFile = new File(getFilesDir(), "encoded-camera-" + id + ".mp4");
+        if (encodedFile.exists() && !encodedFile.delete())
+            throw new IllegalStateException("could not remove previous encoded output");
+
+        mediaRecorder = new MediaRecorder();
+        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+        mediaRecorder.setProfile(recordingProfile);
+        mediaRecorder.setOutputFile(encodedFile.getAbsolutePath());
+        mediaRecorder.prepare();
+        recorderSurface = mediaRecorder.getSurface();
+    }
+
+    private void stopEncodedRecording(int token, String id, long startedAt) {
+        recorderStop = null;
+        if (!isCurrent(token) || !recorderStarted || mediaRecorder == null)
+            return;
+
+        try {
+            /*
+             * Match Android's Camera2 recording lifecycle: stop the source
+             * and close its capture session before asking MediaRecorder to
+             * drain and stop the encoder. This prevents new camera buffers
+             * racing Codec2 STREAMOFF and DMA-BUF teardown.
+             */
+            if (session != null) {
+                session.stopRepeating();
+                session.close();
+                session = null;
+            }
+            mediaRecorder.stop();
+            recorderStarted = false;
+            recorderResult = analyzeEncodedVideo(encodedFile,
+                    SystemClock.elapsedRealtime() - startedAt);
+            recorderAccepted = recorderResult.contains("encodedValid=true");
+            if (!recorderAccepted) {
+                failCamera(token, id, "encoded recording was invalid: " + recorderResult);
+                return;
+            }
+            maybeCompleteCamera(token);
+        } catch (Throwable error) {
+            recorderStarted = false;
+            failCamera(token, id, "encoded recording stop failed: " + compactError(error));
+        }
+    }
+
+    private static String analyzeEncodedVideo(File file, long elapsedMs) throws Exception {
+        long bytes = file == null || !file.isFile() ? 0 : file.length();
+        MediaMetadataRetriever metadata = new MediaMetadataRetriever();
+        String durationText = null;
+        String widthText = null;
+        String heightText = null;
+        String hasVideo = null;
+        String hasAudio = null;
+        String frameCount = null;
+        String captureFps = null;
+        try {
+            metadata.setDataSource(file.getAbsolutePath());
+            durationText = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_DURATION);
+            widthText = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+            heightText = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+            hasVideo = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO);
+            hasAudio = metadata.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+                frameCount = metadata.extractMetadata(
+                        MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                captureFps = metadata.extractMetadata(
+                        MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE);
+        } finally {
+            metadata.release();
+        }
+
+        long durationMs = parseLong(durationText);
+        int width = (int) parseLong(widthText);
+        int height = (int) parseLong(heightText);
+        boolean valid = bytes > 4096 && durationMs >= ENCODE_DURATION_MS / 2
+                && width > 0 && height > 0
+                && "yes".equalsIgnoreCase(hasVideo)
+                && "yes".equalsIgnoreCase(hasAudio);
+        return String.format(Locale.US,
+                "encodedValid=%s encodedFile=%s encodedBytes=%d "
+                        + "encodedDurationMs=%d encodedElapsedMs=%d encodedSize=%dx%d "
+                        + "encodedHasVideo=%s encodedHasAudio=%s "
+                        + "encodedFrames=%s encodedCaptureFps=%s",
+                valid, file.getName(), bytes, durationMs, elapsedMs, width, height,
+                hasVideo, hasAudio, frameCount, captureFps);
+    }
+
+    private static long parseLong(String value) {
+        if (value == null)
+            return 0;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException error) {
+            return 0;
+        }
     }
 
     private void onPrivateImage(int token, ImageReader source) {
@@ -906,7 +1093,8 @@ public final class CameraProbeActivity extends Activity {
     private void maybeCompleteCamera(int token) {
         if (!isCurrent(token) || !privateAccepted
                 || (needsYuv() && !yuvAccepted)
-                || (needsJpeg() && !jpegAccepted))
+                || (needsJpeg() && !jpegAccepted)
+                || (needsEncodedVideo() && !recorderAccepted))
             return;
         if (privateTimedFrames < MIN_PRIVATE_TIMING_FRAMES)
             return;
@@ -946,17 +1134,19 @@ public final class CameraProbeActivity extends Activity {
                     needsSurface() ? surfacePixelResult : "not-requested");
         } else {
             valid = privateAccepted && (!needsYuv() || yuvResult.contains("valid=true"))
-                    && autofocusTerminal;
+                    && autofocusTerminal
+                    && (!needsEncodedVideo() || recorderAccepted);
             result = String.format(Locale.US,
                     "CAMERA id=%s valid=%s profile=%s template=%s privateFrames=%d "
                             + "afMode=%d privateSize=%s %s %s afStates=%s afRegion=%s "
-                            + "yuv=%s surfacePixels=%s",
+                            + "yuv=%s surfacePixels=%s encoded=%s",
                     id, valid, profile, captureTemplateName(), privateFrames,
                     selectedAfMode,
                     privateStreamSize, privateTiming(), captureTiming(), afStates,
                     focusRegions == null ? "none" : focusRegions[0].toString(),
                     needsYuv() ? yuvResult : "not-requested",
-                    needsSurface() ? surfacePixelResult : "not-requested");
+                    needsSurface() ? surfacePixelResult : "not-requested",
+                    needsEncodedVideo() ? recorderResult : "not-requested");
         }
         results.add(result);
         Log.i(TAG, result);
@@ -1090,15 +1280,66 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private static String analyzeJpeg(Image image) throws Exception {
-        ByteBuffer bytes = image.getPlanes()[0].getBuffer().duplicate();
-        int length = bytes.remaining();
-        int first = length > 0 ? bytes.get(bytes.position()) & 0xff : -1;
-        int second = length > 1 ? bytes.get(bytes.position() + 1) & 0xff : -1;
+        ByteBuffer source = image.getPlanes()[0].getBuffer().duplicate();
+        byte[] encoded = new byte[source.remaining()];
+        source.get(encoded);
+        int length = encoded.length;
+        int first = length > 0 ? encoded[0] & 0xff : -1;
+        int second = length > 1 ? encoded[1] & 0xff : -1;
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        digest.update(bytes);
-        boolean valid = length > 128 && first == 0xff && second == 0xd8;
-        return "jpegValid=" + valid + " valid=" + valid + " jpegBytes=" + length
-                + " jpegSha256=" + hex(digest.digest());
+        digest.update(encoded);
+
+        Bitmap bitmap = BitmapFactory.decodeByteArray(encoded, 0, encoded.length);
+        int width = bitmap == null ? 0 : bitmap.getWidth();
+        int height = bitmap == null ? 0 : bitmap.getHeight();
+        int rowJumps = 0;
+        double maxRowJump = 0.0;
+        if (bitmap != null && width > 0 && height > 0) {
+            int sampleStep = Math.max(1, width / 160);
+            double previousRed = 0.0;
+            double previousGreen = 0.0;
+            double previousBlue = 0.0;
+            for (int y = 0; y < height; ++y) {
+                long redSum = 0;
+                long greenSum = 0;
+                long blueSum = 0;
+                int count = 0;
+                for (int x = 0; x < width; x += sampleStep) {
+                    int color = bitmap.getPixel(x, y);
+                    redSum += (color >> 16) & 0xff;
+                    greenSum += (color >> 8) & 0xff;
+                    blueSum += color & 0xff;
+                    count++;
+                }
+
+                double red = (double) redSum / count;
+                double green = (double) greenSum / count;
+                double blue = (double) blueSum / count;
+                if (y > 0) {
+                    double jump = (Math.abs(red - previousRed)
+                            + Math.abs(green - previousGreen)
+                            + Math.abs(blue - previousBlue)) / 3.0;
+                    maxRowJump = Math.max(maxRowJump, jump);
+                    if (jump > 45.0)
+                        rowJumps++;
+                }
+                previousRed = red;
+                previousGreen = green;
+                previousBlue = blue;
+            }
+            bitmap.recycle();
+        }
+
+        int rowJumpLimit = Math.max(8, height / 20);
+        boolean visualValid = bitmap != null && width > 0 && height > 0
+                && rowJumps <= rowJumpLimit;
+        boolean valid = length > 128 && first == 0xff && second == 0xd8
+                && visualValid;
+        return String.format(Locale.US,
+                "jpegValid=%s valid=%s jpegBytes=%d jpegSize=%dx%d "
+                        + "jpegRowJumps=%d/%d jpegMaxRowJump=%.1f jpegSha256=%s",
+                valid, valid, length, width, height, rowJumps, rowJumpLimit,
+                maxRowJump, hex(digest.digest()));
     }
 
     private void saveJpeg(String id, Image image) throws Exception {
@@ -1225,15 +1466,27 @@ public final class CameraProbeActivity extends Activity {
 
     private void closeCamera() {
         cancelTimeout();
+        if (recorderStop != null && handler != null)
+            handler.removeCallbacks(recorderStop);
+        recorderStop = null;
         if (session != null) {
             try {
                 session.stopRepeating();
-                session.abortCaptures();
+                if (!needsEncodedVideo())
+                    session.abortCaptures();
             } catch (Exception e) {
                 Log.w(TAG, "capture shutdown: " + compactError(e));
             }
             session.close();
             session = null;
+        }
+        if (recorderStarted && mediaRecorder != null) {
+            try {
+                mediaRecorder.stop();
+            } catch (Throwable error) {
+                Log.w(TAG, "recorder shutdown: " + compactError(error));
+            }
+            recorderStarted = false;
         }
         previewRequest = null;
         if (camera != null) {
@@ -1252,6 +1505,15 @@ public final class CameraProbeActivity extends Activity {
             privateReader.close();
             privateReader = null;
         }
+        if (mediaRecorder != null) {
+            mediaRecorder.release();
+            mediaRecorder = null;
+        }
+        if (recorderSurface != null) {
+            recorderSurface.release();
+            recorderSurface = null;
+        }
+        encodedFile = null;
         surfaceSamplePending.set(false);
         surfaceToken = 0;
     }
@@ -1342,7 +1604,8 @@ public final class CameraProbeActivity extends Activity {
                 || PROFILE_SURFACE.equals(requested)
                 || PROFILE_SURFACE_YUV.equals(requested)
                 || PROFILE_RECORD.equals(requested)
-                || PROFILE_RECORD_YUV_720P.equals(requested))
+                || PROFILE_RECORD_YUV_720P.equals(requested)
+                || PROFILE_ENCODE_720P.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
@@ -1366,11 +1629,16 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private boolean needsRecordTemplate() {
-        return PROFILE_RECORD.equals(profile) || needsRecordingYuv720p();
+        return PROFILE_RECORD.equals(profile) || needsRecordingYuv720p()
+                || needsEncodedVideo();
     }
 
     private boolean needsRecordingYuv720p() {
         return PROFILE_RECORD_YUV_720P.equals(profile);
+    }
+
+    private boolean needsEncodedVideo() {
+        return PROFILE_ENCODE_720P.equals(profile);
     }
 
     private int captureTemplate() {

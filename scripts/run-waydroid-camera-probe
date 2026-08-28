@@ -5,13 +5,18 @@ program=${0##*/}
 timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
 camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
 skip_install=${PMOS_WAYDROID_PROBE_SKIP_INSTALL:-no}
+media_output=${PMOS_WAYDROID_PROBE_MEDIA_OUTPUT:-}
+allow_encoder=${PMOS_WAYDROID_PROBE_ALLOW_ENCODER:-no}
 
 usage() {
 	printf '%s\n' \
-		"usage: $program APK [full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p] [OUTPUT_FILE]" \
+		"usage: $program APK [full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p] [OUTPUT_FILE]" \
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
-		'An output file is optional and must not already exist.'
+		'An output file is optional and must not already exist.' \
+		'Set PMOS_WAYDROID_PROBE_MEDIA_OUTPUT with encode-720p and one camera ID' \
+		'to copy the app-private H.264/AAC MP4 to the host.' \
+		'encode-720p is phone-gated and also requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes.'
 }
 
 die() {
@@ -39,7 +44,7 @@ output=${3:-}
 
 [ -f "$apk" ] || die "APK does not exist: $apk"
 case "$profile" in
-full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p)
+full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p)
 	;;
 *)
 	die "unsupported profile: $profile"
@@ -66,7 +71,26 @@ case "$skip_install" in
 yes|no) ;;
 *) die 'PMOS_WAYDROID_PROBE_SKIP_INSTALL must be yes or no' ;;
 esac
+case "$allow_encoder" in
+yes|no) ;;
+*) die 'PMOS_WAYDROID_PROBE_ALLOW_ENCODER must be yes or no' ;;
+esac
+[ "$profile" != encode-720p ] || [ "$allow_encoder" = yes ] ||
+	die 'encode-720p requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes'
+if [ "$profile" = encode-720p ]; then
+	[ -n "$camera_id" ] || die 'encode-720p requires PMOS_WAYDROID_PROBE_CAMERA_ID'
+	[ "$camera_id" != 2 ] ||
+		die 'camera 2 hardware encoding is disabled after a Venus teardown fault'
+fi
 [ -z "$output" ] || [ ! -e "$output" ] || die "refusing to overwrite: $output"
+if [ -n "$media_output" ]; then
+	[ "$profile" = encode-720p ] ||
+		die 'PMOS_WAYDROID_PROBE_MEDIA_OUTPUT requires profile encode-720p'
+	[ -n "$camera_id" ] ||
+		die 'PMOS_WAYDROID_PROBE_MEDIA_OUTPUT requires PMOS_WAYDROID_PROBE_CAMERA_ID'
+	[ ! -e "$media_output" ] || die "refusing to overwrite: $media_output"
+	[ "$media_output" != "$output" ] || die 'result and media output paths must differ'
+fi
 
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
 
@@ -80,10 +104,17 @@ else
 fi
 waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
+waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.RECORD_AUDIO \
+	2>/dev/null || :
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- rm -f \
 	/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 	2>/dev/null || :
+if [ "$profile" = encode-720p ] && [ -n "$camera_id" ]; then
+	waydroid shell -- rm -f \
+		"/data/user/0/dev.lolren.waydroidcameraprobe/files/encoded-camera-$camera_id.mp4" \
+		2>/dev/null || :
+fi
 if [ -n "$camera_id" ]; then
 	waydroid shell -- am start -W -n \
 		dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
@@ -102,6 +133,22 @@ while [ "$elapsed" -le "$timeout_seconds" ]; do
 		2>/dev/null || :)
 	case "$result" in
 	*PROBE_DONE*)
+		if [ -n "$media_output" ]; then
+			mkdir -p "$(dirname -- "$media_output")"
+			media_tmp=$(mktemp "${TMPDIR:-/tmp}/waydroid-camera-media.XXXXXX")
+			if ! waydroid shell -- cat \
+				"/data/user/0/dev.lolren.waydroidcameraprobe/files/encoded-camera-$camera_id.mp4" \
+				>"$media_tmp"; then
+				rm -f -- "$media_tmp"
+				die 'could not copy encoded media from Waydroid'
+			fi
+			if [ ! -s "$media_tmp" ]; then
+				rm -f -- "$media_tmp"
+				die 'encoded media copied from Waydroid was empty'
+			fi
+			mv -- "$media_tmp" "$media_output"
+			printf 'media: %s\n' "$media_output"
+		fi
 		if [ -n "$output" ]; then
 			mkdir -p "$(dirname -- "$output")"
 			printf '%s\n' "$result" > "$output"

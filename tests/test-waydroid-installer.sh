@@ -65,11 +65,18 @@ grep -q 'setprop debug.stagefright.ccodec 2' \
 	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
 grep -q '^sched_setscheduler: 1$' \
 	"$ROOT/config/waydroid/mediaswcodec.policy"
-for camera_id in 0 1 2; do
+for camera_id in 0 1; do
 	grep -q "<CamcorderProfiles cameraId=\"$camera_id\">" \
 		"$ROOT/config/waydroid/media_profiles.xml"
 done
-for frame_rate in 24 19 15; do
+if grep -q '<CamcorderProfiles cameraId="2">' \
+	"$ROOT/config/waydroid/media_profiles.xml"; then
+	printf '%s\n' 'unsafe auxiliary Venus recording profile is still advertised' >&2
+	exit 1
+fi
+grep -q 'ID 2 is intentionally omitted' \
+	"$ROOT/config/waydroid/media_profiles.xml"
+for frame_rate in 24 19; do
 	grep -q "frameRate=\"$frame_rate\"" \
 		"$ROOT/config/waydroid/media_profiles.xml"
 done

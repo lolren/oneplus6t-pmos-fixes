@@ -2329,3 +2329,120 @@ manifest: 8edaf8117e14f1ea134ec5a198bc7bff0d1ed30671c717da6ecd963cba4b3998
 camera HAL: 8d6d714bb1449cf3ffb42f66708a053f50c1e5c83c62890ca6b3c1cc9e6fec49
 libcamera: a9a52464f750989112537daa92706cbeb41553d63c06eeaa978a86c984cdd5ca
 ```
+
+## Waydroid camera r50 source-fence acceptance
+
+Date: 2026-08-28. Full r49 Camera2 captures exposed a defect hidden by the
+main rear sensor: decoded JPEGs from camera IDs 1 and 2 contained repeated
+horizontal green/static lines. A deterministic decoder-side metric counted
+adjacent full-width RGB mean changes above 45 and reported row-jump counts of
+0, 56 and 119 for IDs 0, 1 and 2. The files remained private.
+
+The direct contiguous-NV12 renderer exports a native GPU completion fence.
+Camera3 forwarded that fence for direct Android outputs, but started mapped
+YUV/JPEG consumers before waiting for their shared source. Patch `0017`
+collects each unique mapped-postprocessor source in
+`CameraDevice::requestComplete()`, waits on its release fence exactly once and
+only then dispatches workers. Direct-only output remains asynchronous. This
+also avoids multiple mapped consumers racing ownership of one release fence.
+
+The patch passes checkstyle, its dedicated source/order test and an exact
+application test against the r49 parent. A clean ARMv7/API-33 source build from
+commit `0c2bc9359e68216917875556b02b33a07d606d05` completed all 198 targets. The
+normalized r50 archive was installed through the rollback-safe overlay helper.
+An exact-build full probe then passed all three cameras and ended
+`PROBE_DONE valid=3 total=3`. Every JPEG decoded with zero row jumps against a
+limit of 24; maximum row changes were 6.1, 4.2 and 7.1. YUV, private preview,
+rear AF, fixed-focus front reporting and -1/0/+1 EV also passed. The safety
+monitor recorded no Venus/SMMU fault, sustained blocked-I/O state or IRQ storm.
+
+A real front Aperture recording using the same exact runtime bits finalized,
+decoded completely and probes as:
+
+```text
+H.264 yuv420p: 1280x720 plus portrait rotation metadata,
+               453 frames / 18.2898 s = about 24.77 fps
+AAC: mono, 48000 Hz / 18.170896 s
+MP4: 18.2898 s / 21930400 bytes
+```
+
+Frames at 5 and 15 seconds show full-frame colour with neither the former
+purple skin-tone swap nor horizontal row corruption. The clip and frames are
+private and are not release assets.
+
+Direct auxiliary hardware encoding is rejected, not accepted. The first
+bounded diagnostic called `MediaRecorder.stop()` while Camera2 was still
+submitting repeating buffers. Its ten-second encode reached Codec2, then a
+post-stop component error produced a Venus recovery IRQ spike. The watchdog
+stopped Waydroid, but kernel cleanup blocked normal sync/reboot and required a
+physical long-power restart. No result or media was published.
+
+The probe was then changed to the current Android Camera2 sample lifecycle:
+stop and close the capture session before stopping `MediaRecorder`, and do not
+force a nominal AE FPS range. After a clean reboot, an ID-0 main-rear control
+passed that exact path. It produced 285 H.264 frames over 9.571044 seconds
+(29.78 fps), mono 48 kHz AAC over 9.877333 seconds and a 9,875,786-byte MP4.
+The file decoded completely, a private frame is clean, IRQ cadence returned to
+zero immediately and no D-state/pressure/fault condition appeared.
+
+One corrected ID-2 auxiliary run still reproduced the same failure. Recording
+used ordinary roughly 24 IRQ/s activity and stopped cleanly at first; about six
+seconds later Venus rose by 43,053 interrupts in one monitor interval and the
+watchdog triggered. The root console remained responsive long enough to
+terminate only the runner and invoke an exact emergency reboot. Post-reboot
+health again showed kernel r10, zero rootfs mounts, zero D-state tasks, zero
+current I/O pressure and no boot-time filesystem, SMMU or Venus fault. This
+comparison isolates a current auxiliary-stream/Venus teardown incompatibility,
+not the probe's stop order.
+
+The APK and runner now hard-refuse ID-2 encoded tests, and the installed r51
+camera configuration omits ID 2 from Android recording profiles while
+preserving its preview, YUV and JPEG paths. Host build, refusal and ordering
+tests pass.
+Auxiliary video must use a proven non-Venus encoder or wait for a kernel/Codec2
+fix; do not restore the profile simply to expose an application's video button.
+
+```text
+0017: 9150f64910f24432d46e19621b4c0c5861fda7d5ea8a32f1cabdb4e7ddeae3c2
+archive: cec3c2ed3fc2b7c23f55ad6e2458cea1af0fc07281d2d358650e4f0142c99979
+manifest: 2b54fb7e403b9d58d94746870d70b359d1c0fce3de1cafd6b46d9c541890bc9b
+camera HAL: 59937d1d950ad9c6602453cdb616fa066a6988aedbf8c798666e3a0838fa245d
+libcamera: 61eee82f2cbd1a78241a424ef496e4601d412d1e754a7d2507f6fc923aa0f7b3
+```
+
+## Waydroid camera r51 auxiliary-video safety acceptance
+
+Date: 2026-08-28. The accepted r50 compiled runtime was copied into a clean
+stage and only `media_profiles.xml` plus `media_profiles_V1_0.xml` were replaced
+with the reviewed safety configuration. Both files advertise 480p/720p
+H.264/AAC only for main ID 0 and front ID 1. Rear auxiliary ID 2 keeps its
+Camera2 preview/YUV/JPEG exposure but has no encoder profile. Packaging the
+stage twice produced byte-identical archives.
+
+The guarded installer dry-run passed, then installed r51 and retained the
+target-scoped rollback at
+`/var/lib/waydroid/backups/camera-20260828T134626Z-7563`. Installed runtime and
+profile hashes matched the manifest. A fresh preview probe opened all three
+cameras and ended `PROBE_DONE profile=preview valid=3 total=3`. Legacy
+`CamcorderProfile` and API-31 `EncoderProfiles` checks found the intended
+profiles for IDs 0/1 and returned `has=false all=false` for all tested ID-2
+qualities. No encoder was invoked during this acceptance.
+
+The one-second kernel monitor stayed at 12 Venus interrupts with zero deltas,
+zero faults and zero current I/O pressure. Waydroid then completed an orderly
+session/container stop; the final state had zero rootfs mounts and zero D-state
+tasks. The temporary greeter display bridge used for the unattended run was
+removed and its original directory/socket permissions were restored.
+
+```text
+r51 archive: 04355331ac5a8b4559f3df68e7a3d65094ea083e0f50b9fe7b8b580c34442e63
+r51 manifest: b06633944db7347be6174fd6529130cb056138fd6f7cc4318449e00c7d04815e
+media_profiles.xml: 7f0eb36f586893d9a2906dba08b2352f78a8a58f2c162acd8bf38d84aca8fc10
+camera HAL: 59937d1d950ad9c6602453cdb616fa066a6988aedbf8c798666e3a0838fa245d
+libcamera: 61eee82f2cbd1a78241a424ef496e4601d412d1e754a7d2507f6fc923aa0f7b3
+```
+
+The exact archive and manifest are published in the
+[r51 auxiliary-video safety release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r51-aux-video-safety).
+No private photographs, video, device identifiers or diagnostic logs are
+release assets.

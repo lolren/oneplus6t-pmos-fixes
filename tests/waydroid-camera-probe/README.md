@@ -29,7 +29,11 @@ For every camera reported by Android, the probe checks:
   recording path, isolating full-size NV12 production from the encoder and
   muxer; surface/compositor timing is reported separately from Camera2 sensor
   result timing, exposure and frame duration; and
-- a JPEG request produces a decodable, non-empty image;
+- an `encode-720p` run records ten seconds through a real Camera2
+  `MediaRecorder` surface, then requires a non-empty 720p H.264 video track and
+  AAC microphone track before reporting success; and
+- a JPEG request produces a decodable, non-empty image without repeated
+  full-width row discontinuities from an unsignalled GPU source fence;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
 - -1, 0 and +1 EV requests are returned in capture metadata;
@@ -70,10 +74,11 @@ waydroid app install build/waydroid-camera-probe.apk
 waydroid app launch dev.lolren.waydroidcameraprobe
 ```
 
-Grant the one requested Camera permission. Leave the phone still while the
-probe works through all cameras. A large software-ISP preview can run at only a
-few frames per second, so the complete exposure sequence can take up to about
-twenty minutes. The activity closes itself when finished.
+Grant the requested Camera permission. The encoded profile also needs the
+Microphone permission. Leave the phone still while the probe works through all
+cameras. A large software-ISP preview can run at only a few frames per second,
+so the complete exposure sequence can take up to about twenty minutes. The
+activity closes itself when finished.
 
 Read the private result from the host:
 
@@ -100,7 +105,8 @@ readback. It also saves that sampled displayed frame as
 includes the Android surface/compositor path and provides evidence for RGB
 channel ordering or an all-black surface, but it is not a colour-chart or
 image-quality pass/fail test. Generated JPEGs and PNGs remain in the
-application's private directory. Do not add them to Git.
+application's private directory. Encoded MP4s are private too. Do not add any
+of them to Git.
 
 ## Performance profiles
 
@@ -147,6 +153,12 @@ waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile record-yuv-720p
+
+# Real 720p H.264/AAC recording (main rear ID 0 or front ID 1 only)
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile encode-720p --es camera-id 0
 ```
 
 After installing this repository, the same operation can be run and saved
@@ -162,14 +174,39 @@ Use `surface` to measure updates reaching a real Android `TextureView`,
 `surface-yuv` to add a simultaneous YUV consumer, or `record` to use Camera2's
 `TEMPLATE_RECORD` while measuring that same displayed surface. Use
 `record-yuv-720p` to add the full-size NV12 consumer without invoking Codec2.
-It prefers
-fixed 30 FPS when the camera advertises it and
-records the selected range in the result. The `record` profile is still a
-diagnostic: it does not invoke an Android video encoder or save a file, so a
-separate native recording test is required for encoder and muxer acceptance.
+It prefers fixed 30 FPS when the camera advertises it and records the selected
+range in the result. The `record` and `record-yuv-720p` profiles remain
+unencoded diagnostics. Use `encode-720p` for a bounded real H.264/AAC test.
+That profile deliberately leaves Camera2's AE target range unset, allowing the
+camera timestamps and the per-camera `CamcorderProfile` to negotiate cadence.
+It also follows Android's recording teardown order: stop and close the capture
+session before stopping `MediaRecorder`, so no new DMA-BUFs race Codec2
+`STREAMOFF`.
+
+To copy the generated MP4 to a new host path, isolate one camera and set the
+media-output variable:
+
+```sh
+PMOS_WAYDROID_PROBE_CAMERA_ID=0 \
+PMOS_WAYDROID_PROBE_MEDIA_OUTPUT=/tmp/oneplus6t-camera-0.mp4 \
+PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes \
+  pmos-run-waydroid-camera-probe \
+  build/waydroid-camera-probe.apk encode-720p \
+  /tmp/oneplus6t-camera-0-encode.txt
+```
+
+The runner refuses to overwrite either output. Keep captures private unless
+every person and object in view is safe to publish. The explicit allow flag is
+intentional: encoded diagnostics exercise camera, Codec2 and kernel teardown
+together and must run only after the Waydroid health and safety-monitor gates.
+Camera ID 2 is hard-disabled for this profile: two bounded attempts with
+different teardown ordering both caused a Venus recovery IRQ storm after stop.
+Its preview, YUV and JPEG profiles remain enabled; auxiliary video must use a
+non-Venus encoder until that kernel/Codec2 incompatibility is fixed.
+
 The runner streams the APK directly to Android's package manager, avoiding a
 dependency on Waydroid's host-side copy/install helper. It grants the camera
-permission, stops any previous
+and microphone permissions, stops any previous
 probe instance, clears only the probe's old generated result, waits for
 `PROBE_DONE`, and refuses to overwrite an existing host result file. The runner
 allows twenty minutes for `full` and eight minutes for the shorter profiles.

@@ -27,14 +27,20 @@ location and Android-container failures cannot obscure one another.
    health gate now pass. The `pmos-safe-upgrade` wrapper now intercepts ordinary
    critical-package upgrades; repository signing, compatibility-gated published
    generations and retained public rollback generations remain.
-4. Broaden Android acceptance: installed camera r44 retains the NV12 colour
-   fix, keeps a linear RGB preview, coalesces NV12 consumers and caps private
-   preview size. Codec2 r53 is reproducibly built, installed and passes three
-   guarded rear record/finalize lifecycles without the former green band,
-   gralloc crash or Venus teardown fault. The illuminated file averages only
-   11.62 fps, so profile that path next, then repeat front/auxiliary,
-   long-recording, app-switching and suspend/resume tests. Android computational
-   HDR and vendor image-quality parity remain unimplemented.
+4. Broaden Android acceptance: installed camera r51 retains the exact r50
+   binaries and NV12 colour fix, keeps a linear RGB preview, coalesces NV12
+   consumers, caps private preview size and waits before mapped consumers read
+   a GPU source. Exact
+   full probes pass all three cameras with clean JPEG rows. Codec2 r53 is
+   reproducibly built and installed; main rear and front H.264/AAC files decode
+   fully without the former green/purple corruption. Main rear still averages
+   only about 11.78 fps, while a dedicated main control can reach 29.78 fps.
+   Both recorder-first and Android's session-before-recorder auxiliary tests
+   reproducibly trigger a post-stop Venus IRQ storm. Keep auxiliary recording
+   profiles and the destructive probe hard-disabled; investigate a selected
+   software encoder or kernel/Codec2 fix instead. Continue main/front long
+   recording, app switching and suspend/resume. Android computational HDR and
+   vendor image-quality parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. The reproducible dry-run-first NMEA/test-provider
    bridge, optional disabled systemd service and read-only native location

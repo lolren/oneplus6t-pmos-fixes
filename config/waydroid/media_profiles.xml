@@ -8,9 +8,13 @@
      synthetic camera profile.  Keeping this second, device-neutral file in
      the vendor overlay makes CameraX's EncoderProfiles query deterministic.
 
-     The three IDs are the libcamera order on fajita: 0 front, 1 rear main,
-     2 rear auxiliary. Their live Camera2 fixed-rate maxima are 24, 19 and
-     15 fps respectively; do not advertise a profile above those limits.
+     The installed libcamera order on fajita is 0 rear main, 1 front and 2
+     rear auxiliary. IDs 0 and 1 have guarded hardware-encoder acceptance.
+     ID 2 is intentionally omitted: two bounded recordings reached Venus but
+     reproducibly entered a firmware-recovery IRQ storm after stop, even with
+     Android's documented session-before-recorder teardown order. Preview,
+     YUV and JPEG exposure are unaffected. Do not advertise auxiliary video
+     again until a non-Venus path or a kernel/Codec2 fix passes teardown.
 -->
 <MediaSettings>
     <CamcorderProfiles cameraId="0">
@@ -31,17 +35,6 @@
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
             <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="19" />
-            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
-        </EncoderProfile>
-    </CamcorderProfiles>
-
-    <CamcorderProfiles cameraId="2">
-        <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
-            <Video codec="h264" bitRate="4000000" width="640" height="480" frameRate="15" />
-            <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
-        </EncoderProfile>
-        <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
-            <Video codec="h264" bitRate="8000000" width="1280" height="720" frameRate="15" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
     </CamcorderProfiles>

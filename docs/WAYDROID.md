@@ -6,12 +6,15 @@ software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The installed r49 camera overlay exposes three Android cameras and retains the
-Mesa EGL software ISP, DMA-heap fallback, JPEG sizing and r36 NV12 colour fix.
-Patches `0013`–`0016` add multi-output processing, retain a fast linear RGB
+The installed r51 safety overlay exposes three Android cameras and retains the
+exact r50 binaries, Mesa EGL software ISP, DMA-heap fallback, JPEG sizing and
+r36 NV12 colour fix. It advertises recording only for the accepted main and
+front cameras; auxiliary preview, YUV and JPEG remain enabled.
+Patches `0013`–`0017` add multi-output processing, retain a fast linear RGB
 preview beside coalesced NV12 consumers and cap private previews to a sensor
-mode suitable for video. The final patch writes a compatible contiguous NV12
-allocation directly on the GPU while retaining the readback/libyuv fallback.
+mode suitable for video. Patch `0016` writes a compatible contiguous NV12
+allocation directly on the GPU while retaining the readback/libyuv fallback;
+`0017` waits for that GPU source before mapped YUV/JPEG post-processing.
 A separate Android 13 arm64 Codec2 service uses the SDM845 Venus encoder while
 preserving Android's software encoder as fallback. Aperture now configures
 simultaneous preview and encoder streams and saves playable H.264/AAC video.
@@ -27,7 +30,7 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
-| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for all three camera IDs; the validated Venus component ranks ahead of Android's still-present software fallback. |
+| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for the guarded main/front IDs; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary video is omitted after a reproducible Venus teardown fault. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
 | Venus hardware H.264 | Uses `/dev/video12` for encode. Codec2 r53 completes repeated rear H.264/AAC recordings and teardown; the current illuminated file still averages only 11.62 fps, so this is functional acceptance rather than performance parity. |
 | MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
@@ -36,6 +39,7 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | Bounded hardware-codec sandbox | Adds only the observed libchrome/Mesa scheduler and poll syscalls to the Android Codec2 policy. The service still runs as Android `media` under minijail. |
 | Coalesced NV12 consumers | Produces one largest NV12 source and centre-crops/scales other YUV/encoder outputs, avoiding repeated Bayer work and excess GPU readback. |
 | Contiguous NV12 GPU target | Imports compatible linear Y+UV planes as one `GR88` framebuffer and writes filtered luma/chroma in a single draw, avoiding `glReadPixels()` and CPU colour conversion while preserving the safe fallback for other layouts. |
+| Post-processor source-fence wait | Waits once per GPU-written source before mapped YUV/JPEG consumers run, preventing partially rendered scan lines while direct-only Android outputs retain asynchronous completion fences. |
 | Linear RGB mixed preview | Keeps the fast RGB preview during preview-plus-record requests while requesting CPU-writable linear gralloc storage, avoiding tiled-buffer corruption. |
 | Private-preview cap | Stops CameraX selecting an oversized 1600x1200 private preview beside 720p video; full-size YUV and JPEG photography modes remain advertised. |
 | Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
@@ -73,7 +77,8 @@ camera UI by themselves; an Android camera application consumes them.
   EGL NV12 channel-order patches (`0002`–`0012`), multi-output software ISP
   patch `0013`, and the mixed RGB/NV12 plus private-preview patches `0014` and
   `0015`. Patch `0016` adds the accepted contiguous-NV12 GPU target and keeps
-  the existing readback/libyuv conversion as its runtime fallback.
+  the existing readback/libyuv conversion as its runtime fallback. Patch
+  `0017` synchronizes only CPU-mapped post-processors with their GPU source.
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -83,7 +88,8 @@ camera UI by themselves; an Android camera application consumes them.
   GID; the `zz` prefix makes the ordering explicit. It also selects the
   reviewed recording-profile file and Codec2 path during Android early init.
 - `config/waydroid/media_profiles.xml` declares conservative 480p/720p
-  H.264/AAC profiles for all three libcamera IDs.
+  H.264/AAC profiles for the accepted main/front IDs. It intentionally omits
+  the auxiliary ID until a non-Venus path or kernel/Codec2 fix is accepted.
 - `config/waydroid/mediaswcodec.policy` is the device-specific additive
   seccomp fragment required by Mesa's software encoder path.
 - `scripts/build-waydroid-camera` creates a clean Android ARMv7 libcamera build
@@ -154,7 +160,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's seventeen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the sixteen Android patches in numeric order:
+the seventeen Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -180,6 +186,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0013-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0014-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0015-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0016-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0017-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -226,7 +233,11 @@ whole allocation as one two-channel framebuffer, and writes two luma bytes or
 one U/V pair per fragment. It preserves five-tap luma sharpness, averages the
 four RGB samples in each 2x2 chroma block and exports a native completion fence.
 Unsupported, non-contiguous or failed imports automatically use the existing
-readback/libyuv path.
+readback/libyuv path. Patch `0017` collects the unique GPU sources needed by
+pending mapped post-processors, waits on each source fence once and only then
+dispatches YUV/JPEG workers. This avoids both premature CPU reads and multiple
+consumers racing ownership of the same release fence. Requests whose outputs
+all go directly to Android keep the asynchronous fence path.
 
 ## Build a runtime bundle
 
@@ -243,7 +254,7 @@ export WAYDROID_SOFTISP_GPU=enabled
 
 /path/to/oneplus6t-pmos-fixes/scripts/package-waydroid-camera \
   /path/to/stage-waydroid-camera \
-  /path/to/oneplus6t-camera-contiguous-r49
+  /path/to/oneplus6t-camera-r51-aux-safety
 ```
 
 The helper configures only the simple pipeline/IPA and generic Android HAL,
@@ -734,8 +745,9 @@ container: 23.836600 s, 29354988 bytes
 Frames at 5 and 15 seconds show the complete image without the former green
 layout band. They also confirm that the open image remains softer/foggier than
 the vendor camera. The 11.62 fps measured cadence is still too low despite the
-nominal rate; frame-rate optimization, front/auxiliary recording, longer clips,
-app switching and suspend/resume remain required.
+nominal rate; frame-rate optimization, longer clips, app switching and
+suspend/resume remain required. The later r50 work below accepts front
+recording and deliberately disables auxiliary Venus recording.
 
 ### Reproduce the hardware encoder
 
@@ -859,6 +871,90 @@ The exact archive and manifest are published in the
 [r49 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r49-contiguous-nv12).
 Downloading both assets again produced the hashes above.
 
+## r50 mapped post-processor fence acceptance
+
+Date: 2026-08-28. The r49 direct NV12 path correctly returned a native GPU
+completion fence to Android, but Camera3 started mapped YUV/JPEG
+post-processors from the same source immediately. Main rear happened to finish
+before the CPU read it; front and auxiliary JPEGs reproducibly contained
+horizontal green/static rows. A decoded-row regression metric counted 0, 56
+and 119 large full-width discontinuities for camera IDs 0, 1 and 2.
+
+Patch `0017` gathers the unique sources required by mapped post-processors in
+`CameraDevice::requestComplete()`, waits once on each source fence and then
+dispatches the workers. It does not make direct-only streams synchronous. It
+also prevents two mapped consumers from racing `FrameBuffer::releaseFence()`.
+The standalone patch applies cleanly after exact r49, passes libcamera
+checkstyle and has a dedicated source/order regression test.
+
+A clean ARMv7/API-33 build from commit
+`0c2bc9359e68216917875556b02b33a07d606d05` completed all 198 targets. The exact
+archive was installed through the guarded camera installer. A complete run of
+all three Camera2 cameras then passed YUV, JPEG, private preview, AF and EV.
+All three JPEGs decoded with `jpegRowJumps=0/24`; their maximum adjacent-row
+changes were 6.1, 4.2 and 7.1 respectively. No private photographs are stored
+in the repository or release.
+
+A real front-camera Aperture recording also finalized and decoded end to end:
+
+```text
+video: H.264 yuv420p, 1280x720 with portrait rotation metadata,
+       453 frames over 18.2898 s, measured about 24.77 fps
+audio: AAC mono, 48000 Hz, 18.170896 s
+container: 18.2898 s, 21930400 bytes
+```
+
+Frames sampled during that private clip have normal colour and no purple or
+horizontal corruption. This accepts front-camera encode correctness, not
+vendor image-quality parity. Main rear remains accepted by r49/r50; a direct
+auxiliary-camera encoder is unsafe. Both recorder-first and Android's
+session-before-recorder shutdown order reproduced a delayed Venus recovery
+IRQ storm after stop, while an exact main-rear control passed. The probe now
+hard-refuses that combination, and the safety generation omits ID 2 recording
+profiles without changing its preview/YUV/JPEG support.
+
+```text
+0017 patch: 9150f64910f24432d46e19621b4c0c5861fda7d5ea8a32f1cabdb4e7ddeae3c2
+r50 archive: cec3c2ed3fc2b7c23f55ad6e2458cea1af0fc07281d2d358650e4f0142c99979
+r50 manifest: 2b54fb7e403b9d58d94746870d70b359d1c0fce3de1cafd6b46d9c541890bc9b
+camera.libcamera.so: 59937d1d950ad9c6602453cdb616fa066a6988aedbf8c798666e3a0838fa245d
+libcamera.so: 61eee82f2cbd1a78241a424ef496e4601d412d1e754a7d2507f6fc923aa0f7b3
+```
+
+## r51 auxiliary-video safety acceptance
+
+The r51 bundle is a minimal safety generation: every compiled camera runtime
+file is byte-identical to accepted r50, while both Android recording-profile
+files are replaced with the reviewed configuration from this repository. IDs
+0 and 1 retain conservative 480p/720p H.264/AAC profiles. ID 2 is omitted so
+CameraX and legacy applications cannot select the Venus path that produced the
+delayed post-stop IRQ storm. Its preview, YUV and JPEG streams are unchanged.
+
+The archive was packaged twice from a clean exact-r50 stage and both outputs
+were byte-identical. It was installed through the guarded helper, which created
+the rollback directory
+`/var/lib/waydroid/backups/camera-20260828T134626Z-7563`. After restart, a
+three-camera preview probe ended `PROBE_DONE profile=preview valid=3 total=3`.
+Legacy and API-31 profile queries found valid profiles for IDs 0/1 and returned
+`has=false all=false` for every tested quality on ID 2. A one-second safety
+monitor recorded no Venus/SMMU fault or IRQ growth. The session and container
+then stopped normally with zero rootfs mounts, zero D-state tasks and zero
+current PSI I/O pressure.
+
+```text
+r51 archive: 04355331ac5a8b4559f3df68e7a3d65094ea083e0f50b9fe7b8b580c34442e63
+r51 manifest: b06633944db7347be6174fd6529130cb056138fd6f7cc4318449e00c7d04815e
+media_profiles.xml: 7f0eb36f586893d9a2906dba08b2352f78a8a58f2c162acd8bf38d84aca8fc10
+camera.libcamera.so: 59937d1d950ad9c6602453cdb616fa066a6988aedbf8c798666e3a0838fa245d
+libcamera.so: 61eee82f2cbd1a78241a424ef496e4601d412d1e754a7d2507f6fc923aa0f7b3
+```
+
+Download the archive and manifest from the
+[r51 auxiliary-video safety release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r51-aux-video-safety),
+verify both hashes above, extract into a new empty staging directory and run
+the guarded installer only while the Waydroid session and container are
+stopped. Do not substitute the older r50 profile files.
+
 ## Rollback
 
 Stop the Waydroid session and container, then pass the exact backup directory
@@ -889,7 +985,7 @@ libcamera or IPA in place.
   frame duration.
 - The r35 lower layer has a clean JPEG-footer path in the accepted Aperture
   capture. Broader third-party-app and lifecycle testing is still required.
-- Compatible contiguous Android NV12 allocations use the r49 direct GPU path.
+- Compatible contiguous Android NV12 allocations use the r50 direct GPU path.
   Other layouts still use synchronous RGBA readback followed by CPU NV12
   conversion; use the probe and provider log to distinguish the two paths.
 - Running the probe while Aperture or another camera client owns CAMSS can
@@ -897,5 +993,10 @@ libcamera or IPA in place.
   probe before treating it as a regression.
 - Camera2 numeric IDs are provider enumeration details; applications should
   use facing/characteristics rather than assuming a fixed number.
+- Auxiliary preview, YUV and JPEG remain enabled, but its recording profile is
+  intentionally absent. Two bounded hardware-encoder attempts caused the same
+  post-stop Venus recovery IRQ storm with both recorder-first and Android's
+  session-first teardown order. Do not restore that profile merely to expose a
+  video button; use a proven non-Venus encoder or fix the kernel/Codec2 path.
 - Play Store installation, GPS and the Waydroid location bridge are separate
   roadmap items. They are not claimed by this camera patch.

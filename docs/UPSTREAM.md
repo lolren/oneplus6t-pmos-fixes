@@ -106,6 +106,15 @@ allocation with the expected offsets and pitch. Any upstream form should be
 coordinated with the multipass GPU-ISP work, gain focused DMA-BUF layout tests,
 and preserve the current non-contiguous/readback fallback.
 
+Patch `0017` addresses a more general Camera3 correctness boundary: a mapped
+post-processor must not consume a GPU-written source until its release fence
+signals, and multiple mapped consumers must not race ownership of that fence.
+It is a plausible independent upstream candidate rather than part of the
+Waydroid-specific `GR88` layout contract. Before submission, add a focused
+Camera3 test with a delayed synthetic fence, verify one wait for multiple
+consumers, and ask maintainers to review whether fence ownership belongs in
+`CameraDevice::requestComplete()` or a lower post-processor abstraction.
+
 Do not upstream identity matrices as calibrated sensor tuning. They exist only
 to expose the generic saturation control and are explicitly uncalibrated.
 Likewise, the OnePlus gamma/contrast/saturation values are downstream defaults,

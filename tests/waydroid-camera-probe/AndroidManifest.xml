@@ -5,6 +5,7 @@
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="33" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
