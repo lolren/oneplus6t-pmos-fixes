@@ -2,11 +2,12 @@
 set -eu
 
 program=${0##*/}
-timeout_seconds=${PMOS_WAYDROID_PROBE_TIMEOUT:-300}
+timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
+camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
 
 usage() {
 	printf '%s\n' \
-		"usage: $program APK [full|preview|preview-yuv|surface|record] [OUTPUT_FILE]" \
+		"usage: $program APK [full|preview|preview-yuv|surface|surface-yuv|record] [OUTPUT_FILE]" \
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
 		'An output file is optional and must not already exist.'
@@ -37,15 +38,27 @@ output=${3:-}
 
 [ -f "$apk" ] || die "APK does not exist: $apk"
 case "$profile" in
-full|preview|preview-yuv|surface|record)
+full|preview|preview-yuv|surface|surface-yuv|record)
 	;;
 *)
 	die "unsupported profile: $profile"
 	;;
 esac
+if [ -n "$timeout_override" ]; then
+	timeout_seconds=$timeout_override
+elif [ "$profile" = full ]; then
+	timeout_seconds=1200
+else
+	timeout_seconds=480
+fi
 case "$timeout_seconds" in
 ''|*[!0-9]*)
 	die 'PMOS_WAYDROID_PROBE_TIMEOUT must be a non-negative integer'
+	;;
+esac
+case "$camera_id" in
+''|*[!0-9]*)
+	[ -z "$camera_id" ] || die 'PMOS_WAYDROID_PROBE_CAMERA_ID must be numeric'
 	;;
 esac
 [ -z "$output" ] || [ ! -e "$output" ] || die "refusing to overwrite: $output"
@@ -53,20 +66,26 @@ esac
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
 
 waydroid app install "$apk"
-waydroid shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
+waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
-waydroid shell am force-stop dev.lolren.waydroidcameraprobe
-waydroid shell rm -f \
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- rm -f \
 	/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 	2>/dev/null || :
-waydroid shell am start -W -n \
-	dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
-	--es profile "$profile"
+if [ -n "$camera_id" ]; then
+	waydroid shell -- am start -W -n \
+		dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+		--es profile "$profile" --es camera-id "$camera_id"
+else
+	waydroid shell -- am start -W -n \
+		dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+		--es profile "$profile"
+fi
 
 result=''
 elapsed=0
 while [ "$elapsed" -le "$timeout_seconds" ]; do
-	result=$(waydroid shell cat \
+	result=$(waydroid shell -- cat \
 		/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 		2>/dev/null || :)
 	case "$result" in

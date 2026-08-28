@@ -66,13 +66,14 @@ waydroid app launch dev.lolren.waydroidcameraprobe
 ```
 
 Grant the one requested Camera permission. Leave the phone still while the
-probe works through all cameras; low-light stabilization can make a complete
-run take about three minutes. The activity closes itself when finished.
+probe works through all cameras. A large software-ISP preview can run at only a
+few frames per second, so the complete exposure sequence can take up to about
+twenty minutes. The activity closes itself when finished.
 
 Read the private result from the host:
 
 ```sh
-waydroid shell cat \
+waydroid shell -- cat \
   /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt
 ```
 
@@ -107,26 +108,32 @@ Use the Android activity extra to isolate the preview path:
 
 ```sh
 # Private/implementation-defined preview only
-waydroid shell am force-stop dev.lolren.waydroidcameraprobe
-waydroid shell am start -n \
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile preview
 
 # Private preview plus YUV analysis, without JPEG
-waydroid shell am force-stop dev.lolren.waydroidcameraprobe
-waydroid shell am start -n \
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile preview-yuv
 
 # Real Android TextureView presentation path, without ImageReader analysis
-waydroid shell am force-stop dev.lolren.waydroidcameraprobe
-waydroid shell am start -n \
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile surface
 
+# TextureView presentation plus a YUV consumer, like preview plus analysis
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile surface-yuv
+
 # Camera2 recording template plus the real Android TextureView path
-waydroid shell am force-stop dev.lolren.waydroidcameraprobe
-waydroid shell am start -n \
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile record
 ```
@@ -140,16 +147,26 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
 ```
 
 Use `preview-yuv` or `full` as the second argument for the other profiles.
-Use `surface` to measure updates reaching a real Android `TextureView`, or
-`record` to use Camera2's `TEMPLATE_RECORD` while measuring that same
-displayed surface. It prefers fixed 30 FPS when the camera advertises it and
+Use `surface` to measure updates reaching a real Android `TextureView`,
+`surface-yuv` to add a simultaneous YUV consumer, or `record` to use Camera2's
+`TEMPLATE_RECORD` while measuring that same displayed surface. It prefers
+fixed 30 FPS when the camera advertises it and
 records the selected range in the result. The `record` profile is still a
 diagnostic: it does not invoke an Android video encoder or save a file, so a
 separate native recording test is required for encoder and muxer acceptance.
 The runner installs the APK, grants its camera permission, stops any previous
 probe instance, clears only the probe's old generated result, waits for
-`PROBE_DONE`, and refuses to overwrite an existing host result file. Set
-`PMOS_WAYDROID_PROBE_TIMEOUT` when the phone is especially slow.
+`PROBE_DONE`, and refuses to overwrite an existing host result file. The runner
+allows twenty minutes for `full` and eight minutes for the shorter profiles.
+Set `PMOS_WAYDROID_PROBE_TIMEOUT` to override that limit. To isolate one
+numeric Camera2 ID during diagnosis, set `PMOS_WAYDROID_PROBE_CAMERA_ID`, for
+example:
+
+```sh
+PMOS_WAYDROID_PROBE_CAMERA_ID=1 \
+  pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk full \
+  /tmp/oneplus6t-camera-1-full.txt
+```
 
 Read `result.txt` after the activity exits. A performance run ends with a
 profile-qualified summary such as:

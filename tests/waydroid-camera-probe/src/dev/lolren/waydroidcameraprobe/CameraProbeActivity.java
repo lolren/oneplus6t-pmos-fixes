@@ -52,6 +52,7 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_PREVIEW = "preview";
     private static final String PROFILE_PREVIEW_YUV = "preview-yuv";
     private static final String PROFILE_SURFACE = "surface";
+    private static final String PROFILE_SURFACE_YUV = "surface-yuv";
     private static final String PROFILE_RECORD = "record";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
@@ -61,6 +62,7 @@ public final class CameraProbeActivity extends Activity {
     private static final int SENSOR_STABLE_FRAMES = 20;
     private static final int MIN_PRIVATE_TIMING_FRAMES = 30;
     private static final long CAMERA_TIMEOUT_MS = 120000;
+    private static final long FULL_CAMERA_TIMEOUT_MS = 360000;
 
     private final List<String> results = new ArrayList<>();
     private final Set<Integer> afStates = new TreeSet<>();
@@ -76,6 +78,7 @@ public final class CameraProbeActivity extends Activity {
     private boolean surfaceReady;
     private volatile int surfaceToken;
     private int frameCount;
+    private int yuvFrames;
     private int privateFrames;
     private int privateTimedFrames;
     private long privateFirstTimestamp;
@@ -95,6 +98,9 @@ public final class CameraProbeActivity extends Activity {
     private long warmupExposureTime;
     private int warmupSensitivity;
     private long warmupFrameDuration;
+    private long latestSensorExposureTime;
+    private int latestSensorSensitivity;
+    private long latestSensorFrameDuration;
     private boolean cameraCompleting;
     private boolean exposureComplete;
     private boolean yuvAccepted;
@@ -188,9 +194,21 @@ public final class CameraProbeActivity extends Activity {
 
         handler.post(() -> {
             try {
-                cameraIds = manager.getCameraIdList();
+                String[] availableCameraIds = manager.getCameraIdList();
+                String requestedCameraId = getIntent().getStringExtra("camera-id");
+                if (requestedCameraId != null && !requestedCameraId.isEmpty()) {
+                    if (!Arrays.asList(availableCameraIds).contains(requestedCameraId)) {
+                        finishProbe("requested camera ID is unavailable: "
+                                + requestedCameraId);
+                        return;
+                    }
+                    cameraIds = new String[]{requestedCameraId};
+                } else {
+                    cameraIds = availableCameraIds;
+                }
                 enumerationComplete = true;
-                Log.i(TAG, "PROBE_START cameras=" + cameraIds.length);
+                Log.i(TAG, "PROBE_START cameras=" + cameraIds.length
+                        + " available=" + availableCameraIds.length);
                 logEncoderProfiles(cameraIds);
                 maybeStartCameras();
             } catch (Throwable e) {
@@ -265,6 +283,7 @@ public final class CameraProbeActivity extends Activity {
         final String id = cameraIds[cameraIndex];
         surfaceToken = token;
         frameCount = 0;
+        yuvFrames = 0;
         privateFrames = 0;
         privateTimedFrames = 0;
         privateFirstTimestamp = 0;
@@ -299,6 +318,9 @@ public final class CameraProbeActivity extends Activity {
         warmupExposureTime = 0;
         warmupSensitivity = 0;
         warmupFrameDuration = 0;
+        latestSensorExposureTime = 0;
+        latestSensorSensitivity = 0;
+        latestSensorFrameDuration = 0;
         currentExposureCompensation = 0;
         exposureComplete = false;
         focusRegions = null;
@@ -423,10 +445,20 @@ public final class CameraProbeActivity extends Activity {
             }
 
             timeout = () -> failCamera(token, id,
-                    "timed out: yuv=" + yuvAccepted + " jpeg=" + jpegAccepted
+                    "timed out: profile=" + profile
+                            + " yuv=" + yuvAccepted + "/" + yuvFrames
+                            + " jpeg=" + jpegAccepted + "/" + jpegRequested
                             + " private=" + privateAccepted + "/" + privateFrames
-                            + " afStates=" + afStates);
-            handler.postDelayed(timeout, CAMERA_TIMEOUT_MS);
+                            + " afStates=" + afStates
+                            + " exposureWarm=" + exposureWarm
+                            + " warmupFrames=" + warmupFrames
+                            + " stableSensorFrames=" + stableSensorFrames
+                            + " exposureStage=" + exposureStage
+                            + " exposureStageFrames=" + exposureStageFrames
+                            + " latestSensor=[" + latestSensorExposureTime + ","
+                            + latestSensorSensitivity + ","
+                            + latestSensorFrameDuration + "]");
+            handler.postDelayed(timeout, cameraTimeoutMs());
             manager.openCamera(id, cameraStateCallback(token, id), handler);
         } catch (Throwable e) {
             failCamera(token, id, "open setup failed: " + compactError(e));
@@ -531,6 +563,12 @@ public final class CameraProbeActivity extends Activity {
                 Long exposureTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 Integer sensitivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
                 Long frameDuration = result.get(CaptureResult.SENSOR_FRAME_DURATION);
+                if (exposureTime != null)
+                    latestSensorExposureTime = exposureTime;
+                if (sensitivity != null)
+                    latestSensorSensitivity = sensitivity;
+                if (frameDuration != null)
+                    latestSensorFrameDuration = frameDuration;
                 if (!exposureWarm && exposureTime != null && sensitivity != null
                         && frameDuration != null) {
                     if (warmupExposureTime > 0
@@ -619,6 +657,7 @@ public final class CameraProbeActivity extends Activity {
         try {
             if (!isCurrent(token) || yuvAccepted)
                 return;
+            yuvFrames++;
             if (!needsFullValidation()) {
                 if (++frameCount < SETTLE_FRAMES)
                     return;
@@ -693,13 +732,8 @@ public final class CameraProbeActivity extends Activity {
         double negativeRatio = exposureMeans[1] / baseline;
         double positiveRatio = exposureMeans[3] / baseline;
         boolean pixelMovement = negativeRatio < 0.90 && positiveRatio > 1.05;
-        int neutralLimitCount = 0;
-        for (int stage : new int[]{0, 2, 4}) {
-            if (stageAtSensorLimit(stage))
-                neutralLimitCount++;
-        }
-        boolean sensorLimited = !pixelMovement && neutralLimitCount >= 2
-                && stageAtSensorLimit(3) && neutralSensitivityStable();
+        boolean sensorLimited = !pixelMovement && stageAtSensorLimit(3)
+                && stageAtSensitivityLimit(3);
         boolean valid = pixelMovement || sensorLimited;
         exposureResult = String.format(Locale.US,
                 "evValid=%s evPixelMovement=%s evSensorLimited=%s "
@@ -734,17 +768,12 @@ public final class CameraProbeActivity extends Activity {
         return sensorSensitivities[stage] > 0 && (frameLimited || rangeLimited);
     }
 
-    private boolean neutralSensitivityStable() {
-        int minimum = Integer.MAX_VALUE;
-        int maximum = 0;
-        for (int stage : new int[]{0, 2, 4}) {
-            int sensitivity = sensorSensitivities[stage];
-            if (sensitivity <= 0)
-                return false;
-            minimum = Math.min(minimum, sensitivity);
-            maximum = Math.max(maximum, sensitivity);
-        }
-        return maximum - minimum <= Math.max(1, maximum / 50);
+    private boolean stageAtSensitivityLimit(int stage) {
+        if (sensorSensitivityRange == null || sensorSensitivities == null
+                || stage < 0 || stage >= sensorSensitivities.length)
+            return false;
+        return sensorSensitivities[stage] >=
+                sensorSensitivityRange.getUpper() * 0.97;
     }
 
     private static boolean closeEnough(long value, long reference) {
@@ -1133,7 +1162,10 @@ public final class CameraProbeActivity extends Activity {
 
         int valid = 0;
         for (String result : results) {
-            if (result.startsWith("CAMERA ") && result.contains(" valid=true "))
+            if (!result.startsWith("CAMERA "))
+                continue;
+            int status = result.indexOf(" valid=");
+            if (status >= 0 && result.startsWith("true", status + 7))
                 valid++;
         }
         String summary = needsFullValidation()
@@ -1255,7 +1287,9 @@ public final class CameraProbeActivity extends Activity {
 
     private static String normalizeProfile(String requested) {
         if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested)
-                || PROFILE_SURFACE.equals(requested) || PROFILE_RECORD.equals(requested))
+                || PROFILE_SURFACE.equals(requested)
+                || PROFILE_SURFACE_YUV.equals(requested)
+                || PROFILE_RECORD.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
@@ -1264,12 +1298,18 @@ public final class CameraProbeActivity extends Activity {
         return PROFILE_FULL.equals(profile);
     }
 
+    private long cameraTimeoutMs() {
+        return needsFullValidation() ? FULL_CAMERA_TIMEOUT_MS : CAMERA_TIMEOUT_MS;
+    }
+
     private boolean needsYuv() {
-        return needsFullValidation() || PROFILE_PREVIEW_YUV.equals(profile);
+        return needsFullValidation() || PROFILE_PREVIEW_YUV.equals(profile)
+                || PROFILE_SURFACE_YUV.equals(profile);
     }
 
     private boolean needsSurface() {
-        return PROFILE_SURFACE.equals(profile) || needsRecordTemplate();
+        return PROFILE_SURFACE.equals(profile) || PROFILE_SURFACE_YUV.equals(profile)
+                || needsRecordTemplate();
     }
 
     private boolean needsRecordTemplate() {

@@ -20,10 +20,10 @@ cat >"$TEST_DIR/bin/waydroid" <<'EOF'
 set -eu
 
 printf '%s\n' "$*" >> "$WAYDROID_TEST_LOG"
-case "$1 $2" in
-"app install")
+case "$*" in
+"app install "*)
 	;;
-"shell cat")
+"shell -- cat "*)
 	printf '%s\n' \
 		'CAMERA id=0 valid=true profile=preview privateFps=24.00' \
 		'PROBE_DONE profile=preview valid=1 total=1'
@@ -45,13 +45,13 @@ PATH="$TEST_DIR/bin:$PATH" \
 grep -q '^result: ' "$TEST_DIR/stdout"
 grep -q 'PROBE_DONE profile=preview valid=1 total=1' "$result"
 grep -q "app install $apk" "$TEST_DIR/waydroid.log"
-grep -q 'shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA' \
+grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA' \
 	"$TEST_DIR/waydroid.log"
-grep -q 'shell am force-stop dev.lolren.waydroidcameraprobe' \
+grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
-grep -q 'shell rm -f /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt' \
+grep -q 'shell -- rm -f /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt' \
 	"$TEST_DIR/waydroid.log"
-grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile preview' \
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile preview' \
 	"$TEST_DIR/waydroid.log"
 
 surface_result=$TEST_DIR/surface-result.txt
@@ -60,7 +60,17 @@ PATH="$TEST_DIR/bin:$PATH" \
 	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
 	"$RUNNER" "$apk" surface "$surface_result" >"$TEST_DIR/surface-stdout"
 grep -q '^result: ' "$TEST_DIR/surface-stdout"
-grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile surface' \
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile surface' \
+	"$TEST_DIR/waydroid.log"
+
+surface_yuv_result=$TEST_DIR/surface-yuv-result.txt
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	"$RUNNER" "$apk" surface-yuv "$surface_yuv_result" \
+	>"$TEST_DIR/surface-yuv-stdout"
+grep -q '^result: ' "$TEST_DIR/surface-yuv-stdout"
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile surface-yuv' \
 	"$TEST_DIR/waydroid.log"
 
 record_result=$TEST_DIR/record-result.txt
@@ -69,7 +79,16 @@ PATH="$TEST_DIR/bin:$PATH" \
 	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
 	"$RUNNER" "$apk" record "$record_result" >"$TEST_DIR/record-stdout"
 grep -q '^result: ' "$TEST_DIR/record-stdout"
-grep -q 'shell am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile record' \
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile record' \
+	"$TEST_DIR/waydroid.log"
+
+camera_result=$TEST_DIR/camera-result.txt
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	PMOS_WAYDROID_PROBE_CAMERA_ID=1 \
+	"$RUNNER" "$apk" preview "$camera_result" >"$TEST_DIR/camera-stdout"
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile preview --es camera-id 1' \
 	"$TEST_DIR/waydroid.log"
 
 if PATH="$TEST_DIR/bin:$PATH" "$RUNNER" "$apk" unsupported \
