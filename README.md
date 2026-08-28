@@ -104,15 +104,15 @@ does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is published as the
-[runtime-r24 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r24).
+[runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r24/oneplus6t-pmos-fixes-0.1.0-r24.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r24/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r25/oneplus6t-pmos-fixes-0.1.0-r25.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r25/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r24.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r25.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
@@ -120,16 +120,18 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-Runtime r24 was built twice from commit `68f8f1d` with a fixed source date;
+Runtime r25 was built twice from commit `fe01b51` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and
 regular-file mode matches a clean staged install, and the exact APK passes an
 AArch64 installation simulation. Its SHA-256 is
-`5bb3feddda75859155e382f7a68de334c526411ab42b48d28a2982c62b591849`.
-Those exact bytes upgrade r23 on the reference phone. Their installed cellular
-and location commands match the hashes used for live native/Waydroid cellular
-acceptance, fresh Stroud-area GNSS injection and exact Android provider/app-op
-rollback. The tag remains a development pre-release while map-application,
-real Android GNSS HAL and broader device acceptance continue.
+`781c1d7055a2d5530e127b3b16715b8270a5918412542661859d3bfea4c1ad1d`.
+The APK contains 101 regular files and 28 command links. Those exact bytes
+upgraded r24 on the reference phone; the installed Vanilla verifier, power
+policy and location bridge match the source hashes. Google-free identity, LTE
+HTTPS, audio routing, three-camera enumeration, Waydroid networking and an
+ID-0 displayed-surface camera smoke test pass. The tag remains a development
+pre-release while unplugged battery and broader application acceptance remain
+open.
 
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
@@ -304,7 +306,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the [r36 bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12) is installed and its single-output preview passed all three cameras. |
 | Waydroid multi-output software ISP | Debayers one Bayer input once, keeps a linear RGB preview and coalesces NV12 encoder/analysis consumers with a centred crop; this removes the one-output limit and avoids repeated GPU readback. |
 | Waydroid private-preview cap | Limits only CameraX private previews to 1280x960 so 720p recording stays on a practical sensor mode; larger explicit YUV/JPEG photography modes remain available. |
-| Waydroid contiguous NV12 GPU target | Writes a compatible linear Y+UV allocation with one filtered GPU draw, avoiding RGBA readback and CPU colour conversion; unsupported layouts retain the safe libyuv fallback. The r49 direct-path baseline is published, and its source-fence-corrected r50 runtime is retained by the installed r51 safety generation. |
+| Waydroid contiguous NV12 GPU target | Writes a compatible linear Y+UV allocation with one filtered GPU draw, avoiding RGBA readback and CPU colour conversion; unsupported layouts retain the safe libyuv fallback. The r49 direct-path baseline is published, and its source-fence-corrected r50 runtime is retained by the installed r52 clean-Vanilla generation. |
 | Waydroid post-processor fence synchronization | Waits once on each GPU-written source fence before mapped YUV/JPEG post-processing, preventing front/auxiliary stills from reading partially rendered rows while direct-only Android surfaces retain asynchronous completion fences. |
 | Waydroid recording profiles and Codec2 policy | Publishes guarded main/front 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. Auxiliary video is deliberately not advertised after a reproducible Venus teardown fault. |
 | Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated H.264/AAC recordings and clean teardown. Exact main-rear r49 video averages 11.78 fps, while exact-HAL front r50 video averages 24.77 fps, so performance remains sensor/path dependent. |
@@ -393,10 +395,11 @@ install it atomically with `sudo scripts/install-waydroid-camera`. That helper
 backs up only its managed targets and prints the exact rollback directory.
 Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
 package hashes, clean three-camera probe and rollback command.
-The r51 auxiliary-video safety release remains historical evidence. The r52
-bundle keeps that safety policy and adds every provider/property dependency
-needed by a clean Vanilla image; auxiliary preview and still capture remain
-available while camera-ID-2 hardware encoding stays blocked.
+The r51 auxiliary-video safety release remains historical evidence. The
+[r52 clean-Vanilla release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r52-vanilla-complete)
+keeps that safety policy and adds every provider/property dependency needed by
+a clean Vanilla image; auxiliary preview and still capture remain available
+while camera-ID-2 hardware encoding stays blocked.
 The arm64 hardware encoder is a second, independently rollback-safe overlay.
 Fetch its pinned Android 13 sources, build, package and install with:
 
@@ -582,8 +585,9 @@ rate-limits that path and leaves continuous GNSS bridging disabled by default.
 The phone now uses Google-free Waydroid with frozen-container idle behavior.
 `pmos-configure-power` previews, applies and exactly rolls back a battery-only
 five-minute suspend policy without changing AC behavior, governors, radios,
-charging limits or firmware. Unplugged measurements and suspend/resume
-acceptance are still required before claiming Android battery parity; see
+charging limits or firmware. One RTC-bounded suspend/resume cycle passed;
+repeated cycles and unplugged measurements are still required before claiming
+Android battery parity; see
 [docs/POWER.md](docs/POWER.md).
 
 ## Project status
@@ -594,13 +598,15 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
-  bundles, are published; the installed r44 camera layer, kernel r10 and
-  byte-reproducible Codec2 r53 complete repeated main/front recording. The
+- signed AArch64 camera r26/r13 and r26/r14, plus the complete Waydroid r52
+  clean-Vanilla bundle, are published; the installed r52 camera layer, kernel
+  r10 and byte-reproducible Codec2 r53 complete repeated main/front recording. The
   exact r10/r8 and r53 artifacts are also public. Android frame-rate work and
   a safe non-Venus auxiliary encoder remain open;
-- live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
-  microphone and speaker playback pass; time-after-boot, modem-call audio,
+- live SMARTY cellular routing, DNS and HTTPS pass; Google-free Waydroid
+  networking and all-camera preview pass. Previously accepted rear/front
+  video, microphone and speaker playback remain installed; time-after-boot,
+  modem-call audio,
   display stability, native camera quality/video, outdoor GNSS, NFC, battery
   and rollback persistence still need their respective device tests;
 - Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are

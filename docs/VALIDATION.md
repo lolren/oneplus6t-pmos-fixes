@@ -2594,3 +2594,68 @@ probe passed at 1.94 FPS with no fatal fault. The 300-second battery-only policy
 was applied and its original 900-second state retained. Repeated cycles and
 unplugged drain remain the physical acceptance gate; Android-equivalent battery
 life is not claimed.
+
+## Runtime r25 and r52 release acceptance
+
+Date: 2026-08-28. Commit
+`fe01b51643ea7d157d805f25e9e07e7eaca42d07` bumps the helper package to
+`0.1.0-r25` and contains the Vanilla verifier, complete clean-image provider
+preparer, reversible battery policy and location-loop correction described
+above. Two isolated Alpine edge builds used different UIDs and absolute source
+paths with `SOURCE_DATE_EPOCH=1787935986`. Both complete embedded test runs
+passed and produced byte-identical signed APKs.
+
+Signature verification passes with the packaged development public key.
+Independent extraction matches a clean `make install PREFIX=/usr` stage for
+all 101 regular files and 28 command links, including file modes and link
+targets. Metadata reports `noarch`, version `0.1.0-r25`, build date
+`1787935986` and an installed payload size of 697021 bytes. The package and
+release checksum hashes are:
+
+```text
+APK: 781c1d7055a2d5530e127b3b16715b8270a5918412542661859d3bfea4c1ad1d
+SHA256SUMS: c2b1c0eddf7cab1c2aff003ce18a0b6d1fe280d66a36807174a0883210592bfd
+signing public key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The AArch64 installation simulation proposed only the r24-to-r25 helper
+upgrade. The exact 233876-byte APK then completed that upgrade on the reference
+phone. Installed source hashes match for the three critical new paths:
+
+```text
+waydroid-location-bridge.py: 7c27a83e515c0bca8b6c0213b2494ae35fe7977979afc39cfdc9f3f18e8b37e3
+check-waydroid-vanilla: 91c05ab4313baeaaabe52ab1be9b1ad74c607a4ec9a9eed1bc9b6aceaf154959
+configure-power: 87dc9fda4f6621572084c12f3f7f136c8a9d96811cf02bcf3efd8f999f4aede1
+```
+
+The optional location service remained disabled and inactive with zero
+post-install restarts and a 30-second restart interval. The live Vanilla report
+again found Android 13, a responsive Package Manager and no GMS, GSF, Play
+Store or GMS property. Native mobile data remained registered on LTE and
+passed interface-bound IPv4 ping and HTTPS. PipeWire, WirePlumber and the
+PipeWire-Pulse compatibility service remained active with the headset and two
+built-in microphone source nodes present. Android reported its audio, camera and location
+services, retained `ro.hardware.camera=libcamera`, exposed three cameras and
+passed an external network ping.
+
+An exact post-install Camera2 displayed-surface smoke test on camera ID 0 ended
+valid at 1.82 FPS with full-range RGB samples and closely matched channel
+means. No new kernel IOMMU, Venus, GPU, camera, oops or panic event appeared.
+Camera ID 2 encoding was not and must not be exercised. The five-minute battery
+policy dry run matched every already-applied value. The latest connected fuel
+gauge estimate was 3.198 Ah full versus 3.640 Ah design; USB remained online,
+so that sample is not discharge evidence.
+
+The exact runtime assets are published in the
+[runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
+The exact 21-file camera archive and per-file manifest are published in the
+[r52 clean-Vanilla camera pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r52-vanilla-complete):
+
+```text
+r52 archive: 57a7f015461c2c5a3544401592307de78d5b991c3ac78b21eecb9d8662b8652e
+r52 manifest: 5c5ee54715a1d0e71cb4f6cbda1878969c360d1fa9858dc5c3d80c54eb001f25
+```
+
+Fresh GitHub downloads match all four local release files byte for byte. The
+camera manifest verifies every archive entry. No photographs, exact locations,
+SIM identifiers, credentials or private device logs are release assets.

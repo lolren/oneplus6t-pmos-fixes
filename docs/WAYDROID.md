@@ -996,7 +996,7 @@ r51 upgrade could not reveal. The old Waydroid tree already contained a
 image did not. The framework therefore had no usable camera provider even
 though every project-built Camera3 library was present.
 
-The r52 candidate includes the four verified provider files, VINTF manifest
+The r52 release includes the four verified provider files, VINTF manifest
 and the existing 16 r51 runtime files. The guarded installer now manages 21
 runtime files, sets exactly one `ro.hardware.camera=libcamera` line in both
 host property files, and saves their exact originals beside the overlay
@@ -1013,9 +1013,12 @@ provider implementation: 4afca5a19384f1f988918245dcf36e7a4a8862880fb70119c65f6f3
 legacy provider module: 06ee026271182a55e28f765dca4edd8111b839eca61d5532d575a9a076cc0c8a
 camera.device implementation: 94fa320d31e441de2d9af4ce2fe18ec9ffddc6f38fe41754737021a064eefcd2
 VINTF manifest: cdd30a3f1792b9408f0d55850fc5453dca16e39fcafa252005dba881cc07b982
-r52 candidate archive: 57a7f015461c2c5a3544401592307de78d5b991c3ac78b21eecb9d8662b8652e
-r52 candidate manifest: 5c5ee54715a1d0e71cb4f6cbda1878969c360d1fa9858dc5c3d80c54eb001f25
+r52 archive: 57a7f015461c2c5a3544401592307de78d5b991c3ac78b21eecb9d8662b8652e
+r52 manifest: 5c5ee54715a1d0e71cb4f6cbda1878969c360d1fa9858dc5c3d80c54eb001f25
 ```
+
+Those exact files are published in the
+[r52 clean-Vanilla camera pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r52-vanilla-complete).
 
 On the clean accepted Vanilla image, Android reports the provider `running`,
 the external provider with zero devices and the intended legacy provider with

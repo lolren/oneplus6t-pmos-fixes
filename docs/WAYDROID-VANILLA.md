@@ -67,6 +67,9 @@ libraries, VINTF manifest and both host `ro.hardware.camera=libcamera`
 properties. Its installer backs up all managed overlay targets and both host
 property files before writing anything.
 
+The exact accepted archive and per-file manifest are published in the
+[r52 clean-Vanilla camera pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r52-vanilla-complete).
+
 ## Verification
 
 Start the container and session normally, then run the read-only verifier as
@@ -95,7 +98,7 @@ compatibility package has the namespace
 `ApertureLensLauncher` shim, not GMS, GSF or Play Store. The verifier checks the
 runtime packages that matter rather than rejecting every `com.google` name.
 
-The clean image plus r52 candidate was accepted at the Camera2 boundary:
+The clean image plus r52 release was accepted at the Camera2 boundary:
 Android enumerated all three cameras, each delivered preview and displayed
 surface frames, the provider remained running, and no kernel, IOMMU, GPU,
 camera-provider or Codec2 fatal event appeared. Camera ID 2 remains explicitly

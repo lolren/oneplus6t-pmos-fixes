@@ -14,6 +14,9 @@ Vanilla image also removes GMS, GSF and Play Store background work. With those
 changes and no camera probe active, the connected phone measured about 96% CPU
 idle while Waydroid was running or frozen.
 
+The exact fixed helper package is published in the
+[runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
+
 The kernel already exposes CPU idle/PSCI, Qualcomm RPMh power domains,
 `schedutil`, generic PM sleep and runtime PM. It advertises only `s2idle` in
 `mem_sleep`; that is normal on this ARM platform and this project does not
