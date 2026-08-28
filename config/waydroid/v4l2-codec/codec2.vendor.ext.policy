@@ -1,0 +1,10 @@
+# V4L2 Codec2's libchrome poller additions on Android arm64.
+epoll_create1: 1
+epoll_ctl: 1
+epoll_pwait: 1
+eventfd2: 1
+getcwd: 1
+pselect6: 1
+sched_getaffinity: 1
+sched_setscheduler: 1
+sysinfo: 1

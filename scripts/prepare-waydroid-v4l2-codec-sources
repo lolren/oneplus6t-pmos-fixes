@@ -1,0 +1,95 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat <<'EOF'
+usage: prepare-waydroid-v4l2-codec-sources OUTPUT_DIR
+
+Fetch the exact Android 13 source revisions used by the OnePlus 6T Waydroid
+V4L2 Codec2 build and apply this project's Qualcomm Venus patch. OUTPUT_DIR
+must not already contain files.
+EOF
+}
+
+if [ "$#" -ne 1 ]; then
+	usage >&2
+	exit 2
+fi
+
+output_dir=$1
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+codec_patch=$project_dir/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
+
+if [ -e "$output_dir" ] &&
+	find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+	printf 'Refusing non-empty output directory: %s\n' "$output_dir" >&2
+	exit 1
+fi
+
+for command in git find; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+if [ ! -f "$codec_patch" ]; then
+	printf 'Missing codec patch: %s\n' "$codec_patch" >&2
+	exit 1
+fi
+
+fetch_revision() {
+	destination=$1
+	url=$2
+	revision=$3
+
+	mkdir -p "$destination"
+	git -C "$destination" init -q
+	git -C "$destination" remote add origin "$url"
+	git -C "$destination" fetch -q --depth=1 origin "$revision"
+	git -C "$destination" checkout -q --detach FETCH_HEAD
+	actual=$(git -C "$destination" rev-parse HEAD)
+	if [ "$actual" != "$revision" ]; then
+		printf 'Revision mismatch for %s: expected %s, got %s\n' \
+			"$url" "$revision" "$actual" >&2
+		exit 1
+	fi
+}
+
+mkdir -p "$output_dir"
+fetch_revision "$output_dir/v4l2-codec2" \
+	https://android.googlesource.com/platform/external/v4l2_codec2 \
+	6cf3be6acb0e321459172ec12824f448e1c14b9e
+fetch_revision "$output_dir/frameworks-av" \
+	https://android.googlesource.com/platform/frameworks/av \
+	95be9bad234d69f4a8ded5ee72b60315b1353098
+fetch_revision "$output_dir/libchrome" \
+	https://android.googlesource.com/platform/external/libchrome \
+	8e5f454713fd4d6dfed8975c024a6629a2e859d4
+fetch_revision "$output_dir/vndk-v33" \
+	https://android.googlesource.com/platform/prebuilts/vndk/v33 \
+	d79ad875113d34c9665a65b8a33dcf7a4fb7dcf1
+fetch_revision "$output_dir/hardware-interfaces" \
+	https://android.googlesource.com/platform/hardware/interfaces \
+	8c308539d804a6efb2272e4c9e73407241966f34
+fetch_revision "$output_dir/system-libhidl" \
+	https://android.googlesource.com/platform/system/libhidl \
+	a75d76fe6c05f26030424f2aaad38469e3bd1f21
+fetch_revision "$output_dir/minijail" \
+	https://android.googlesource.com/platform/external/minijail \
+	e92509cceadc87dee6725b363eb72bf7431ed5da
+
+git -C "$output_dir/v4l2-codec2" \
+	-c user.name=OnePlus6T-codec-build \
+	-c user.email=build@example.invalid \
+	am --committer-date-is-author-date "$codec_patch"
+
+printf 'prepared source bundle: %s\n' "$output_dir"
+for source in \
+	v4l2-codec2 frameworks-av libchrome vndk-v33 hardware-interfaces \
+	system-libhidl minijail
+do
+	printf '%s ' "$source"
+	git -C "$output_dir/$source" rev-parse HEAD
+done

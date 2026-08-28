@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat <<'EOF'
+usage: package-waydroid-v4l2-codec STAGE_DIR OUTPUT_PREFIX
+
+STAGE_DIR must be produced by build-waydroid-v4l2-codec. OUTPUT_PREFIX creates
+OUTPUT_PREFIX.tar.gz and OUTPUT_PREFIX.sha256 without overwriting either file.
+EOF
+}
+
+if [ "$#" -ne 2 ]; then
+	usage >&2
+	exit 2
+fi
+
+stage_dir=$1
+output_prefix=$2
+package_file=$output_prefix.tar.gz
+manifest_file=$output_prefix.sha256
+
+for command in gzip mkdir sha256sum tar; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+if ! tar --help 2>&1 | grep -q -- '--sort'; then
+	printf '%s\n' 'A GNU-compatible tar with --sort support is required.' >&2
+	exit 1
+fi
+
+set -- \
+	system/bin/hw/android.hardware.media.c2@1.0-service-v4l2-64 \
+	system/lib64/libc2plugin_store.so \
+	system/lib64/libv4l2_codec2_common.so \
+	system/lib64/libv4l2_codec2_components.so \
+	system/etc/init/android.hardware.media.c2@1.0-service-v4l2-64.rc \
+	vendor/etc/vintf/manifest/manifest_media_c2_v4l2.xml \
+	vendor/etc/media_codecs_c2.xml \
+	vendor/etc/seccomp_policy/android.hardware.media.c2@1.2-default-seccomp_policy \
+	vendor/etc/seccomp_policy/codec2.vendor.ext.policy
+
+for file in "$@"; do
+	if [ ! -f "$stage_dir/$file" ]; then
+		printf 'Missing runtime file: %s\n' "$stage_dir/$file" >&2
+		exit 1
+	fi
+done
+
+if [ -e "$package_file" ] || [ -e "$manifest_file" ]; then
+	printf '%s\n' 'Refusing to overwrite an existing package or manifest.' >&2
+	exit 1
+fi
+
+mkdir -p "$(dirname -- "$output_prefix")"
+(cd "$stage_dir"; sha256sum "$@") >"$manifest_file"
+(cd "$stage_dir"; tar --sort=name --mtime=@0 --owner=0 --group=0 \
+	--numeric-owner -cf - "$@") | gzip -n >"$package_file"
+
+printf 'package: '
+sha256sum "$package_file"
+printf 'manifest: '
+sha256sum "$manifest_file"
+cat "$manifest_file"

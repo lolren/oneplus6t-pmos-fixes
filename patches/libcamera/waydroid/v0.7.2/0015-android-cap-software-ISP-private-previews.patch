@@ -1,0 +1,51 @@
+From 4db12c046a90a293af6100735216f3e37702681a Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Fri, 28 Aug 2026 04:15:44 +0100
+Subject: [PATCH] android: cap software ISP private previews
+
+---
+ src/android/camera_capabilities.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/android/camera_capabilities.cpp b/src/android/camera_capabilities.cpp
+index 92e6261..b881413 100644
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -51,6 +51,17 @@ const std::vector<Size> camera3Resolutions = {
+ 	{ 1920, 1080 }
+ };
+ 
++/*
++ * Private streams are used for the live preview and video encoder.  On the
++ * OnePlus 6/6T software ISP, advertising a 1600x1200 private preview makes
++ * CameraX combine that preview with a 1280x720 encoder stream.  The larger
++ * preview selects a 2328x1748 raw sensor mode and drops recording from the
++ * 30 FPS sensor mode to roughly 18 FPS.  Keep full-resolution YUV and JPEG
++ * streams for photography, but cap private streams at the largest preview
++ * that remains on the 1920x1080 raw mode.
++ */
++constexpr Size maxPrivateStreamResolution{ 1280, 960 };
++
+ /*
+  * \struct Camera3Format
+  * \brief Data associated with an Android format identifier
+@@ -658,6 +669,16 @@ int CameraCapabilities::initializeStreamConfigurations()
+ 		}
+ 
+ 		for (const Size &res : resolutions) {
++			if (androidFormat == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
++			    (res.width > maxPrivateStreamResolution.width ||
++			     res.height > maxPrivateStreamResolution.height)) {
++				LOG(HAL, Debug)
++					<< "Skipping oversized private stream " << res
++					<< "; software ISP preview limit is "
++					<< maxPrivateStreamResolution;
++				continue;
++			}
++
+ 			/*
+ 			 * Configure the Camera with the collected format and
+ 			 * resolution to get an updated list of controls.
+-- 
+2.49.0
+

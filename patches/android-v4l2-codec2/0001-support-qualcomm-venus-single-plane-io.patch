@@ -1,0 +1,170 @@
+From 63ceacc345ac40134fcfe497f4c3de017fc23700 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Fri, 28 Aug 2026 04:00:24 +0100
+Subject: [PATCH] fix: support Qualcomm Venus single-plane I/O
+
+---
+ common/V4L2Device.cpp              |  1 -
+ components/V4L2EncodeComponent.cpp |  2 +-
+ components/V4L2Encoder.cpp         | 83 +++++++++++++++++++++---------
+ 3 files changed, 59 insertions(+), 27 deletions(-)
+
+diff --git a/common/V4L2Device.cpp b/common/V4L2Device.cpp
+index 68a9dca..6f9e660 100644
+--- a/common/V4L2Device.cpp
++++ b/common/V4L2Device.cpp
+@@ -143,7 +143,6 @@ V4L2Buffer::V4L2Buffer(scoped_refptr<V4L2Device> device, enum v4l2_buf_type type
+     mV4l2Buffer.index = bufferId;
+     mV4l2Buffer.type = type;
+     mV4l2Buffer.memory = memory;
+-    mV4l2Buffer.memory = V4L2_MEMORY_DMABUF;
+     mPlaneMappings.resize(mV4l2Buffer.length);
+ }
+ 
+diff --git a/components/V4L2EncodeComponent.cpp b/components/V4L2EncodeComponent.cpp
+index c2a2679..e38ee1a 100644
+--- a/components/V4L2EncodeComponent.cpp
++++ b/components/V4L2EncodeComponent.cpp
+@@ -823,7 +823,7 @@ void V4L2EncodeComponent::fetchOutputBlock(uint32_t size,
+     std::shared_ptr<C2LinearBlock> block;
+     c2_status_t status = mOutputBlockPool->fetchLinearBlock(
+             size,
+-            C2MemoryUsage(C2MemoryUsage::CPU_READ |
++            C2MemoryUsage(C2MemoryUsage::CPU_READ | C2MemoryUsage::CPU_WRITE |
+                           static_cast<uint64_t>(BufferUsage::VIDEO_ENCODER)),
+             &block);
+     if (status != C2_OK) {
+diff --git a/components/V4L2Encoder.cpp b/components/V4L2Encoder.cpp
+index cd20cb5..e5254c1 100644
+--- a/components/V4L2Encoder.cpp
++++ b/components/V4L2Encoder.cpp
+@@ -8,6 +8,7 @@
+ #include <v4l2_codec2/components/V4L2Encoder.h>
+ 
+ #include <stdint.h>
++#include <string.h>
+ #include <optional>
+ #include <vector>
+ 
+@@ -759,25 +760,33 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
+              .tv_usec = static_cast<time_t>(timestamp % ::base::Time::kMicrosecondsPerSecond)});
+     size_t bufferId = buffer->bufferId();
+ 
+-    for (size_t i = 0; i < planes.size(); ++i) {
+-        // Single-buffer input format may have multiple color planes, so bytesUsed of the single
+-        // buffer should be sum of each color planes' size.
+-        size_t bytesUsed = 0;
+-        if (planes.size() == 1) {
+-            bytesUsed = allocationSize(format, mInputLayout->mCodedSize);
+-        } else {
+-            bytesUsed = ::base::checked_cast<size_t>(
++    const size_t v4l2PlaneCount = buffer->planesCount();
++    if (v4l2PlaneCount == 1 && !planes.empty()) {
++        // A single-buffer NV12 V4L2 format still has separate Y and UV color
++        // planes. Queue the complete contiguous allocation through plane 0.
++        const size_t dataOffset = planes[0].mOffset;
++        buffer->setPlaneDataOffset(0, dataOffset);
++        buffer->setPlaneSize(0, mInputLayout->mPlanes[0].mSize + dataOffset);
++        buffer->setPlaneBytesUsed(
++                0, allocationSize(format, mInputLayout->mCodedSize) + dataOffset);
++    } else if (v4l2PlaneCount != planes.size()) {
++        ALOGE("Input buffer plane mismatch: V4L2=%zu, frame=%zu", v4l2PlaneCount,
++              planes.size());
++        return false;
++    } else {
++        for (size_t i = 0; i < planes.size(); ++i) {
++            size_t bytesUsed = ::base::checked_cast<size_t>(
+                     getArea(planeSize(format, i, mInputLayout->mCodedSize)).value());
+-        }
+ 
+-        // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
+-        // in V4L2 specification, so we abuse data_offset for now. Fix it when we have the
+-        // right interface, including any necessary validation and potential alignment.
+-        buffer->setPlaneDataOffset(i, planes[i].mOffset);
+-        bytesUsed += planes[i].mOffset;
+-        // Workaround: filling length should not be needed. This is a bug of videobuf2 library.
+-        buffer->setPlaneSize(i, mInputLayout->mPlanes[i].mSize + planes[i].mOffset);
+-        buffer->setPlaneBytesUsed(i, bytesUsed);
++            // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
++            // in V4L2 specification, so we abuse data_offset for now. Fix it when we have the
++            // right interface, including any necessary validation and potential alignment.
++            buffer->setPlaneDataOffset(i, planes[i].mOffset);
++            bytesUsed += planes[i].mOffset;
++            // Workaround: filling length should not be needed. This is a bug of videobuf2 library.
++            buffer->setPlaneSize(i, mInputLayout->mPlanes[i].mSize + planes[i].mOffset);
++            buffer->setPlaneBytesUsed(i, bytesUsed);
++        }
+     }
+ 
+     if (!std::move(*buffer).queueDMABuf(frame->fds())) {
+@@ -818,10 +827,8 @@ bool V4L2Encoder::enqueueOutputBuffer() {
+ 
+     size_t bufferId = buffer->bufferId();
+ 
+-    std::vector<int> fds;
+-    fds.push_back(bitstreamBuffer->dmabuf->handle()->data[0]);
+-    if (!std::move(*buffer).queueDMABuf(fds)) {
+-        ALOGE("Failed to queue output buffer using QueueDMABuf");
++    if (!std::move(*buffer).queueMMap()) {
++        ALOGE("Failed to queue MMAP output buffer");
+         onError();
+         return false;
+     }
+@@ -899,7 +906,15 @@ bool V4L2Encoder::dequeueOutputBuffer() {
+         return false;
+     }
+ 
+-    size_t encodedDataSize = buffer->getPlaneBytesUsed(0) - buffer->getPlaneDataOffset(0);
++    const size_t encodedDataOffset = buffer->getPlaneDataOffset(0);
++    const size_t encodedBytesUsed = buffer->getPlaneBytesUsed(0);
++    if (encodedBytesUsed < encodedDataOffset) {
++        ALOGE("Invalid encoded buffer range: bytes used=%zu, offset=%zu", encodedBytesUsed,
++              encodedDataOffset);
++        onError();
++        return false;
++    }
++    size_t encodedDataSize = encodedBytesUsed - encodedDataOffset;
+     ::base::TimeDelta timestamp = ::base::TimeDelta::FromMicroseconds(
+             buffer->getTimeStamp().tv_usec +
+             buffer->getTimeStamp().tv_sec * ::base::Time::kMicrosecondsPerSecond);
+@@ -916,6 +931,23 @@ bool V4L2Encoder::dequeueOutputBuffer() {
+ 
+     std::unique_ptr<BitstreamBuffer> bitstreamBuffer =
+             std::move(mOutputBuffers[buffer->bufferId()]);
++    if (encodedDataSize > 0) {
++        const uint8_t* source =
++                static_cast<const uint8_t*>(buffer->getPlaneMapping(0));
++        if (!source) {
++            ALOGE("Failed to map MMAP output buffer");
++            onError();
++            return false;
++        }
++        C2WriteView writeView = bitstreamBuffer->dmabuf->map().get();
++        if (writeView.error() != C2_OK || writeView.size() < encodedDataSize) {
++            ALOGE("Failed to map Codec2 output block (error=%d, size=%u, required=%zu)",
++                  writeView.error(), writeView.size(), encodedDataSize);
++            onError();
++            return false;
++        }
++        memcpy(writeView.data(), source + encodedDataOffset, encodedDataSize);
++    }
+     if (encodedDataSize > 0) {
+         if (!mInjectParamsBeforeIDR) {
+             // No need to inject SPS or PPS before IDR frames, we can just return the buffer as-is.
+@@ -1005,9 +1037,10 @@ bool V4L2Encoder::createOutputBuffers() {
+     ALOG_ASSERT(!mOutputQueue->isStreaming());
+     ALOG_ASSERT(mOutputBuffers.empty());
+ 
+-    // No memory is allocated here, we just generate a list of buffers on the output queue, which
+-    // will hold memory handles to the real buffers.
+-    if (mOutputQueue->allocateBuffers(kOutputBufferCount, V4L2_MEMORY_DMABUF) <
++    // Venus rejects Waydroid's dma-heap Codec2 linear blocks on the capture
++    // queue with EFAULT. Use kernel-owned MMAP capture buffers and copy the
++    // compressed payload into Codec2's output block when dequeued.
++    if (mOutputQueue->allocateBuffers(kOutputBufferCount, V4L2_MEMORY_MMAP) <
+         kOutputBufferCount) {
+         ALOGE("Failed to create V4L2 output buffers.");
+         return false;
+-- 
+2.49.0
+

@@ -40,7 +40,11 @@ PYTHON_SCRIPTS = \
 HOST_BUILD_SCRIPTS = \
 	scripts/build-waydroid-camera \
 	scripts/package-waydroid-camera \
-	scripts/install-waydroid-camera
+	scripts/install-waydroid-camera \
+	scripts/prepare-waydroid-v4l2-codec-sources \
+	scripts/build-waydroid-v4l2-codec \
+	scripts/package-waydroid-v4l2-codec \
+	scripts/install-waydroid-v4l2-codec
 
 HOST_DIAGNOSTIC_SCRIPTS = \
 	scripts/check-device-transport
@@ -72,6 +76,8 @@ test:
 		tests/test-mobile-data-watchdog.sh \
 			tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
+		tests/test-waydroid-v4l2-codec-installer.sh \
+		tests/test-waydroid-v4l2-codec-build.sh \
 		tests/test-waydroid-probe-runner.sh \
 		tests/test-waydroid-probe-compare.sh \
 		tests/test-waydroid-gpu-sync.sh \
@@ -98,6 +104,8 @@ test:
 	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
+	sh tests/test-waydroid-v4l2-codec-installer.sh
+	sh tests/test-waydroid-v4l2-codec-build.sh
 	sh tests/test-waydroid-probe-runner.sh
 	sh tests/test-waydroid-probe-compare.sh
 	sh tests/test-waydroid-gpu-sync.sh
@@ -125,6 +133,7 @@ install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/data"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/waydroid"
+	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/patches/android-v4l2-codec2"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/keys"
 	$(INSTALL) -d "$(DESTDIR)$(WIREPLUMBER_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_USER_DIR)"
@@ -140,6 +149,11 @@ install:
 		config/waydroid/media_profiles.xml \
 		config/waydroid/mediaswcodec.policy \
 		"$(DESTDIR)$(LIBEXECDIR)/config/waydroid/"
+	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/config/waydroid/v4l2-codec"
+	$(INSTALL) -m 0644 config/waydroid/v4l2-codec/* \
+		"$(DESTDIR)$(LIBEXECDIR)/config/waydroid/v4l2-codec/"
+	$(INSTALL) -m 0644 patches/android-v4l2-codec2/*.patch \
+		"$(DESTDIR)$(LIBEXECDIR)/patches/android-v4l2-codec2/"
 	$(INSTALL) -m 0644 config/libcamera/simple/imx371.yaml \
 		config/libcamera/simple/imx376.yaml \
 		config/libcamera/simple/imx519.yaml \

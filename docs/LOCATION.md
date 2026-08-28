@@ -154,6 +154,9 @@ the expected town or inject guessed coordinates. Wait for a valid native RMC
   cellular-only DNS plus HTTPS passed while Wi-Fi was temporarily disabled;
 - raw/NMEA GNSS is enabled at a one-second refresh and emits a current UTC
   stream, but the indoor test had no satellite fix;
+- a map currently places the phone near Reading although the phone is near
+  Stroud, Gloucestershire; until ModemManager returns a valid satellite fix,
+  that is treated as network/account/IP fallback and is not injected as GNSS;
 - the Waydroid service is enabled and active, with `fused provider [mock]` and
   no last/mock location until a genuine fix arrives; and
 - a live stop/start rollback test removed the override, restored the original

@@ -73,8 +73,16 @@ for frame_rate in 24 19 15; do
 	grep -q "frameRate=\"$frame_rate\"" \
 		"$ROOT/config/waydroid/media_profiles.xml"
 done
-grep -q 'Using NV12 for multi-stream private buffer' \
-	"$ROOT/patches/libcamera/waydroid/v0.7.2/0013-software_isp-Support-multiple-output-streams.patch"
+grep -q 'Requesting linear RGB multi-stream private buffer' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0014-android-keep-RGB-preview-and-coalesce-NV12-streams.patch"
+grep -Fq '<< "Mapped " << mappedNv12Streams' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0014-android-keep-RGB-preview-and-coalesce-NV12-streams.patch"
+grep -Fq '<< " NV12 Android stream(s) to source "' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0014-android-keep-RGB-preview-and-coalesce-NV12-streams.patch"
+grep -q 'sourceCrop_' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0014-android-keep-RGB-preview-and-coalesce-NV12-streams.patch"
+grep -q 'maxPrivateStreamResolution{ 1280, 960 }' \
+	"$ROOT/patches/libcamera/waydroid/v0.7.2/0015-android-cap-software-ISP-private-previews.patch"
 
 install_stage=$TEST_DIR/install-stage
 make -s -C "$ROOT" install DESTDIR="$install_stage" PREFIX=/usr >/dev/null

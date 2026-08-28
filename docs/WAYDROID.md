@@ -6,13 +6,14 @@ software ISP. It does not copy OnePlus/OxygenOS camera libraries, calibration
 blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with an ARMv7 mainline vendor image.
-The installed r41 overlay exposes three Android cameras and retains the Mesa
-EGL software ISP, DMA-heap fallback, JPEG sizing and r36 NV12 colour fix. Patch
-`0013` removes the software ISP's single-output limit, while the overlay adds
-per-camera recording profiles, Codec2 selection and a bounded Mesa codec
-seccomp extension. Aperture now configures simultaneous preview and encoder
-streams and saves playable H.264/AAC video. The same source has been cleanly
-rebuilt as r42; the native postmarketOS stack remains separate in
+The installed r44 camera overlay exposes three Android cameras and retains the
+Mesa EGL software ISP, DMA-heap fallback, JPEG sizing and r36 NV12 colour fix.
+Patches `0013`–`0015` add multi-output processing, retain a fast linear RGB
+preview beside coalesced NV12 consumers and cap private previews to a sensor
+mode suitable for video. A separate Android 13 arm64 Codec2 service uses the
+SDM845 Venus encoder while preserving Android's software encoder as fallback.
+Aperture now configures simultaneous preview and encoder streams and saves
+playable H.264/AAC video. The native postmarketOS stack remains separate in
 [CAMERA.md](CAMERA.md).
 
 ## Features and their benefit
@@ -25,8 +26,14 @@ rebuilt as r42; the native postmarketOS stack remains separate in
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
-| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for all three camera IDs and selects the Android Codec2 software path used by CameraX/Aperture. |
+| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for all three camera IDs; the validated Venus component ranks ahead of Android's still-present software fallback. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
+| Venus hardware H.264 | Uses `/dev/video12` for encode and raises the accepted rear clip from 11.37 fps on software Codec2 to 18.0 fps, matching the camera source cadence. |
+| MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
+| Bounded hardware-codec sandbox | Adds only the observed libchrome/Mesa scheduler and poll syscalls to the Android Codec2 policy. The service still runs as Android `media` under minijail. |
+| Coalesced NV12 consumers | Produces one largest NV12 source and centre-crops/scales other YUV/encoder outputs, avoiding repeated Bayer work and excess GPU readback. |
+| Linear RGB mixed preview | Keeps the fast RGB preview during preview-plus-record requests while requesting CPU-writable linear gralloc storage, avoiding tiled-buffer corruption. |
+| Private-preview cap | Stops CameraX selecting an oversized 1600x1200 private preview beside 720p video; full-size YUV and JPEG photography modes remain advertised. |
 | Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
 | RGB private-preview candidate | Texture-only `IMPLEMENTATION_DEFINED` streams can use Android RGBX/XBGR buffers, so the GPU output avoids the NV12 `glReadPixels()` and libyuv conversion; encoder and explicit YUV streams retain NV12. Phone acceptance is pending. |
 | Native RGB release-fence candidate | When Android's EGL native-fence extension is available, GPU-written RGB preview buffers carry a native release fence and mapped RGB consumers wait on it before CPU access; the older synchronous `glFinish()` path remains the safe fallback. Phone acceptance is pending. |
@@ -59,8 +66,9 @@ camera UI by themselves; an Android camera application consumes them.
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
   software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
   conditional-mipmap, redundant-clear, NV12-fence, RGB-private-preview and
-  EGL NV12 channel-order patches (`0002`–`0012`), then multi-output software
-  ISP patch `0013`.
+  EGL NV12 channel-order patches (`0002`–`0012`), multi-output software ISP
+  patch `0013`, and the mixed RGB/NV12 plus private-preview patches `0014` and
+  `0015`.
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -82,6 +90,13 @@ camera UI by themselves; an Android camera application consumes them.
   refuses to access the overlay if a `/var/lib/waydroid/rootfs` mount remains;
   this prevents a stale lowerdir mount from turning a copy into an
   uninterruptible I/O wait.
+- `patches/android-v4l2-codec2/` carries the Qualcomm Venus queue-memory fix
+  against the exact Android 13 V4L2 Codec2 revision.
+- `scripts/prepare-waydroid-v4l2-codec-sources`,
+  `build-waydroid-v4l2-codec`, `package-waydroid-v4l2-codec` and
+  `install-waydroid-v4l2-codec` provide a pinned, byte-reproducible build,
+  archive manifest, target-scoped install and exact rollback for the hardware
+  encoder service.
 - `scripts/run-waydroid-camera-probe` installs the probe APK, starts one of its
   validation/performance profiles and waits for a saved `PROBE_DONE` result.
 - `tests/waydroid-camera-probe/` builds the validation APK.
@@ -131,7 +146,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's seventeen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the twelve Android patches in numeric order:
+the fifteen Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -154,6 +169,8 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0010-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0011-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0012-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0013-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0014-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0015-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -188,10 +205,13 @@ be passed to libyuv's little-endian `ARGBToNV12()` entry point. This is the
 channel-order correction for the purple front-camera preview; RGB private
 preview streams are unchanged. Patch `0013` maps configured streams to output
 indexes, reuses one GPU Bayer pass for all outputs, renders/scales each target,
-runs statistics once and emits every completion. Multi-stream private buffers
-are kept on layout-stable NV12 because Waydroid's generic memory backend does
-not expose enough per-buffer layout information to safely import them as
-linear RGB in a mixed encoder request.
+runs statistics once and emits every completion. Patch `0014` then keeps the
+private preview on RGB during a mixed request by asking minigbm for
+CPU-writable linear storage; it coalesces the remaining NV12 streams through
+one largest source and centre-crops/scales mapped consumers. Patch `0015` caps
+only implementation-defined private streams at 1280x960. This avoids CameraX's
+1600x1200 preview forcing a slower raw mode beside 720p recording while
+retaining larger explicit YUV and JPEG photography modes.
 
 ## Build a runtime bundle
 
@@ -598,6 +618,134 @@ This accepts one real rear-camera Aperture recording. Front and auxiliary
 recording, long clips, app switching and suspend/resume still need separate
 physical tests. The open path also remains slower and less processed than the
 OnePlus Android vendor camera.
+
+## r44 camera streams and r50/r51 Venus hardware encoding
+
+Date: 2026-08-28. The next camera layer keeps an RGB private preview during a
+mixed CameraX request and maps all NV12 consumers to one largest source. A
+separate cap removes private preview sizes above 1280x960 while retaining
+larger explicit YUV and JPEG modes. These changes are patches `0014` and
+`0015`; their SHA-256 values are:
+
+```text
+0014: 00adcb38c1223b634bf5304c045da1d360bed3144f4dc4b7998d8316bd8d5d5d
+0015: f9bd5452c9b33fbefef5b21479e4e354a241471c5b63431fa769826ca06a67b7
+```
+
+The r44 camera overlay is installed. Its source tree was reconstructed by
+applying `0014` and `0015` directly after `0013` and matched the installed
+candidate tree exactly. The intervening direct-NV12-GPU experiment was
+reverted and is not part of either patch.
+
+Android's software H.264 encoder remained the next bottleneck. A control clip
+contained 516 frames over 45.370 seconds, or 11.37 fps. The SDM845 kernel
+exposes the Qualcomm Venus stateful encoder at `/dev/video12`, but upstream
+Android 13 V4L2 Codec2 could not be installed unchanged:
+
+- every `V4L2Buffer` was accidentally forced to `V4L2_MEMORY_DMABUF`, even
+  when its queue requested MMAP;
+- Venus accepts the camera's single-buffer NV12 DMA-BUF input but needs the
+  complete Y+UV allocation described through its one V4L2 plane;
+- Venus rejected Waydroid's dma-heap Codec2 block on the compressed capture
+  queue with `VIDIOC_QBUF` returning `EFAULT`; and
+- the destination Codec2 block needed CPU-write usage before the service could
+  copy a kernel-owned compressed payload into it.
+
+The patch keeps camera input DMA-BUF zero-copy, uses MMAP only for the small
+compressed V4L2 capture buffers, validates their offset/length and copies each
+encoded payload into Codec2. It is pinned to Android source commit
+`6cf3be6acb0e321459172ec12824f448e1c14b9e`; the patch hash is:
+
+```text
+0a70f1c34f44918eea3080cd081906f3a0584c099d440502f93823398390658b
+```
+
+The service is registered from `/system`, not `/vendor`, so Android's linker
+namespace can resolve the Android 13 system Codec2 ABI. Only
+`c2.v4l2.avc.encoder` is published. Rank `0` places it before Lineage's
+property-forced rank-`1` `c2.android.avc.encoder`; the software component stays
+available as fallback. Minijail remains enabled. Its extension adds the two
+calls observed during hardware startup, `sched_getaffinity` and
+`sched_setscheduler`, plus the libchrome poll/event calls already required by
+the service.
+
+The live r50 result selected `c2.v4l2.avc.encoder`, kept the service alive and
+finalized without CameraX or Codec2 errors. The private rear clip probes as:
+
+```text
+video: H.264 1280x720, 460 frames, 25.556311 s, exactly 18.0 fps
+audio: AAC mono, 48000 Hz, 25.499312 s
+container: 25.556600 s, 12397839 bytes
+```
+
+That cadence matches the approximately 18.96 fps delivered by the rear camera
+source and is materially above the 11.37 fps software control. The lens faced
+a dark surface during both automated recordings, so their matching dark scene
+is useful as an encoder-path control but is not colour-chart acceptance. Front
+video, an illuminated rear scene and auxiliary-camera recording remain
+required.
+
+### Reproduce the hardware encoder
+
+The preparation helper fetches seven exact Android source revisions from
+`android.googlesource.com` and applies the patch. The build requires Android
+NDK `25.2.9519653`, API 33, `hidl-gen`, and the arm64 shared libraries from the
+same Android 13 Waydroid system image. Do not link native Linux libraries or
+libraries from a different Android image.
+
+```sh
+mkdir /tmp/codec-sources
+scripts/prepare-waydroid-v4l2-codec-sources /tmp/codec-sources
+
+export ANDROID_NDK_ROOT=/absolute/path/to/android-ndk-25.2.9519653
+export WAYDROID_LINK_LIB64=/absolute/path/to/android13/system/lib64:/absolute/path/to/extra-apex-libs
+scripts/build-waydroid-v4l2-codec \
+  /tmp/codec-sources /tmp/codec-build /tmp/codec-stage
+scripts/package-waydroid-v4l2-codec \
+  /tmp/codec-stage /tmp/oneplus6t-waydroid-v4l2-codec-r51
+```
+
+Both output directories must be absent or empty. Two complete builds from
+different source and output paths produced byte-identical staged files. The
+packager normalizes order, ownership and timestamps; two package runs are also
+byte-identical. The reproducible r51 hashes are:
+
+```text
+archive: 28997d11899b3b12140e5377febdd47d71ab99d21de703a122f76d59ba3c2b16
+manifest: 7334f62d48de679de01bb344f3dd7d630803ea4067e987d22fc44b7b795fd8ff
+service: df13a5a1792ea657405dbac0d5d95d3345ee12ca229cd4f69699809300e9a8d8
+plugin: eb61890494acee634529634a154faed923b2b77813ab7b2da0ff8c09f9db63f6
+common: 1b4a5aabb7fa3a3fb66ca13e458a9ca0cb3ab28728e6fe990979949226c86cba
+components: 77f60101877df931c423974e108fda9f478af05b47d9dd5735162098024ad670
+```
+
+The exact r51 binaries are source/package accepted but still need installation
+on the phone; the live r50 binaries were built from the same patched source but
+before path-normalized clean rebuilding. To install, first stop both the
+Waydroid session and container and require an unmounted rootfs with zero PSI
+I/O pressure. Extract the archive into an empty staging directory, then run:
+
+```sh
+sudo scripts/install-waydroid-v4l2-codec /absolute/path/to/codec-stage
+```
+
+The installer manages nine exact files, creates a dated backup and refuses a
+mounted rootfs, active I/O pressure, missing stage file, broad path, symlink or
+directory target. Its rollback form is:
+
+```sh
+sudo scripts/install-waydroid-v4l2-codec --rollback \
+  /var/lib/waydroid/backups/codec-YYYYMMDDTHHMMSSZ-PID
+```
+
+After the r50 recording had finalized, interrupting a foreground Waydroid
+session left Android init as a zombie and one Android process in uninterruptible
+kernel I/O. The existing overlay health gate correctly makes any further
+overlay operation unsafe in that state, and even normal systemd reboot/sync can
+wait behind it. Do not force an install through that gate; perform a physical
+power-button reboot, confirm the rootfs is unmounted, then test the exact r51
+archive. The recording itself completed before the teardown and the hardware
+Codec2 service did not log a crash.
 
 ## Rollback
 

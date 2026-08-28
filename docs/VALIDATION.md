@@ -1878,3 +1878,94 @@ progress.
 Host fixtures independently cover healthy no-op, read-only stale detection,
 successful repair, retry cooldown, inactive-profile delegation, active-call
 deferral, non-GSM marker refusal, missing marker and package staging.
+
+## SMARTY hot-insert and cellular-only Waydroid acceptance
+
+Date: 2026-08-28. A SMARTY SIM was inserted while postmarketOS was already
+running. ModemManager registered it at home on 3 UK LTE and attached packet
+service, but NetworkManager retained the bearer session created before the SIM
+was present. The profile therefore appeared connected while carrying no
+traffic. This was the stale-session case, not a missing SMARTY APN: provider
+selection correctly chose `mob.asm.net` from the database-backed logic.
+
+Wi-Fi was disabled temporarily and only the project-owned mobile profile was
+recycled. A fresh QMAP interface appeared. Four cellular-bound pings completed
+without loss at roughly 40 ms, DNS resolved, and the HTTP connectivity check
+returned 204. With Wi-Fi still disabled, Waydroid completed three pings to a
+public IPv4 address and resolved/reached a DNS name through its normal NAT.
+Wi-Fi was then restored while the mobile profile remained active. No carrier,
+SIM or modem identifiers are stored here.
+
+## Waydroid r44 streams and Venus Codec2 r50/r51
+
+Date: 2026-08-28. Two post-`0013` libcamera changes were reconstructed as
+patches `0014` and `0015`. Applying those two patches to the exact `0013` tree
+reproduced the installed r44 source tree byte for byte. Patch `0014` retains a
+linear RGB private preview and coalesces NV12 streams through one source with a
+centred aspect-ratio crop. Patch `0015` caps only implementation-defined
+private streams at 1280x960. Their hashes are:
+
+```text
+0014: 00adcb38c1223b634bf5304c045da1d360bed3144f4dc4b7998d8316bd8d5d5d
+0015: f9bd5452c9b33fbefef5b21479e4e354a241471c5b63431fa769826ca06a67b7
+```
+
+The Android 13 V4L2 Codec2 service was then built against exact upstream
+commit `6cf3be6acb0e321459172ec12824f448e1c14b9e`. Linker-namespace testing showed
+that the service and libraries must be installed in `/system`, not `/vendor`.
+Codec ranking tests showed Lineage forces the software AVC component to rank
+1, so the hardware-only XML uses rank 0 and leaves software fallback present.
+
+Minijail first reported `sched_getaffinity`, then `sched_setscheduler`; only
+those observed calls and the service's poll/event calls were added. The final
+buffer fault was isolated with `strace`: camera input `VIDIOC_QBUF` succeeded,
+but Venus returned `EFAULT` for a dma-heap Codec2 block on its compressed
+capture queue. The source patch restores each queue's requested V4L2 memory
+type, describes single-buffer NV12 through the full one-plane allocation, uses
+kernel MMAP buffers only for compressed output and copies that payload into a
+CPU-writable Codec2 block. Its hash is:
+
+```text
+0a70f1c34f44918eea3080cd081906f3a0584c099d440502f93823398390658b
+```
+
+The installed r50 service remained alive, CameraX selected
+`c2.v4l2.avc.encoder`, Aperture emitted continuous status events and finalized
+successfully with no `ERROR_NO_VALID_DATA`, Codec2 error or fatal signal. The
+private output probes as:
+
+```text
+H.264 1280x720: 460 frames / 25.556311 s = 18.0 fps
+AAC mono: 48000 Hz / 25.499312 s
+MP4: 25.556600 s / 12397839 bytes
+```
+
+The prior software control was 516 frames over 45.370089 seconds, or 11.37
+fps. The 18 fps hardware result matches the rear Camera3 source cadence. Both
+automated rear clips viewed the same dark surface, so visual similarity rules
+out an obvious encoder-layout regression but does not count as illuminated
+colour acceptance. The clip remains private.
+
+The final source was committed as a standalone patch. New preparation, build,
+package, install and rollback scripts pin seven Android source revisions and
+all nine overlay files. Two full builds from different absolute source/build
+paths produced byte-identical outputs. Deterministic tar order, ownership and
+timestamps also produced identical archives:
+
+```text
+r51 archive: 28997d11899b3b12140e5377febdd47d71ab99d21de703a122f76d59ba3c2b16
+r51 manifest: 7334f62d48de679de01bb344f3dd7d630803ea4067e987d22fc44b7b795fd8ff
+service: df13a5a1792ea657405dbac0d5d95d3345ee12ca229cd4f69699809300e9a8d8
+plugin: eb61890494acee634529634a154faed923b2b77813ab7b2da0ff8c09f9db63f6
+common: 1b4a5aabb7fa3a3fb66ca13e458a9ca0cb3ab28728e6fe990979949226c86cba
+components: 77f60101877df931c423974e108fda9f478af05b47d9dd5735162098024ad670
+```
+
+The exact r51 artifact is not yet phone-accepted. After the recording had
+already finalized, interrupting a foreground Waydroid session left Android
+init as a zombie and one Android process in uninterruptible kernel I/O. Normal
+systemd reboot and sync then waited behind that teardown. This does not show a
+Codec2 crash, but it is an explicit lifecycle failure. A physical power-button
+reboot, unmounted-rootfs check and zero-PSI health gate are required before
+installing r51 and testing front/auxiliary video, an illuminated rear scene,
+long capture and suspend/resume.

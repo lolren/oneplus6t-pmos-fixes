@@ -1,0 +1,292 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat <<'EOF'
+usage: build-waydroid-v4l2-codec SOURCE_BUNDLE BUILD_DIR STAGE_DIR
+
+SOURCE_BUNDLE is produced by prepare-waydroid-v4l2-codec-sources. BUILD_DIR
+and STAGE_DIR must be empty.
+
+Required environment:
+  ANDROID_NDK_ROOT       Android NDK root (tested: 25.2.9519653)
+  WAYDROID_LINK_LIB64    Colon-separated directories containing the matching
+                        Android 13/Waydroid arm64 shared libraries
+
+Optional environment:
+  ANDROID_API            Android API level (default: 33)
+  ANDROID_NDK_HOST_TAG   NDK host directory (default: linux-x86_64)
+EOF
+}
+
+if [ "$#" -ne 3 ]; then
+	usage >&2
+	exit 2
+fi
+
+source_bundle=$1
+build_dir=$2
+stage_dir=$3
+android_api=${ANDROID_API:-33}
+ndk_root=${ANDROID_NDK_ROOT:-}
+ndk_host_tag=${ANDROID_NDK_HOST_TAG:-linux-x86_64}
+link_dirs=${WAYDROID_LINK_LIB64:-}
+
+if [ -z "$ndk_root" ] || [ -z "$link_dirs" ]; then
+	usage >&2
+	exit 2
+fi
+
+case "$source_bundle:$build_dir:$stage_dir:$ndk_root:$link_dirs" in
+	*[[:space:]]*)
+		printf '%s\n' 'Build and library paths must not contain whitespace.' >&2
+		exit 2
+		;;
+esac
+
+case "$android_api" in
+	''|*[!0-9]*)
+		printf 'ANDROID_API must be a positive integer: %s\n' "$android_api" >&2
+		exit 2
+		;;
+esac
+
+for directory in "$build_dir" "$stage_dir"; do
+	if [ -e "$directory" ] &&
+		find "$directory" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+		printf 'Refusing non-empty directory: %s\n' "$directory" >&2
+		exit 1
+	fi
+done
+
+codec_source=$source_bundle/v4l2-codec2
+frameworks_av=$source_bundle/frameworks-av
+libchrome_source=$source_bundle/libchrome
+vndk=$source_bundle/vndk-v33/arm64/include
+hardware_interfaces=$source_bundle/hardware-interfaces
+system_libhidl=$source_bundle/system-libhidl
+minijail_source=$source_bundle/minijail
+toolchain=$ndk_root/toolchains/llvm/prebuilt/$ndk_host_tag
+cxx=$toolchain/bin/clang++
+
+for required in \
+	"$codec_source/common/V4L2Device.cpp" \
+	"$frameworks_av/media/codec2/vndk/include/C2AllocatorGralloc.h" \
+	"$libchrome_source/base/bind.h" \
+	"$vndk/external/libcxx/include/__config" \
+	"$hardware_interfaces/media/c2/1.0/IComponent.hal" \
+	"$system_libhidl/transport/base/1.0/IBase.hal" \
+	"$minijail_source/libminijail.h" \
+	"$cxx"
+do
+	if [ ! -e "$required" ]; then
+		printf 'Missing required build input: %s\n' "$required" >&2
+		exit 1
+	fi
+done
+
+for command in find hidl-gen install readelf sha256sum xargs; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		printf 'Missing required host command: %s\n' "$command" >&2
+		exit 1
+	fi
+done
+
+resolve_library() {
+	library=$1
+	old_ifs=$IFS
+	IFS=:
+	for directory in $link_dirs; do
+		if [ -f "$directory/$library" ]; then
+			IFS=$old_ifs
+			printf '%s\n' "$directory/$library"
+			return
+		fi
+	done
+	IFS=$old_ifs
+	printf 'Missing Waydroid link library: %s\n' "$library" >&2
+	exit 1
+}
+
+lib_graphics_bufferqueue=$(resolve_library android.hardware.graphics.bufferqueue@2.0.so)
+lib_graphics_common=$(resolve_library android.hardware.graphics.common@1.0.so)
+lib_media_bufferpool=$(resolve_library android.hardware.media.bufferpool@2.0.so)
+lib_media_c2=$(resolve_library android.hardware.media.c2@1.0.so)
+lib_safe_union=$(resolve_library android.hidl.safe_union@1.0.so)
+lib_avservices_minijail=$(resolve_library libavservices_minijail.so)
+lib_base=$(resolve_library libbase.so)
+lib_chrome=$(resolve_library libchrome.so)
+lib_codec2=$(resolve_library libcodec2.so)
+lib_codec2_hidl=$(resolve_library libcodec2_hidl@1.0.so)
+lib_codec2_soft_common=$(resolve_library libcodec2_soft_common.so)
+lib_codec2_vndk=$(resolve_library libcodec2_vndk.so)
+lib_cutils=$(resolve_library libcutils.so)
+lib_fmq=$(resolve_library libfmq.so)
+lib_hardware=$(resolve_library libhardware.so)
+lib_hidlbase=$(resolve_library libhidlbase.so)
+lib_log=$(resolve_library liblog.so)
+lib_minijail=$(resolve_library libminijail.so)
+lib_nativewindow=$(resolve_library libnativewindow.so)
+lib_sfplugin=$(resolve_library libsfplugin_ccodec_utils.so)
+lib_stagefright_bufferpool=$(resolve_library libstagefright_bufferpool@2.0.1.so)
+lib_stagefright_bufferqueue=$(resolve_library libstagefright_bufferqueue_helper.so)
+lib_stagefright_foundation=$(resolve_library libstagefright_foundation.so)
+lib_ui=$(resolve_library libui.so)
+lib_utils=$(resolve_library libutils.so)
+lib_yuv=$(resolve_library libyuv.so)
+lib_cxx=$(resolve_library libc++.so)
+
+generated_headers=$build_dir/generated-hidl
+compat_includes=$build_dir/compat-includes
+mkdir -p \
+	"$build_dir/common" "$build_dir/components" "$build_dir/plugin_store" \
+	"$build_dir/service" "$generated_headers" \
+	"$compat_includes/testing/gtest/include/gtest" "$stage_dir"
+
+install -m 0644 \
+	"$vndk/external/googletest/googletest/include/gtest/gtest_prod.h" \
+	"$compat_includes/testing/gtest/include/gtest/gtest_prod.h"
+
+for version in 1.0 1.1 1.2; do
+	hidl-gen -R -L c++-headers -o "$generated_headers" \
+		-r android.hardware:"$hardware_interfaces" \
+		-r android.hidl:"$system_libhidl/transport" \
+		"android.hardware.media.c2@$version"
+done
+
+cxxflags="--target=aarch64-linux-android$android_api -std=gnu++17 -fPIC -fno-exceptions -fno-rtti -nostdinc++ -DANDROID -D__ANDROID_VNDK__ -DNDEBUG -DPAGE_SIZE=4096 -Wno-unused-command-line-argument -ffile-prefix-map=$source_bundle=/build/android13 -ffile-prefix-map=$build_dir=/build/output -fmacro-prefix-map=$source_bundle=/build/android13 -fmacro-prefix-map=$build_dir=/build/output"
+includes="
+-I$vndk/external/libcxx/include
+-I$vndk/external/libcxxabi/include
+-I$codec_source/common/include
+-I$codec_source/components/include
+-I$codec_source/plugin_store/include
+-I$frameworks_av/media/codec2/vndk/include
+-I$frameworks_av/media/codec2/vndk/internal
+-I$frameworks_av/media/codec2/components/base/include
+-I$frameworks_av/media/codec2/sfplugin/utils
+-I$frameworks_av/media/codec2/hidl/1.0/utils/include
+-I$frameworks_av/services/minijail
+-I$libchrome_source
+-I$minijail_source
+-I$compat_includes
+-I$generated_headers
+-I$vndk/external/googletest/googletest/include
+-I$vndk/frameworks/native/libs/ui/include_vndk
+-I$vndk/frameworks/native/libs/nativewindow/include
+-I$vndk/frameworks/native/libs/nativebase/include
+-I$vndk/frameworks/native/libs/binder/ndk/include_cpp
+-I$vndk/frameworks/native/libs/math/include
+-I$vndk/frameworks/native/headers/media_plugin
+-I$vndk/system/core/libutils/include
+-I$vndk/system/core/libcutils/include
+-I$vndk/system/core/libsystem/include
+-I$vndk/system/libbase/include
+-I$vndk/system/libhidl/transport/include
+-I$vndk/system/libhwbinder/include
+-I$vndk/system/libhidl/base/include
+-I$vndk/system/libfmq/base
+-I$vndk/system/libfmq/include
+-I$vndk/system/logging/liblog/include_vndk
+-I$vndk/hardware/libhardware/include
+-I$vndk/frameworks/av/media/codec2/core/include
+-I$vndk/frameworks/av/media/libstagefright/foundation/include
+-I$vndk/frameworks/av/media/libstagefright/include
+-I$vndk/frameworks/av/media/libstagefright/bqhelper/include
+-I$vndk/frameworks/av/media/bufferpool/2.0/include
+-I$vndk/external/libyuv/files/include
+-I$vndk/generated-headers/hardware/interfaces/graphics/common/1.0/android.hardware.graphics.common@1.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/graphics/common/1.1/android.hardware.graphics.common@1.1_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/graphics/common/1.2/android.hardware.graphics.common@1.2_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/graphics/bufferqueue/2.0/android.hardware.graphics.bufferqueue@2.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/graphics/bufferqueue/1.0/android.hardware.graphics.bufferqueue@1.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/media/omx/1.0/android.hardware.media.omx@1.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/media/1.0/android.hardware.media@1.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/media/bufferpool/2.0/android.hardware.media.bufferpool@2.0_genc++_headers/gen
+-I$vndk/generated-headers/system/libhidl/transport/base/1.0/android.hidl.base@1.0_genc++_headers/gen
+-I$vndk/generated-headers/system/libhidl/transport/manager/1.0/android.hidl.manager@1.0_genc++_headers/gen
+-I$vndk/generated-headers/system/libhidl/transport/safe_union/1.0/android.hidl.safe_union@1.0_genc++_headers/gen
+-I$vndk/generated-headers/hardware/interfaces/graphics/common/aidl/android.hardware.graphics.common-V3-ndk-source/gen/include
+"
+
+compile_directory() {
+	source_directory=$1
+	object_directory=$2
+	for source in "$source_directory"/*.cpp; do
+		object=$object_directory/$(basename "$source" .cpp).o
+		"$cxx" $cxxflags $includes -c "$source" -o "$object"
+	done
+}
+
+compile_directory "$codec_source/common" "$build_dir/common"
+compile_directory "$codec_source/plugin_store" "$build_dir/plugin_store"
+compile_directory "$codec_source/components" "$build_dir/components"
+"$cxx" $cxxflags $includes -c "$codec_source/service/service.cpp" \
+	-o "$build_dir/service/service.o"
+
+link_flags="--target=aarch64-linux-android$android_api -nostdlib++ -Wl,--no-undefined"
+
+"$cxx" $link_flags -shared -Wl,-soname,libv4l2_codec2_common.so \
+	-o "$build_dir/libv4l2_codec2_common.so" "$build_dir"/common/*.o \
+	"$lib_chrome" "$lib_cutils" "$lib_log" "$lib_stagefright_foundation" \
+	"$lib_ui" "$lib_utils" "$lib_codec2" "$lib_codec2_vndk" "$lib_yuv" \
+	"$lib_cxx" -lm -ldl
+
+"$cxx" $link_flags -shared -Wl,-soname,libc2plugin_store.so \
+	-o "$build_dir/libc2plugin_store.so" "$build_dir"/plugin_store/*.o \
+	"$lib_graphics_bufferqueue" "$lib_media_bufferpool" "$lib_chrome" \
+	"$lib_codec2" "$lib_codec2_vndk" "$lib_cutils" "$lib_hardware" \
+	"$lib_hidlbase" "$lib_nativewindow" "$lib_log" \
+	"$lib_stagefright_bufferpool" "$lib_stagefright_bufferqueue" \
+	"$lib_stagefright_foundation" "$lib_ui" "$lib_utils" "$lib_fmq" \
+	"$lib_safe_union" "$lib_cxx" -lm -ldl
+
+"$cxx" $link_flags -shared -Wl,-soname,libv4l2_codec2_components.so \
+	-o "$build_dir/libv4l2_codec2_components.so" "$build_dir"/components/*.o \
+	"$build_dir/libv4l2_codec2_common.so" "$build_dir/libc2plugin_store.so" \
+	"$lib_graphics_common" "$lib_chrome" "$lib_codec2" "$lib_codec2_vndk" \
+	"$lib_codec2_soft_common" "$lib_codec2_hidl" "$lib_cutils" "$lib_log" \
+	"$lib_sfplugin" "$lib_stagefright_bufferqueue" "$lib_stagefright_foundation" \
+	"$lib_ui" "$lib_utils" "$lib_base" "$lib_nativewindow" "$lib_hardware" \
+	"$lib_hidlbase" "$lib_cxx" -lm -ldl
+
+"$cxx" $link_flags -o "$build_dir/android.hardware.media.c2@1.0-service-v4l2-64" \
+	"$build_dir/service/service.o" "$build_dir/libv4l2_codec2_components.so" \
+	"$lib_media_c2" "$lib_codec2_hidl" "$lib_codec2" "$lib_codec2_vndk" \
+	"$lib_avservices_minijail" "$lib_minijail" "$lib_chrome" "$lib_cutils" \
+	"$lib_hidlbase" "$lib_log" "$lib_utils" "$lib_cxx" -lm -ldl
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+install -Dm0755 "$build_dir/android.hardware.media.c2@1.0-service-v4l2-64" \
+	"$stage_dir/system/bin/hw/android.hardware.media.c2@1.0-service-v4l2-64"
+install -Dm0644 "$build_dir/libc2plugin_store.so" \
+	"$stage_dir/system/lib64/libc2plugin_store.so"
+install -Dm0644 "$build_dir/libv4l2_codec2_common.so" \
+	"$stage_dir/system/lib64/libv4l2_codec2_common.so"
+install -Dm0644 "$build_dir/libv4l2_codec2_components.so" \
+	"$stage_dir/system/lib64/libv4l2_codec2_components.so"
+install -Dm0644 \
+	"$project_dir/config/waydroid/v4l2-codec/android.hardware.media.c2@1.0-service-v4l2-64.rc" \
+	"$stage_dir/system/etc/init/android.hardware.media.c2@1.0-service-v4l2-64.rc"
+install -Dm0644 \
+	"$project_dir/config/waydroid/v4l2-codec/manifest_media_c2_v4l2.xml" \
+	"$stage_dir/vendor/etc/vintf/manifest/manifest_media_c2_v4l2.xml"
+install -Dm0644 "$project_dir/config/waydroid/v4l2-codec/media_codecs_c2.xml" \
+	"$stage_dir/vendor/etc/media_codecs_c2.xml"
+install -Dm0644 \
+	"$project_dir/config/waydroid/v4l2-codec/android.hardware.media.c2@1.2-default-seccomp_policy" \
+	"$stage_dir/vendor/etc/seccomp_policy/android.hardware.media.c2@1.2-default-seccomp_policy"
+install -Dm0644 "$project_dir/config/waydroid/v4l2-codec/codec2.vendor.ext.policy" \
+	"$stage_dir/vendor/etc/seccomp_policy/codec2.vendor.ext.policy"
+
+for binary in \
+	"$stage_dir/system/bin/hw/android.hardware.media.c2@1.0-service-v4l2-64" \
+	"$stage_dir/system/lib64/libc2plugin_store.so" \
+	"$stage_dir/system/lib64/libv4l2_codec2_common.so" \
+	"$stage_dir/system/lib64/libv4l2_codec2_components.so"
+do
+	readelf -h "$binary" | grep -q 'Machine:.*AArch64'
+done
+
+(cd "$stage_dir"; find system vendor -type f -print | sort | xargs sha256sum)

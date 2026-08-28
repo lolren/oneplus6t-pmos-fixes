@@ -1,0 +1,209 @@
+From df3f0590e3d44c4689102bcd8867093b507fbfac Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Fri, 28 Aug 2026 01:24:17 +0100
+Subject: [PATCH] android: keep RGB preview and coalesce NV12 streams
+
+---
+ src/android/camera_device.cpp          | 81 +++++++++++++++++++++++---
+ src/android/yuv/post_processor_yuv.cpp | 45 ++++++++------
+ src/android/yuv/post_processor_yuv.h   |  1 +
+ 3 files changed, 99 insertions(+), 28 deletions(-)
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 5e27856..72b78c5 100644
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -643,20 +643,18 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 
+ 		/*
+ 		 * A texture-only private stream can be rendered straight into an RGB
+-		 * gralloc buffer. In a multi-stream request, however, Android's buffer
+-		 * allocation may change when an encoder or JPEG consumer is present.
+-		 * The generic Waydroid memory backend cannot propagate that per-buffer
+-		 * layout to the software ISP, and importing it as a linear RGB target can
+-		 * therefore expose tiled data as horizontal corruption. Keep the fast
+-		 * RGB path for isolated previews and use the layout-stable NV12 path when
+-		 * more than one stream is configured.
++		 * gralloc buffer. In a multi-stream request minigbm may otherwise select
++		 * a tiled RGB layout, whose modifier isn't carried through Camera3's
++		 * generic framebuffer wrapper. Request CPU-writable storage to make that
++		 * buffer linear while retaining the zero-copy RGB render path. This keeps
++		 * displayed preview fast when a separate NV12 encoder stream is active.
+ 		 */
+ 		if (stream_list->num_streams > 1 &&
+ 		    stream->format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
+ 		    format == formats::XBGR8888) {
+ 			LOG(HAL, Info)
+-				<< "Using NV12 for multi-stream private buffer";
+-			format = formats::NV12;
++				<< "Requesting linear RGB multi-stream private buffer";
++			stream->usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
+ 		}
+ 		Size sourceSize = reducedPreviewSourceSize(format, size);
+ 
+@@ -665,6 +663,7 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 			       << ", width: " << stream->width
+ 			       << ", height: " << stream->height
+ 			       << ", format: " << utils::hex(stream->format)
++			       << ", usage: " << utils::hex(stream->usage)
+ 			       << ", rotation: " << rotationToString(stream->rotation)
+ #if defined(OS_CHROMEOS)
+ 			       << ", crop_rotate_scale_degrees: "
+@@ -736,6 +735,70 @@ int CameraDevice::configureStreams(camera3_stream_configuration_t *stream_list)
+ 		streamConfigs.push_back(std::move(streamConfig));
+ 	}
+ 
++	/*
++	 * The GPU software ISP has to synchronously read back and convert every
++	 * NV12 output. Camera3 commonly asks for separate preview, analysis and
++	 * encoder streams, even though all of them can be derived from one larger
++	 * NV12 frame. Keep only the largest NV12 source configuration and produce
++	 * the other Android streams with the YUV post-processor. Besides avoiding
++	 * redundant Bayer processing and GPU readbacks, this also works around
++	 * simple pipelines with a small output-stream limit.
++	 *
++	 * PostProcessorYuv performs the required centred aspect-ratio crop before
++	 * scaling each mapped stream. The first Android stream associated with the
++	 * retained configuration remains its direct/internal source; all streams
++	 * moved from another configuration become mapped consumers of that source.
++	 */
++	size_t nv12Anchor = streamConfigs.size();
++	uint64_t nv12AnchorArea = 0;
++	for (size_t i = 0; i < streamConfigs.size(); ++i) {
++		const StreamConfiguration &cfg = streamConfigs[i].config;
++		if (cfg.pixelFormat != formats::NV12)
++			continue;
++
++		const uint64_t area = static_cast<uint64_t>(cfg.size.width) *
++				      cfg.size.height;
++		if (nv12Anchor == streamConfigs.size() || area > nv12AnchorArea) {
++			nv12Anchor = i;
++			nv12AnchorArea = area;
++		}
++	}
++
++	if (nv12Anchor != streamConfigs.size()) {
++		Camera3StreamConfig anchor = std::move(streamConfigs[nv12Anchor]);
++		std::vector<Camera3StreamConfig> coalescedConfigs;
++		coalescedConfigs.reserve(streamConfigs.size());
++		unsigned int mappedNv12Streams = 0;
++
++		for (size_t i = 0; i < streamConfigs.size(); ++i) {
++			if (i == nv12Anchor)
++				continue;
++
++			Camera3StreamConfig &candidate = streamConfigs[i];
++			if (candidate.config.pixelFormat != formats::NV12) {
++				coalescedConfigs.push_back(std::move(candidate));
++				continue;
++			}
++
++			anchor.streams[0].stream->usage |= GRALLOC_USAGE_SW_READ_OFTEN;
++			for (Camera3StreamConfig::Camera3Stream &stream : candidate.streams) {
++				stream.stream->usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
++				anchor.streams.push_back({ stream.stream,
++							   CameraStream::Type::Mapped });
++				mappedNv12Streams++;
++			}
++		}
++
++		if (mappedNv12Streams) {
++			LOG(HAL, Info)
++				<< "Mapped " << mappedNv12Streams
++				<< " NV12 Android stream(s) to source "
++				<< anchor.config.size;
++		}
++		coalescedConfigs.push_back(std::move(anchor));
++		streamConfigs = std::move(coalescedConfigs);
++	}
++
+ 	/* Now handle the MJPEG streams, adding a new stream if required. */
+ 	if (jpegStream) {
+ 		CameraStream::Type type;
+diff --git a/src/android/yuv/post_processor_yuv.cpp b/src/android/yuv/post_processor_yuv.cpp
+index b6d1b67..0bc298c 100644
+--- a/src/android/yuv/post_processor_yuv.cpp
++++ b/src/android/yuv/post_processor_yuv.cpp
+@@ -34,22 +34,6 @@ int PostProcessorYuv::configure(const StreamConfiguration &inCfg,
+ 		return -EINVAL;
+ 	}
+ 
+-	if (inCfg.size < outCfg.size) {
+-		/*
+-		 * The Android HAL may intentionally use a smaller source preview
+-		 * mode and scale it into the framework's requested buffer.  Only
+-		 * permit ratio-preserving up-scaling so the field of view remains
+-		 * correct; arbitrary aspect-ratio changes are still rejected.
+-		 */
+-		if (static_cast<uint64_t>(inCfg.size.width) * outCfg.size.height !=
+-		    static_cast<uint64_t>(inCfg.size.height) * outCfg.size.width) {
+-			LOG(YUV, Error) << "Up-scaling changes aspect ratio"
+-					<< " (from " << inCfg.size
+-					<< " to " << outCfg.size << ")";
+-			return -EINVAL;
+-		}
+-	}
+-
+ 	if (inCfg.pixelFormat != formats::NV12) {
+ 		LOG(YUV, Error) << "Unsupported format " << inCfg.pixelFormat
+ 				<< " (only NV12 is supported)";
+@@ -77,11 +61,14 @@ void PostProcessorYuv::process(Camera3RequestDescriptor::StreamBuffer *streamBuf
+ 		return;
+ 	}
+ 
+-	int ret = libyuv::NV12Scale(sourceMapped.planes()[0].data(),
++	const uint8_t *sourceY = sourceMapped.planes()[0].data() + sourceCrop_.y * sourceStride_[0] + sourceCrop_.x;
++	const uint8_t *sourceUv = sourceMapped.planes()[1].data() + sourceCrop_.y / 2 * sourceStride_[1] + sourceCrop_.x;
++
++	int ret = libyuv::NV12Scale(sourceY,
+ 				    sourceStride_[0],
+-				    sourceMapped.planes()[1].data(),
++				    sourceUv,
+ 				    sourceStride_[1],
+-				    sourceSize_.width, sourceSize_.height,
++				    sourceCrop_.width, sourceCrop_.height,
+ 				    destination->plane(0).data(),
+ 				    destinationStride_[0],
+ 				    destination->plane(1).data(),
+@@ -144,6 +131,26 @@ void PostProcessorYuv::calculateLengths(const StreamConfiguration &inCfg,
+ 	sourceSize_ = inCfg.size;
+ 	destinationSize_ = outCfg.size;
+ 
++	unsigned int cropWidth = sourceSize_.width;
++	unsigned int cropHeight = sourceSize_.height;
++	if (static_cast<uint64_t>(sourceSize_.width) * destinationSize_.height >
++	    static_cast<uint64_t>(sourceSize_.height) * destinationSize_.width)
++		cropWidth = static_cast<uint64_t>(sourceSize_.height) *
++			    destinationSize_.width / destinationSize_.height;
++	else
++		cropHeight = static_cast<uint64_t>(sourceSize_.width) *
++			     destinationSize_.height / destinationSize_.width;
++
++	/* NV12 chroma samples cover 2x2 luma pixels. */
++	cropWidth &= ~1U;
++	cropHeight &= ~1U;
++	const int cropX = ((sourceSize_.width - cropWidth) / 2) & ~1U;
++	const int cropY = ((sourceSize_.height - cropHeight) / 2) & ~1U;
++	sourceCrop_ = Rectangle(cropX, cropY, cropWidth, cropHeight);
++
++	LOG(YUV, Debug) << "Scale " << sourceCrop_ << " from " << sourceSize_
++			<< " to " << destinationSize_;
++
+ 	const PixelFormatInfo &nv12Info = PixelFormatInfo::info(formats::NV12);
+ 	for (unsigned int i = 0; i < 2; i++) {
+ 		sourceStride_[i] = inCfg.stride;
+diff --git a/src/android/yuv/post_processor_yuv.h b/src/android/yuv/post_processor_yuv.h
+index ed7bb1f..4080441 100644
+--- a/src/android/yuv/post_processor_yuv.h
++++ b/src/android/yuv/post_processor_yuv.h
+@@ -28,6 +28,7 @@ private:
+ 
+ 	libcamera::Size sourceSize_;
+ 	libcamera::Size destinationSize_;
++	libcamera::Rectangle sourceCrop_;
+ 	unsigned int sourceLength_[2] = {};
+ 	unsigned int destinationLength_[2] = {};
+ 	unsigned int sourceStride_[2] = {};
+-- 
+2.49.0
+

@@ -26,20 +26,22 @@ location and Android-container failures cannot obscure one another.
    health gate now pass. The `pmos-safe-upgrade` wrapper now intercepts ordinary
    critical-package upgrades; repository signing, compatibility-gated published
    generations and retained public rollback generations remain.
-4. Broaden Android acceptance: the Waydroid r41 Camera3 lower layer retains
-   the NV12 colour fix and now processes preview plus encoder outputs from one
-   Bayer input. Per-camera recording profiles, Codec2 selection and the
-   bounded Mesa software-codec policy let Aperture save a verified H.264/AAC
-   rear-camera clip. The equivalent clean r42 source/package is ready for
-   publication. Repeat front/auxiliary recording and performance profiles,
-   then improve the remaining low Android frame rate without sacrificing the
-   working multi-stream path; Android computational HDR and vendor
-   image-quality parity remain unimplemented.
+4. Broaden Android acceptance: installed camera r44 retains the NV12 colour
+   fix, keeps a linear RGB preview, coalesces NV12 consumers and caps private
+   preview size. Live Codec2 r50 drives Venus and saves 1280x720 H.264/AAC at
+   exactly 18 fps instead of the software path's 11.37 fps. The pinned r51
+   source, clean build and deterministic archive are ready; after a physical
+   reboot clears the current D-state Waydroid teardown, install that exact
+   archive and repeat illuminated rear, front/auxiliary, long-recording and
+   suspend/resume tests. Android computational HDR and vendor image-quality
+   parity remain unimplemented.
 5. Establish a reliable native GNSS fix and assisted location, then expose
    location to Waydroid. The reproducible dry-run-first NMEA/test-provider
    bridge, optional disabled systemd service and read-only native location
-   report now exist; validate native coordinates and Android applications
-   separately so a network-derived fallback cannot be mistaken for GPS.
+   report now exist. The current Reading result is not accepted as GPS while
+   the phone is actually near Stroud; validate fresh native satellite
+   coordinates and Android applications separately so network/account/IP
+   fallback cannot be mistaken for GNSS.
 6. Investigate read-only NFC tag support, audio-route/microphone policy,
    suspend/resume and power use as separate bounded workstreams after camera
    and location acceptance. The reproducible NFC readiness report is now

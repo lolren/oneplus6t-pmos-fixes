@@ -265,8 +265,10 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
 | Waydroid EGL NV12 channel-order fix | Corrects the GPU B,G,R,A readback conversion so front-camera skin tones are not rendered purple; the [r36 bundle](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r36-nv12) is installed and its single-output preview passed all three cameras. |
-| Waydroid multi-output software ISP | Debayers one Bayer input once and renders every preview/encoder output in the same Camera3 request; this removes the one-output limit that prevented Android video capture. |
-| Waydroid recording profiles and Codec2 policy | Publishes per-camera 480p/720p H.264/AAC `EncoderProfiles`, selects Codec2 and extends only the software-codec seccomp calls observed on Mesa. Aperture now records and finalizes a playable rear-camera clip with microphone audio. |
+| Waydroid multi-output software ISP | Debayers one Bayer input once, keeps a linear RGB preview and coalesces NV12 encoder/analysis consumers with a centred crop; this removes the one-output limit and avoids repeated GPU readback. |
+| Waydroid private-preview cap | Limits only CameraX private previews to 1280x960 so 720p recording stays on a practical sensor mode; larger explicit YUV/JPEG photography modes remain available. |
+| Waydroid recording profiles and Codec2 policy | Publishes per-camera 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. |
+| Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; an accepted rear clip is 1280x720 H.264 at exactly 18 fps with 48 kHz mono AAC, versus 11.37 fps on software Codec2. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |
 | Waydroid SIGPIPE-safe provider teardown | A closed software-IPA socket is returned as an IPC error instead of terminating the Android camera provider. |
@@ -279,13 +281,13 @@ and through an open Camera3 HAL in Waydroid.
 
 The repository retains the previously accepted r8/r24/r7/r3 camera baseline
 and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
-reference phone is reachable over USB CDC-NCM/SSH. The Waydroid r41
-multi-output/video bundle is installed with a dated rollback backup. It retains
-the r36 colour correction, and Aperture completed a 19-second 1280x720 H.264
-recording with 48 kHz AAC microphone audio; playback also reached the physical
-speaker. The same source was formatted, committed as patch `0013`, cleanly
-rebuilt as the reproducible r42 bundle, and remains source/package evidence
-until that exact archive is installed or published.
+reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r44
+camera layer retains the r36 colour correction and now includes reproducible
+patches `0013`–`0015` for mixed RGB/NV12 streams and preview sizing. The live
+r50 Venus Codec2 service finalized a 25.56-second 1280x720 hardware-H.264 clip
+at exactly 18 fps with 48 kHz mono AAC. A path-normalized r51 build and package
+are byte-reproducible; those exact r51 binaries still require phone
+installation after the current Waydroid teardown state is cleared.
 
 Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
 packages are now pinned and the signed AArch64 APK pair is published in the
@@ -346,6 +348,24 @@ install it atomically with `sudo scripts/install-waydroid-camera`. That helper
 backs up only its managed targets and prints the exact rollback directory.
 Follow [docs/WAYDROID.md](docs/WAYDROID.md) for the patch order, GPU mode,
 package hashes, clean three-camera probe and rollback command.
+The arm64 hardware encoder is a second, independently rollback-safe overlay.
+Fetch its pinned Android 13 sources, build, package and install with:
+
+```sh
+scripts/prepare-waydroid-v4l2-codec-sources /tmp/codec-sources
+ANDROID_NDK_ROOT=/path/to/android-ndk-25.2.9519653 \
+WAYDROID_LINK_LIB64=/path/to/android13/system/lib64:/path/to/apex-libs \
+  scripts/build-waydroid-v4l2-codec \
+  /tmp/codec-sources /tmp/codec-build /tmp/codec-stage
+scripts/package-waydroid-v4l2-codec \
+  /tmp/codec-stage /tmp/oneplus6t-waydroid-v4l2-codec-r51
+sudo scripts/install-waydroid-v4l2-codec /tmp/codec-stage
+```
+
+Stop Waydroid first. The installer refuses mounted rootfs and active I/O
+pressure, backs up nine exact targets and prints its rollback directory. Full
+source revisions, library requirements, hashes, feature explanations and
+runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md).
 Optional Play Store/GAPPS initialization and its read-only package verifier are
 documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
 or APK is included in this repository.
@@ -504,8 +524,9 @@ The current requirement-by-requirement audit is maintained in
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
 - signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
-  bundles, are published; Waydroid r41 is live-tested and the reproducible r42
-  multistream/video bundle is ready for publication;
+  bundles, are published; the installed r44 camera layer and live r50 hardware
+  encoder work, while the byte-reproducible r51 codec archive awaits exact
+  phone installation and publication;
 - live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
   microphone and speaker playback pass; time-after-boot, modem-call audio,
   display stability, native camera quality/video, outdoor GNSS, NFC, battery

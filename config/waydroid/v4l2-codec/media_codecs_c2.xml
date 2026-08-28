@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Hardware H.264 encoder exposed by the Qualcomm Venus V4L2 stateful
+     encoder at /dev/video12. Rank 0 deliberately places it ahead of Lineage's
+     rank-1 c2.android.avc.encoder without disabling that or the legacy OMX
+     fallback. Only the validated codec is listed; the service's unvalidated
+     decoder and VPx components therefore remain invisible to applications.
+-->
+<MediaCodecs>
+    <Encoders>
+        <MediaCodec name="c2.v4l2.avc.encoder" type="video/avc" rank="0">
+            <Limit name="size" min="32x32" max="1920x1088" />
+            <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="blocks-per-second" range="1-244800" />
+            <Limit name="bitrate" range="64000-12000000" />
+            <Limit name="concurrent-instances" max="1" />
+            <Limit name="performance-point-1280x720" range="15-30" />
+        </MediaCodec>
+    </Encoders>
+</MediaCodecs>

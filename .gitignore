@@ -14,3 +14,4 @@ known_hosts
 packaging/pkg/
 packaging/src/
 tests/waydroid-camera-probe/build/
+.planning/

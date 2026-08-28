@@ -1,0 +1,269 @@
+#!/bin/sh
+set -eu
+
+usage() {
+	cat >&2 <<'EOF'
+usage:
+  install-waydroid-v4l2-codec [--dry-run] STAGE_DIR [OVERLAY_DIR]
+  install-waydroid-v4l2-codec --rollback BACKUP_DIR [OVERLAY_DIR]
+
+STAGE_DIR is produced by build-waydroid-v4l2-codec. The default overlay is
+/var/lib/waydroid/overlay. Waydroid must be fully stopped before installation
+or rollback. Every installation creates a restorable, dated backup.
+EOF
+}
+
+default_overlay=/var/lib/waydroid/overlay
+backup_root=${WAYDROID_CODEC_BACKUP_ROOT:-/var/lib/waydroid/backups}
+waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
+mountinfo_file=${WAYDROID_CODEC_MOUNTINFO:-/proc/self/mountinfo}
+proc_root=${WAYDROID_CODEC_PROC_ROOT:-/proc}
+dry_run=0
+
+overlay_targets() {
+	cat <<'EOF'
+system/bin/hw/android.hardware.media.c2@1.0-service-v4l2-64
+system/lib64/libc2plugin_store.so
+system/lib64/libv4l2_codec2_common.so
+system/lib64/libv4l2_codec2_components.so
+system/etc/init/android.hardware.media.c2@1.0-service-v4l2-64.rc
+vendor/etc/vintf/manifest/manifest_media_c2_v4l2.xml
+vendor/etc/media_codecs_c2.xml
+vendor/etc/seccomp_policy/android.hardware.media.c2@1.2-default-seccomp_policy
+vendor/etc/seccomp_policy/codec2.vendor.ext.policy
+EOF
+}
+
+install_mode_for_target() {
+	case "$1" in
+		system/bin/*) printf '%s\n' 0755 ;;
+		*) printf '%s\n' 0644 ;;
+	esac
+}
+
+fail_if_broad_path() {
+	case "$1" in
+		''|/|/var|/var/lib|/var/lib/waydroid)
+			printf 'Refusing unsafe path: %s\n' "$1" >&2
+			exit 1
+			;;
+	esac
+}
+
+require_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		printf '%s\n' 'This operation must run as root.' >&2
+		exit 1
+	fi
+}
+
+validate_overlay() {
+	fail_if_broad_path "$1"
+	if [ ! -d "$1" ]; then
+		printf 'Overlay directory does not exist: %s\n' "$1" >&2
+		exit 1
+	fi
+	if [ -r "$mountinfo_file" ] && awk -v root="$waydroid_rootfs" '
+		$5 == root || index($5, root "/") == 1 { found = 1; exit }
+		END { exit found ? 0 : 1 }
+	' "$mountinfo_file"; then
+		printf 'Refusing to access the overlay while Waydroid rootfs is mounted: %s\n' \
+			"$waydroid_rootfs" >&2
+		printf '%s\n' \
+			'Stop the Waydroid session and container, then clear the stale rootfs mount before retrying.' >&2
+		exit 1
+	fi
+	if [ ! -r "$proc_root/pressure/io" ]; then
+		printf 'Refusing overlay access: I/O pressure data is unavailable: %s\n' \
+			"$proc_root/pressure/io" >&2
+		exit 1
+	fi
+	io_some_avg10=$(awk '$1 == "some" {
+		for (i = 2; i <= NF; i++) if ($i ~ /^avg10=/) {
+			sub(/^avg10=/, "", $i); print $i; exit
+		}
+	}' "$proc_root/pressure/io")
+	io_full_avg10=$(awk '$1 == "full" {
+		for (i = 2; i <= NF; i++) if ($i ~ /^avg10=/) {
+			sub(/^avg10=/, "", $i); print $i; exit
+		}
+	}' "$proc_root/pressure/io")
+	[ -n "$io_some_avg10" ] && [ -n "$io_full_avg10" ] || {
+		printf '%s\n' 'Refusing overlay access: incomplete I/O pressure data' >&2
+		exit 1
+	}
+	if ! awk -v some="$io_some_avg10" -v full="$io_full_avg10" \
+		'BEGIN { exit !((some + 0 == 0) && (full + 0 == 0)) }'; then
+		printf 'Refusing overlay access: I/O pressure is active (some=%s full=%s)\n' \
+			"$io_some_avg10" "$io_full_avg10" >&2
+		exit 1
+	fi
+}
+
+validate_stage() {
+	if [ ! -d "$1" ]; then
+		printf 'Stage directory does not exist: %s\n' "$1" >&2
+		exit 1
+	fi
+	missing=0
+	while IFS= read -r target; do
+		if [ ! -f "$1/$target" ]; then
+			printf 'Missing runtime file: %s\n' "$1/$target" >&2
+			missing=1
+		fi
+	done <<EOF
+$(overlay_targets)
+EOF
+	[ "$missing" -eq 0 ] || exit 1
+}
+
+copy_file() {
+	source=$1
+	destination=$2
+	mode=$3
+	if [ -L "$destination" ] || [ -d "$destination" ]; then
+		printf 'Refusing to replace non-regular target: %s\n' "$destination" >&2
+		exit 1
+	fi
+	install -D -m "$mode" "$source" "$destination"
+}
+
+create_backup() {
+	overlay_dir=$1
+	backup_dir=$2
+	mkdir -p "$backup_dir/files"
+	: > "$backup_dir/presence.tsv"
+	while IFS= read -r target; do
+		source=$overlay_dir/$target
+		if [ -e "$source" ] || [ -L "$source" ]; then
+			if [ -L "$source" ] || [ ! -f "$source" ]; then
+				printf 'Refusing to back up non-regular target: %s\n' "$source" >&2
+				exit 1
+			fi
+			mkdir -p "$backup_dir/files/$(dirname "$target")"
+			cp -p "$source" "$backup_dir/files/$target"
+			printf 'present\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		else
+			printf 'absent\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		fi
+	done <<EOF
+$(overlay_targets)
+EOF
+}
+
+write_installed_manifest() {
+	overlay_dir=$1
+	backup_dir=$2
+	(
+		cd "$overlay_dir"
+		while IFS= read -r target; do
+			sha256sum "$target"
+		done <<EOF
+$(overlay_targets)
+EOF
+	) > "$backup_dir/installed.sha256"
+}
+
+do_install() {
+	stage_dir=$1
+	overlay_dir=$2
+	validate_stage "$stage_dir"
+	validate_overlay "$overlay_dir"
+	backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+	backup_dir=$backup_root/codec-$backup_stamp-$$
+	if [ "$dry_run" -eq 1 ]; then
+		printf 'dry-run: would back up to %s\n' "$backup_dir"
+		printf 'dry-run: would install %s codec overlay files\n' \
+			"$(overlay_targets | wc -l | tr -d ' ')"
+		return
+	fi
+
+	require_root
+	fail_if_broad_path "$backup_root"
+	if [ -e "$backup_dir" ]; then
+		printf 'Refusing to overwrite backup: %s\n' "$backup_dir" >&2
+		exit 1
+	fi
+	create_backup "$overlay_dir" "$backup_dir"
+	printf 'backup: %s\n' "$backup_dir"
+	while IFS= read -r target; do
+		copy_file "$stage_dir/$target" "$overlay_dir/$target" \
+			"$(install_mode_for_target "$target")"
+	done <<EOF
+$(overlay_targets)
+EOF
+	write_installed_manifest "$overlay_dir" "$backup_dir"
+	cat "$backup_dir/installed.sha256"
+}
+
+do_rollback() {
+	backup_dir=$1
+	overlay_dir=$2
+	require_root
+	validate_overlay "$overlay_dir"
+	if [ ! -f "$backup_dir/presence.tsv" ]; then
+		printf 'Invalid codec backup: %s\n' "$backup_dir" >&2
+		exit 1
+	fi
+	tab=$(printf '\t')
+	while IFS="$tab" read -r state target; do
+		case "$target" in
+			''|/*|*..*)
+				printf 'Invalid backup target: %s\n' "$target" >&2
+				exit 1
+				;;
+		esac
+		case "$state" in
+			present)
+				[ -f "$backup_dir/files/$target" ] || {
+					printf 'Backup file is missing: %s\n' "$backup_dir/files/$target" >&2
+					exit 1
+				}
+				copy_file "$backup_dir/files/$target" "$overlay_dir/$target" \
+					"$(install_mode_for_target "$target")"
+				;;
+			absent)
+				if [ -d "$overlay_dir/$target" ]; then
+					printf 'Refusing to remove directory target: %s\n' "$overlay_dir/$target" >&2
+					exit 1
+				fi
+				rm -f "$overlay_dir/$target"
+				;;
+			*)
+				printf 'Invalid backup record: %s %s\n' "$state" "$target" >&2
+				exit 1
+				;;
+		esac
+	done < "$backup_dir/presence.tsv"
+	printf 'rolled back: %s\n' "$backup_dir"
+}
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage
+	exit 2
+fi
+
+if [ "$1" = '--dry-run' ]; then
+	dry_run=1
+	shift
+fi
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage
+	exit 2
+fi
+
+if [ "$1" = '--rollback' ]; then
+	if [ "$dry_run" -eq 1 ] || [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+		usage
+		exit 2
+	fi
+	do_rollback "$2" "${3:-$default_overlay}"
+	exit 0
+fi
+
+if [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; then
+	usage
+	exit 2
+fi
+do_install "$1" "${2:-$default_overlay}"
