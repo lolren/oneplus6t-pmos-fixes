@@ -19,7 +19,9 @@ fi
 output_dir=$1
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
-codec_patch=$project_dir/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
+codec_patch_dir=$project_dir/patches/android-v4l2-codec2
+codec_base_patch=$codec_patch_dir/0001-support-qualcomm-venus-single-plane-io.patch
+codec_layout_patch=$codec_patch_dir/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
 
 if [ -e "$output_dir" ] &&
 	find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
@@ -34,10 +36,12 @@ for command in git find; do
 	fi
 done
 
-if [ ! -f "$codec_patch" ]; then
-	printf 'Missing codec patch: %s\n' "$codec_patch" >&2
-	exit 1
-fi
+for codec_patch in "$codec_base_patch" "$codec_layout_patch"; do
+	if [ ! -f "$codec_patch" ]; then
+		printf 'Missing codec patch: %s\n' "$codec_patch" >&2
+		exit 1
+	fi
+done
 
 fetch_revision() {
 	destination=$1
@@ -83,7 +87,7 @@ fetch_revision "$output_dir/minijail" \
 git -C "$output_dir/v4l2-codec2" \
 	-c user.name=OnePlus6T-codec-build \
 	-c user.email=build@example.invalid \
-	am --committer-date-is-author-date "$codec_patch"
+	am --committer-date-is-author-date "$codec_base_patch" "$codec_layout_patch"
 
 printf 'prepared source bundle: %s\n' "$output_dir"
 for source in \

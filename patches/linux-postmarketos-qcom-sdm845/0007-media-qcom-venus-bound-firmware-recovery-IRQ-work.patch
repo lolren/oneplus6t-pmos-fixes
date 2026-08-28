@@ -1,0 +1,77 @@
+From a9afa3cd22f6d49c3c9b88f3e0107b47db3990f6 Mon Sep 17 00:00:00 2001
+From: OnePlus6T PMOS fixes <build@example.invalid>
+Date: Fri, 28 Aug 2026 10:10:39 +0100
+Subject: [PATCH] media: qcom: venus: bound firmware recovery IRQ work
+
+---
+ drivers/media/platform/qcom/venus/hfi_venus.c | 23 +++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index bd82066bb6..ae369dede4 100644
+--- a/drivers/media/platform/qcom/venus/hfi_venus.c
++++ b/drivers/media/platform/qcom/venus/hfi_venus.c
+@@ -42,6 +42,7 @@
+ #define IFACEQ_MAX_PKT_SIZE		1024
+ #define IFACEQ_MED_PKT_SIZE		768
+ #define IFACEQ_MIN_PKT_SIZE		8
++#define IFACEQ_MAX_PKTS_PER_IRQ		32
+ #define IFACEQ_VAR_SMALL_PKT_SIZE	100
+ #define IFACEQ_VAR_LARGE_PKT_SIZE	512
+ #define IFACEQ_VAR_HUGE_PKT_SIZE	(1024 * 12)
+@@ -989,10 +990,14 @@ static void venus_flush_debug_queue(struct venus_hfi_device *hdev)
+ {
+ 	struct device *dev = hdev->core->dev;
+ 	void *packet = hdev->dbg_buf;
++	unsigned int packets = 0;
+ 
+-	while (!venus_iface_dbgq_read(hdev, packet)) {
++	while ((!test_bit(0, &hdev->core->sys_error) ||
++		packets < IFACEQ_MAX_PKTS_PER_IRQ) &&
++	       !venus_iface_dbgq_read(hdev, packet)) {
+ 		struct hfi_msg_sys_coverage_pkt *pkt = packet;
+ 
++		packets++;
+ 		if (pkt->hdr.pkt_type != HFI_MSG_SYS_COV) {
+ 			struct hfi_msg_sys_debug_pkt *pkt = packet;
+ 
+@@ -1091,6 +1096,7 @@ static irqreturn_t venus_isr_thread(struct venus_core *core)
+ {
+ 	struct venus_hfi_device *hdev = to_hfi_priv(core);
+ 	const struct venus_resources *res;
++	unsigned int packets = 0;
+ 	void *pkt;
+ 	u32 msg_ret;
+ 
+@@ -1101,7 +1107,10 @@ static irqreturn_t venus_isr_thread(struct venus_core *core)
+ 	pkt = hdev->pkt_buf;
+ 
+ 
+-	while (!venus_iface_msgq_read(hdev, pkt)) {
++	while ((!test_bit(0, &core->sys_error) ||
++		packets < IFACEQ_MAX_PKTS_PER_IRQ) &&
++	       !venus_iface_msgq_read(hdev, pkt)) {
++		packets++;
+ 		msg_ret = hfi_process_msg_packet(core, pkt);
+ 		switch (msg_ret) {
+ 		case HFI_MSG_EVENT_NOTIFY:
+@@ -1126,6 +1135,16 @@ static irqreturn_t venus_isr_thread(struct venus_core *core)
+ 
+ 	venus_flush_debug_queue(hdev);
+ 
++	/*
++	 * A failed firmware recovery can leave the level-triggered interrupt
++	 * asserted without adding queue entries.  This handler runs as a FIFO
++	 * thread, so an immediate retrigger can otherwise monopolize one CPU and
++	 * starve unrelated block I/O.  Recovery responses tolerate this bounded
++	 * delay and are consumed before sleeping.
++	 */
++	if (test_bit(0, &core->sys_error))
++		usleep_range(10000, 20000);
++
+ 	return IRQ_HANDLED;
+ }
+ 
+-- 
+2.49.0
+

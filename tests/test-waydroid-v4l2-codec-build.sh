@@ -5,7 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PREPARE=$ROOT/scripts/prepare-waydroid-v4l2-codec-sources
 BUILD=$ROOT/scripts/build-waydroid-v4l2-codec
 PACKAGE=$ROOT/scripts/package-waydroid-v4l2-codec
-PATCH=$ROOT/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
+BASE_PATCH=$ROOT/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
+LAYOUT_PATCH=$ROOT/patches/android-v4l2-codec2/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
 TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/waydroid-codec-build-test.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 
@@ -21,9 +22,14 @@ do
 	grep -q "$revision" "$PREPARE"
 done
 
-grep -q 'V4L2_MEMORY_MMAP' "$PATCH"
-grep -q 'CPU_READ | C2MemoryUsage::CPU_WRITE' "$PATCH"
-grep -q 'mV4l2Buffer.memory = memory' "$PATCH"
+grep -q 'V4L2_MEMORY_MMAP' "$BASE_PATCH"
+grep -q 'CPU_READ | C2MemoryUsage::CPU_WRITE' "$BASE_PATCH"
+grep -q 'mV4l2Buffer.memory = memory' "$BASE_PATCH"
+grep -q 'deviceUV.mOffset' "$LAYOUT_PATCH"
+grep -q 'mEncoder.reset();' "$LAYOUT_PATCH"
+encoder_reset_line=$(grep -n 'mEncoder.reset();' "$LAYOUT_PATCH" | tail -n1 | cut -d: -f1)
+converter_reset_line=$(grep -n 'mInputFormatConverter.reset();' "$LAYOUT_PATCH" | tail -n1 | cut -d: -f1)
+[ "$encoder_reset_line" -lt "$converter_reset_line" ]
 grep -q -- '-ffile-prefix-map=' "$BUILD"
 grep -q 'Wl,--no-undefined' "$BUILD"
 grep -q 'Machine:.*AArch64' "$BUILD"
@@ -69,7 +75,8 @@ for installed in \
 	usr/libexec/oneplus6t-pmos-fixes/scripts/build-waydroid-v4l2-codec \
 	usr/libexec/oneplus6t-pmos-fixes/scripts/package-waydroid-v4l2-codec \
 	usr/libexec/oneplus6t-pmos-fixes/scripts/install-waydroid-v4l2-codec \
-	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch
+	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0001-support-qualcomm-venus-single-plane-io.patch \
+	usr/libexec/oneplus6t-pmos-fixes/patches/android-v4l2-codec2/0002-preserve-venus-input-layout-and-DMA-lifetime.patch
 do
 	[ -f "$install_stage/$installed" ]
 done
