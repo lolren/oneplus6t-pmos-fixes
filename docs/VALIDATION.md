@@ -2126,3 +2126,54 @@ The package contains the new cellular-only automation but has not been
 installed on the reference phone: its unchanged USB gadget still answers ping
 while SSH channels hang. Exact install, cold-boot and newly inserted SIM
 acceptance remain pending a physical reboot.
+
+## Runtime r23 and cold-boot SMARTY acceptance
+
+Date: 2026-08-28. Runtime r23 incorporates the installed-command symlink
+resolution fix, the normal-user privilege boundary for NetworkManager
+mutations, and the device-bound Wi-Fi restoration retry validated above. The
+recipe release `0.1.0-r23` was built from exact commit
+`7e1f495fac5258a6d35382ae60a1802d055e83bb` with
+`SOURCE_DATE_EPOCH=1787901340` and `abuild 3.18.0_rc5-r1`.
+
+Two clean Alpine edge builds used different UIDs and different absolute
+source/repository paths. Both ran the complete test suite and produced
+byte-identical signed APKs. Signature verification passes with the pinned
+development public key. Independent extraction exactly matches a fresh
+`make install PREFIX=/usr` stage for all 93 regular files, all 26 command
+links and all 119 regular-file/link mode entries. Metadata reports `noarch`,
+the exact source commit, build date and 11 declared runtime dependencies.
+
+```text
+APK: 0a2e13c5b4250a10720883290c1d1a2656f84a1d4bf13e7f671c370ca49c7ffd
+SHA256SUMS: 140868ad8cd24b731ad369ad558bc2d91b330da7bde3f3118d64e3fd1308504a
+signing public key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The exact APK passed signature verification and dependency simulation on the
+AArch64 phone, upgraded r22 to r23, and is listed installed. Through the public
+`/usr/sbin/pmos-configure-mobile-data` link, GID1 `0309` selected SMARTY's
+reviewed `mob.asm.net` IPv4 rule without an explicit APN. Transactional
+configuration activated the managed LTE profile and enabled its stale-bearer
+watchdog.
+
+The packaged `pmos-test-cellular-only --wait-seconds 90` then produced
+`result=pass` on the live phone:
+
+- Wi-Fi disabled under the narrow sudo boundary;
+- the registered 3 UK LTE bearer used `qmapmux0.0`;
+- interface-bound IPv4 ping, DNS and HTTPS passed;
+- the ordinary default route moved to `qmapmux0.0`;
+- systemd-resolved DNS passed and native HTTPS returned 200; and
+- the original Wi-Fi UUID was restored on `wlan0`.
+
+After the same real cold boot, `systemd-timesyncd` was active,
+`NTPSynchronized=yes`, Europe/London was selected and HTTPS certificates
+validated over cellular. Waydroid was deliberately skipped in this native
+run; its opt-in cellular path remains coupled to the separate r51 overlay
+acceptance.
+
+The exact assets are published as the
+[runtime-r23 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r23).
+Downloading both assets from GitHub reproduces the local APK and checksum
+manifest byte for byte, and `sha256sum -c SHA256SUMS` passes.

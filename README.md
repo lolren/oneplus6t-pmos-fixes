@@ -102,15 +102,15 @@ does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is published as the
-[runtime-r20 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r20).
+[runtime-r23 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r23).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r20/oneplus6t-pmos-fixes-0.1.0-r20.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r20/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r23/oneplus6t-pmos-fixes-0.1.0-r23.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r23/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r20.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r23.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
@@ -118,13 +118,15 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-Runtime r20 was built twice from commit `d82dd96` with a fixed source date;
+Runtime r23 was built twice from commit `7e1f495` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and
 regular-file mode matches a clean staged install, and the exact APK passes an
 AArch64 installation simulation. Its SHA-256 is
-`c5a60b6bac3fb032479edb6d27409e802656fe01dc5c822d72427a4990bfcea6`.
-It remains a pre-release until those exact bytes pass installation, cellular
-and reboot acceptance on the reference phone.
+`0a2e13c5b4250a10720883290c1d1a2656f84a1d4bf13e7f671c370ca49c7ffd`.
+Those exact bytes pass installation after a cold boot plus live SMARTY LTE
+default-route, IPv4, DNS, HTTPS and exact Wi-Fi restoration acceptance on the
+reference phone. The tag remains a development pre-release while broader
+camera, Waydroid and daily-use acceptance continues.
 
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
