@@ -51,9 +51,10 @@ explicitly invokes the NFC reader and may change its state; use it only when a
 tag is available.
 
 `--cellular-only` adds an explicit native fallback test. It records the active
-Wi-Fi profile UUIDs, briefly disables Wi-Fi, requires the default route, DNS
-and HTTPS to use the connected modem bearer, and restores the original Wi-Fi
-state on every exit path:
+Wi-Fi profile UUID-to-device mappings, briefly disables Wi-Fi, requires the
+default route, DNS and HTTPS to use the connected modem bearer, and restores
+the original Wi-Fi state on every exit path. Profile activation is constrained
+to its original interface and retried while that interface returns:
 
 ```sh
 pmos-run-device-acceptance \

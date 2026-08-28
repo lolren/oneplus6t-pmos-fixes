@@ -9,6 +9,7 @@ trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 BIN=$TEST_DIR/bin
 STATE=$TEST_DIR/wifi.state
 LOG=$TEST_DIR/actions.log
+RETRY_STATE=$TEST_DIR/retry.state
 UUID1=11111111-2222-3333-4444-555555555555
 UUID2=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
 mkdir -p "$BIN"
@@ -28,9 +29,9 @@ make_fixture() {
 make_fixture nmcli \
 	'case "$*" in' \
 	'"radio wifi") cat "$PMOS_TEST_WIFI_STATE" ;;' \
-	'"-t -f UUID,TYPE connection show --active")' \
+	'"-t -f UUID,TYPE,DEVICE connection show --active")' \
 	'  [ "${PMOS_TEST_ACTIVE_QUERY_FAIL:-no}" != yes ] || exit 1' \
-	'  printf "%s:802-11-wireless\\n" $PMOS_TEST_WIFI_UUIDS ;;' \
+	'  printf "%s:802-11-wireless:wlan0\\n" $PMOS_TEST_WIFI_UUIDS ;;' \
 	'"radio wifi off")' \
 	'  [ "${PMOS_TEST_REQUIRE_ELEVATION:-no}" != yes ] || [ "${PMOS_TEST_ELEVATED:-no}" = yes ]' \
 	'  printf "%s\\n" "radio wifi off" >>"$PMOS_TEST_ACTION_LOG"' \
@@ -41,9 +42,13 @@ make_fixture nmcli \
 	'  printf "%s\\n" "radio wifi on" >>"$PMOS_TEST_ACTION_LOG"' \
 	'  [ "${PMOS_TEST_WIFI_ON_FAIL:-no}" != yes ] || exit 1' \
 	'  printf "%s\\n" enabled >"$PMOS_TEST_WIFI_STATE" ;;' \
-	'--wait\ 30\ connection\ up\ uuid\ *)' \
+	'--wait\ 15\ connection\ up\ uuid\ *\ ifname\ wlan0)' \
 	'  [ "${PMOS_TEST_REQUIRE_ELEVATION:-no}" != yes ] || [ "${PMOS_TEST_ELEVATED:-no}" = yes ]' \
 	'  printf "%s\\n" "$*" >>"$PMOS_TEST_ACTION_LOG"' \
+	'  if [ "${PMOS_TEST_WIFI_UP_FAIL_ONCE:-no}" = yes ] &&' \
+	'     [ "$(sed -n "1p" "$PMOS_TEST_RETRY_STATE")" = 0 ]; then' \
+	'    printf "%s\\n" 1 >"$PMOS_TEST_RETRY_STATE"; exit 1' \
+	'  fi' \
 	'  [ "${PMOS_TEST_WIFI_UP_FAIL:-no}" != yes ] ;;' \
 	'*) printf "unexpected nmcli arguments: %s\\n" "$*" >&2; exit 2 ;;' \
 	'esac'
@@ -99,6 +104,7 @@ run_probe() {
 	PMOS_CELLULAR_ONLY_UID="${PMOS_TEST_UID:-1000}" \
 	PMOS_TEST_WIFI_STATE=$STATE \
 	PMOS_TEST_ACTION_LOG=$LOG \
+	PMOS_TEST_RETRY_STATE=$RETRY_STATE \
 	PMOS_TEST_WIFI_UUIDS="$UUID1 $UUID2" \
 		sh "$PROBE" "$@"
 }
@@ -122,8 +128,19 @@ sed -n '1p' "$LOG" | grep -Fqx 'radio wifi off'
 sed -n '2p' "$LOG" | grep -Fqx 'shell ping -c 3 -W 3 1.1.1.1'
 sed -n '3p' "$LOG" | grep -Fqx 'shell ping -c 1 -W 5 postmarketos.org'
 sed -n '4p' "$LOG" | grep -Fqx 'radio wifi on'
-sed -n '5p' "$LOG" | grep -Fqx -- "--wait 30 connection up uuid $UUID1"
-sed -n '6p' "$LOG" | grep -Fqx -- "--wait 30 connection up uuid $UUID2"
+sed -n '5p' "$LOG" | grep -Fqx -- \
+	"--wait 15 connection up uuid $UUID1 ifname wlan0"
+sed -n '6p' "$LOG" | grep -Fqx -- \
+	"--wait 15 connection up uuid $UUID2 ifname wlan0"
+
+printf '%s\n' enabled >"$STATE"
+printf '%s\n' 0 >"$RETRY_STATE"
+: >"$LOG"
+PMOS_TEST_WIFI_UP_FAIL_ONCE=yes run_probe --wait-seconds 10 \
+	>"$TEST_DIR/retry-pass.out"
+grep -Fqx 'wifi_restore=pass' "$TEST_DIR/retry-pass.out"
+grep -Fqx 'result=pass' "$TEST_DIR/retry-pass.out"
+[ "$(grep -c '^--wait 15 connection up uuid ' "$LOG")" -eq 3 ]
 
 printf '%s\n' enabled >"$STATE"
 : >"$LOG"

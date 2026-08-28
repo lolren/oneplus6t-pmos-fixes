@@ -2074,16 +2074,24 @@ captured UUID is explicitly reactivated. A restoration failure changes the
 overall result to failure. The script never creates/cycles a modem profile,
 starts Waydroid or modifies boot state.
 
-Fixture tests pass for the success path, elevated NetworkManager mutation
-boundary, non-root Waydroid sudo boundary, systemd-resolved and `getent`
-resolver paths, initial Wi-Fi-disabled state, mobile failure, partial
-Wi-Fi-disable failure, active-profile-query failure, native/Waydroid
-sudo-preflight failure and Wi-Fi-restore failure. Package staging verifies the
-installed command link. The acceptance runner's opt-in native and Waydroid
-flags are fixture-tested while its default remains observational. The complete
-repository `make test` suite passes. Live execution against the newly inserted
-SIM remains gated by the unchanged wedged SSH channel and requires a physical
-phone reboot first.
+The first live r22 run proved all native cellular checks but exposed a
+restoration race: immediately after radio-on, `wlan0` was still unavailable,
+so unconstrained NetworkManager activation considered `usb0` and failed.
+NetworkManager autoconnected the saved profile about three seconds later. The
+corrected helper records UUID-to-device mappings, constrains activation with
+`ifname` and retries within a fixed bound. A user-cache candidate then passed
+LTE default routing, interface-bound IPv4/DNS/HTTPS, ordinary DNS, HTTPS 200
+and exact Wi-Fi restoration on the live OnePlus 6T.
+
+Fixture tests pass for the success path, a forced first-attempt restoration
+race, elevated NetworkManager mutation boundary, non-root Waydroid sudo
+boundary, systemd-resolved and `getent` resolver paths, initial Wi-Fi-disabled
+state, mobile failure, partial Wi-Fi-disable failure,
+active-profile-query failure, native/Waydroid sudo-preflight failure and
+Wi-Fi-restore failure. Package staging verifies the installed command link.
+The acceptance runner's opt-in native and Waydroid flags are fixture-tested
+while its default remains observational. The complete repository `make test`
+suite passes.
 
 ## Runtime r20 reproducible package
 

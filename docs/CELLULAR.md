@@ -89,10 +89,13 @@ well, run the explicit cellular-only test:
 ```
 
 It snapshots the initial Wi-Fi radio state and every active Wi-Fi profile
-UUID, disables Wi-Fi, waits for the system default route to match the modem
-bearer, and verifies native DNS and HTTPS. It restores the original Wi-Fi
-radio/profile state on normal, failure and signal exits. If Wi-Fi was already
-disabled, it leaves it disabled. A failed preflight makes no network change.
+UUID-to-device mapping, disables Wi-Fi, waits for the system default route to
+match the modem bearer, and verifies native DNS and HTTPS. It restores the
+original Wi-Fi radio/profile state on normal, failure and signal exits. Radio
+re-enable can complete before a Wi-Fi interface becomes available, so profile
+reactivation is bound to its original interface and retried within a fixed
+bound. If Wi-Fi was already disabled, it leaves it disabled. A failed
+preflight makes no network change.
 
 When Waydroid is already running, include its NAT path:
 
