@@ -14,6 +14,8 @@ It also carries the Samsung panel brightness-serialization patch and bounded
 Qualcomm Venus firmware-error recovery as kernel r10, with kernel r8 retained
 as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
+The exact signed repositories, manifest and key are published in the
+[kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
 The phone's accepted runtime baseline remains Advanced Snapshot r1 and
 libcamera r24 until recovery and a fresh device check.
 

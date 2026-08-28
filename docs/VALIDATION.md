@@ -2274,6 +2274,13 @@ and repeated teardown, not performance: the measured frame rate is still too
 low, and the image remains softer/foggier than the vendor camera. Front and
 auxiliary video, long capture, app switching and suspend/resume remain open.
 
+The exact r53 archive/manifest and the deterministic signed r10/r8 kernel stage
+were then published as GitHub development pre-releases. Fresh downloads of all
+four assets are byte-identical to the local accepted files. The kernel release
+archive was independently created twice with fixed ordering, ownership and
+mtime and has SHA-256
+`503c69e7a7fdfa559ee50046a6e6dca1c8b2f3f73419e522ad1190ff060770ab`.
+
 ## Reinserted SIM cellular-only confirmation
 
 Date: 2026-08-28. After the r53 test, the newly inserted SMARTY SIM registered

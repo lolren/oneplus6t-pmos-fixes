@@ -760,6 +760,11 @@ common: ed62f247b6788474557c8af2165dc813cc746ba47c07234600e667ea5ba4e225
 components: 0b193b76851701f3d9cfce5c4be5e705429dd14036403a2761994b8218deb73c
 ```
 
+The exact archive and manifest are published in the
+[r53 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r53).
+Downloading both assets again produced byte-identical files and the hashes
+above.
+
 The older r51 archive remains published as historical reproducibility evidence,
 but it lacks the r52 layout/lifetime work and r53 initialization fix and must
 not replace r53 on the reference phone. To install a freshly reproduced r53,

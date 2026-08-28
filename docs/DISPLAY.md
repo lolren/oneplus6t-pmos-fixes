@@ -150,11 +150,15 @@ kernel r10 APK: f5b3c8fa795b63718eebab9f2adbc0bee7545d2b147d5a0f3c1ae63c8176597e
 kernel r8 rollback APK: 232d6cdef5ed4c16a86c6ab0c50446a465571e996a6af49683da02716e32d98e
 standalone 0007 patch: 0a3ad2342397670183dd3ddddd8d85dff306fa954bca0fdab26e9046c03faa36
 pmaports integration: ce5daeadec278087ee0d334b0c9819c71022e9bb70f056adaf14762924c65d06
+release archive: 503c69e7a7fdfa559ee50046a6e6dca1c8b2f3f73419e522ad1190ff060770ab
 ```
 
 `data/kernel-r8-r10.psv` binds those APKs, the OnePlus 6T compatibility string
-and the pinned public key. Simulate first, then explicitly apply only after the
-evidence lists one kernel upgrade:
+and the pinned public key. The normalized archive was produced twice with
+identical bytes, published in the
+[kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10),
+downloaded again and matched locally. Simulate first, then explicitly apply
+only after the evidence lists one kernel upgrade:
 
 ```sh
 pmos-manage-display-kernel \

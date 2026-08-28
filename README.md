@@ -230,7 +230,9 @@ from the
 [display-r8-r9 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/display-r8-r9).
 Kernel r10 retains that change and adds bounded Qualcomm Venus firmware-error
 recovery; it is installed and booted on the reference phone with r8 retained by
-`data/kernel-r8-r10.psv`. Brightness remains unclaimed until timestamped
+`data/kernel-r8-r10.psv`. The exact signed stage is published in the
+[kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
+Brightness remains unclaimed until timestamped
 before/after reports and the full display acceptance sequence pass.
 
 ## USB transport diagnostics
@@ -400,8 +402,9 @@ Stop Waydroid first. The installer refuses mounted rootfs and active I/O
 pressure, backs up nine exact targets and prints its rollback directory. Full
 source revisions, library requirements, hashes, feature explanations and
 runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md). The r53
-archive and manifest are byte-reproducible; their exact hashes and the r51
-historical release are recorded there.
+archive and manifest are byte-reproducible and published in the
+[r53 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r53);
+their exact hashes and the r51 historical release are recorded there.
 Optional Play Store/GAPPS initialization and its read-only package verifier are
 documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
 or APK is included in this repository.
@@ -563,8 +566,9 @@ The current requirement-by-requirement audit is maintained in
   update guard are implemented and tested;
 - signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
   bundles, are published; the installed r44 camera layer, kernel r10 and
-  byte-reproducible Codec2 r53 complete repeated rear recording/teardown, while
-  Android frame-rate and front/auxiliary acceptance remain open;
+  byte-reproducible Codec2 r53 complete repeated rear recording/teardown. The
+  exact r10/r8 and r53 artifacts are also public, while Android frame-rate and
+  front/auxiliary acceptance remain open;
 - live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
   microphone and speaker playback pass; time-after-boot, modem-call audio,
   display stability, native camera quality/video, outdoor GNSS, NFC, battery
