@@ -1969,3 +1969,8 @@ Codec2 crash, but it is an explicit lifecycle failure. A physical power-button
 reboot, unmounted-rootfs check and zero-PSI health gate are required before
 installing r51 and testing front/auxiliary video, an illuminated rear scene,
 long capture and suspend/resume.
+
+The verified archive and per-file manifest were published as the
+[r51 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r51)
+from commit `8ba3382`. The pre-release notes preserve the same phone-acceptance
+warning.

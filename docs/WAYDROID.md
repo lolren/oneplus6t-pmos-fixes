@@ -721,9 +721,12 @@ components: 77f60101877df931c423974e108fda9f478af05b47d9dd5735162098024ad670
 
 The exact r51 binaries are source/package accepted but still need installation
 on the phone; the live r50 binaries were built from the same patched source but
-before path-normalized clean rebuilding. To install, first stop both the
-Waydroid session and container and require an unmounted rootfs with zero PSI
-I/O pressure. Extract the archive into an empty staging directory, then run:
+before path-normalized clean rebuilding. The archive and per-file manifest are
+published as the
+[r51 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r51).
+To install, first stop both the Waydroid session and container and require an
+unmounted rootfs with zero PSI I/O pressure. Extract the archive into an empty
+staging directory, then run:
 
 ```sh
 sudo scripts/install-waydroid-v4l2-codec /absolute/path/to/codec-stage

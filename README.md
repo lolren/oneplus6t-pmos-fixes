@@ -365,7 +365,9 @@ sudo scripts/install-waydroid-v4l2-codec /tmp/codec-stage
 Stop Waydroid first. The installer refuses mounted rootfs and active I/O
 pressure, backs up nine exact targets and prints its rollback directory. Full
 source revisions, library requirements, hashes, feature explanations and
-runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md).
+runtime verification are in [docs/WAYDROID.md](docs/WAYDROID.md). The exact
+reproducible archive and manifest are also published as the
+[r51 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r51).
 Optional Play Store/GAPPS initialization and its read-only package verifier are
 documented in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md). No Google image
 or APK is included in this repository.
@@ -525,8 +527,8 @@ The current requirement-by-requirement audit is maintained in
   update guard are implemented and tested;
 - signed AArch64 camera r26/r13 and r26/r14, plus the older Waydroid r36-r38
   bundles, are published; the installed r44 camera layer and live r50 hardware
-  encoder work, while the byte-reproducible r51 codec archive awaits exact
-  phone installation and publication;
+  encoder work, while the published byte-reproducible r51 codec pre-release
+  awaits exact phone installation;
 - live SMARTY cellular routing, DNS and HTTPS pass; Waydroid rear video,
   microphone and speaker playback pass; time-after-boot, modem-call audio,
   display stability, native camera quality/video, outdoor GNSS, NFC, battery
