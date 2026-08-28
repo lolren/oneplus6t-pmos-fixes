@@ -25,6 +25,9 @@ For every camera reported by Android, the probe checks:
   on the displayed `TextureView`, preferring an advertised fixed 30 FPS range
   when available, so video-template/compositor throughput can be compared with
   the ordinary preview template without creating a video file; and
+- a `record-yuv-720p` run adds the real 1280x720 YUV consumer used by the
+  recording path, isolating full-size NV12 production from the encoder and
+  muxer; and
 - a JPEG request produces a decodable, non-empty image;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
 - the fixed-focus front camera reports autofocus as unavailable;
@@ -137,6 +140,12 @@ waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile record
+
+# Same record template and TextureView plus a 1280x720 YUV consumer
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile record-yuv-720p
 ```
 
 After installing this repository, the same operation can be run and saved
@@ -150,7 +159,9 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
 Use `preview-yuv` or `full` as the second argument for the other profiles.
 Use `surface` to measure updates reaching a real Android `TextureView`,
 `surface-yuv` to add a simultaneous YUV consumer, or `record` to use Camera2's
-`TEMPLATE_RECORD` while measuring that same displayed surface. It prefers
+`TEMPLATE_RECORD` while measuring that same displayed surface. Use
+`record-yuv-720p` to add the full-size NV12 consumer without invoking Codec2.
+It prefers
 fixed 30 FPS when the camera advertises it and
 records the selected range in the result. The `record` profile is still a
 diagnostic: it does not invoke an Android video encoder or save a file, so a

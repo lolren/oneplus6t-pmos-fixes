@@ -54,6 +54,7 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_SURFACE = "surface";
     private static final String PROFILE_SURFACE_YUV = "surface-yuv";
     private static final String PROFILE_RECORD = "record";
+    private static final String PROFILE_RECORD_YUV_720P = "record-yuv-720p";
     private static final int SETTLE_FRAMES = 6;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
@@ -338,7 +339,9 @@ public final class CameraProbeActivity extends Activity {
 
             Size size = null;
             if (needsYuv()) {
-                size = chooseProbeSize(map.getOutputSizes(ImageFormat.YUV_420_888));
+                Size[] yuvSizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+                size = needsRecordingYuv720p()
+                        ? chooseRecordingYuvSize(yuvSizes) : chooseProbeSize(yuvSizes);
                 if (size == null) {
                     failCamera(token, id, "no YUV_420_888 output size");
                     return;
@@ -1268,6 +1271,16 @@ public final class CameraProbeActivity extends Activity {
                 .orElse(sizes[0]);
     }
 
+    private static Size chooseRecordingYuvSize(Size[] sizes) {
+        if (sizes == null || sizes.length == 0)
+            return null;
+        for (Size size : sizes) {
+            if (size.getWidth() == 1280 && size.getHeight() == 720)
+                return size;
+        }
+        return chooseProbeSize(sizes);
+    }
+
     /**
      * Request a deliberately useful private preview size for the performance
      * probe. Prefer the historical 1600x1200 mode when an older overlay still
@@ -1313,7 +1326,8 @@ public final class CameraProbeActivity extends Activity {
         if (PROFILE_PREVIEW.equals(requested) || PROFILE_PREVIEW_YUV.equals(requested)
                 || PROFILE_SURFACE.equals(requested)
                 || PROFILE_SURFACE_YUV.equals(requested)
-                || PROFILE_RECORD.equals(requested))
+                || PROFILE_RECORD.equals(requested)
+                || PROFILE_RECORD_YUV_720P.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
@@ -1328,7 +1342,7 @@ public final class CameraProbeActivity extends Activity {
 
     private boolean needsYuv() {
         return needsFullValidation() || PROFILE_PREVIEW_YUV.equals(profile)
-                || PROFILE_SURFACE_YUV.equals(profile);
+                || PROFILE_SURFACE_YUV.equals(profile) || needsRecordingYuv720p();
     }
 
     private boolean needsSurface() {
@@ -1337,7 +1351,11 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private boolean needsRecordTemplate() {
-        return PROFILE_RECORD.equals(profile);
+        return PROFILE_RECORD.equals(profile) || needsRecordingYuv720p();
+    }
+
+    private boolean needsRecordingYuv720p() {
+        return PROFILE_RECORD_YUV_720P.equals(profile);
     }
 
     private int captureTemplate() {

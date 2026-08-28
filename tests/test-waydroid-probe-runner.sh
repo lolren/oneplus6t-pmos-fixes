@@ -9,6 +9,8 @@ grep -q 'map.getOutputSizes(SurfaceTexture.class)' "$PROBE_SOURCE"
 grep -q 'privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888)' \
 	"$PROBE_SOURCE"
 grep -q 'size.getWidth() == 1280 && size.getHeight() == 960' "$PROBE_SOURCE"
+grep -q 'PROFILE_RECORD_YUV_720P = "record-yuv-720p"' "$PROBE_SOURCE"
+grep -q 'size.getWidth() == 1280 && size.getHeight() == 720' "$PROBE_SOURCE"
 TEST_DIR=$(mktemp -d /tmp/waydroid-probe-runner-test.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 
@@ -51,6 +53,15 @@ grep -q 'shell -- pm install -r -S 12' "$TEST_DIR/waydroid.log"
 grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA' \
 	"$TEST_DIR/waydroid.log"
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
+	"$TEST_DIR/waydroid.log"
+
+result_720p=$TEST_DIR/result-720p.txt
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \
+	PMOS_WAYDROID_PROBE_CAMERA_ID=0 \
+	"$RUNNER" "$apk" record-yuv-720p "$result_720p" >"$TEST_DIR/stdout-720p"
+grep -q '^result: ' "$TEST_DIR/stdout-720p"
+grep -q 'shell -- am start -W -n dev.lolren.waydroidcameraprobe/.CameraProbeActivity --es profile record-yuv-720p --es camera-id 0' \
 	"$TEST_DIR/waydroid.log"
 grep -q 'shell -- rm -f /data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt' \
 	"$TEST_DIR/waydroid.log"
