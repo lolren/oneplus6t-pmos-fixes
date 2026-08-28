@@ -12,12 +12,25 @@ cd packaging
 abuild -r
 ```
 
+On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
+build the exact r24 commit without trying to resolve postmarketOS-only runtime
+packages from Alpine's repositories:
+
+```sh
+cd packaging
+SOURCE_DATE_EPOCH=1787927509 abuild -d
+```
+
+Use a normal locally configured `abuild` key. Reusing the release signing key
+is required only for byte-identical signatures; package payload reproducibility
+and the staged-content comparison do not depend on that private key.
+
 The current reproducible `noarch` build is also available from the
-[runtime-r23 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r23).
+[runtime-r24 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r24).
 Its `SHA256SUMS` entry is:
 
 ```text
-0a2e13c5b4250a10720883290c1d1a2656f84a1d4bf13e7f671c370ca49c7ffd  oneplus6t-pmos-fixes-0.1.0-r23.apk
+5bb3feddda75859155e382f7a68de334c526411ab42b48d28a2982c62b591849  oneplus6t-pmos-fixes-0.1.0-r24.apk
 ```
 
 Use `sha256sum -c SHA256SUMS` before installing the standalone APK. Since it
@@ -35,18 +48,23 @@ avoiding a hard dependency on systemd-resolved. Other diagnostics continue to
 degrade safely when optional systemd tools are absent, and the time helper
 reports an explicit error outside a systemd installation.
 
-Runtime r23 is built from commit `7e1f495`. Two clean `abuild` runs from
+Runtime r24 is built from commit `68f8f1d`. Two clean `abuild -d` runs from
 different absolute source/repository paths and UIDs with
-`SOURCE_DATE_EPOCH=1787901340` produced byte-identical signed APKs. Signature
+`SOURCE_DATE_EPOCH=1787927509` produced byte-identical signed APKs. `-d` is
+needed only by the pure Alpine builders because one declared runtime dependency
+comes from postmarketOS rather than Alpine; the dependency remains in package
+metadata and was resolved by an AArch64 installation simulation. Both builders
+installed `alpine-sdk`, `python3` and `git`, and both ran the complete package
+test suite. Signature
 verification passes with the packaged development public key, whose SHA-256 is
 `31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6`.
-The APK's 93 regular files, 26 command links and regular-file modes also match
+The APK's 96 regular files, 26 command links, file modes and link targets match
 a clean `make install` stage exactly. Its metadata is `noarch`, and an AArch64
-installation simulation resolves every runtime dependency. The exact APK is
-installed on the reference phone and passes post-reboot SMARTY provider
-selection, LTE default routing, IPv4, DNS, HTTPS and exact saved-Wi-Fi
-restoration. It remains a pre-release while broader device acceptance
-continues.
+installation simulation resolves every runtime dependency. The exact APK
+upgraded r23 on the reference phone; its installed location and cellular script
+hashes match the live-accepted copies. Native and Waydroid cellular checks,
+fresh GNSS injection and exact Android provider/app-op rollback pass. It remains
+a pre-release while map-app and real Android GNSS HAL acceptance are open.
 
 The package installs a disabled system timer for the NetworkManager stale-
 activated/QMAP bearer failure. `pmos-configure-mobile-data` enables it only

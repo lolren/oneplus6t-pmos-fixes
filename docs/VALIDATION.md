@@ -2493,3 +2493,41 @@ rollback at
 The complete live run passed native cellular default route, DNS and HTTPS,
 Waydroid raw IPv4 and DNS, then restored the original Wi-Fi profile and ended
 `result=pass`.
+
+## Runtime r24 reproducible package and installation
+
+Date: 2026-08-28. Commit
+`68f8f1dd55c28d581bd82a5defab59aafdb21888` bumps the package to
+`0.1.0-r24` and contains the fresh-location and corrected cellular probes above.
+Two clean Alpine edge builds used different UIDs and absolute source paths with
+`SOURCE_DATE_EPOCH=1787927509` and `abuild 3.18.0_rc5-r1`. A pure Alpine host
+cannot resolve the postmarketOS-only audio-backend runtime dependency, so each
+builder installed `alpine-sdk`, `python3` and `git`, ran `abuild -d`, and left
+all eleven runtime dependencies declared for target-side resolution. Both
+complete embedded test runs passed and produced byte-identical signed APKs.
+
+Independent extraction matches a clean `make install PREFIX=/usr` stage for all
+96 regular files, all 26 command links, file modes and link targets. Package
+metadata reports `noarch`, the exact commit and fixed build date. Signature
+verification succeeds with the packaged development public key.
+
+```text
+APK: 5bb3feddda75859155e382f7a68de334c526411ab42b48d28a2982c62b591849
+SHA256SUMS: eddcdd225aaa04071c8c266770a2d63e21a294e0bd341fd394d918628cb9c384
+signing public key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+On the AArch64 reference phone, signature verification and a dependency/install
+simulation passed before the exact APK upgraded r23 to r24. The two installed
+commands have the same hashes as the live-accepted copies recorded above. The
+location service remains enabled but inactive while Waydroid is stopped; its
+stop path restored UID 0's mock-location app-op to `default`, removed the mock
+provider, and the temporary greeter Wayland bridge was removed after orderly
+container shutdown. Rootfs mount count, D-state task count and current I/O
+pressure all returned zero.
+
+The exact assets are published in the
+[runtime-r24 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r24).
+A fresh GitHub download matches both local release files byte for byte and its
+`sha256sum -c SHA256SUMS` check passes. No private coordinates, SIM identifiers,
+photographs or device logs are release assets.

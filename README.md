@@ -11,7 +11,7 @@ carriers share one MCC/MNC. A bounded watchdog also repairs the Qualcomm/QMAP
 case where the carrier removes an Internet bearer but NetworkManager leaves its
 profile falsely activated with a deleted data interface.
 
-Validated on 23-24 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
+Validated on 23-28 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
 ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
 
 ## Safety boundary
@@ -104,15 +104,15 @@ does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is published as the
-[runtime-r23 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r23).
+[runtime-r24 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r24).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r23/oneplus6t-pmos-fixes-0.1.0-r23.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r23/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r24/oneplus6t-pmos-fixes-0.1.0-r24.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r24/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r23.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r24.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
@@ -120,15 +120,16 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-Runtime r23 was built twice from commit `7e1f495` with a fixed source date;
+Runtime r24 was built twice from commit `68f8f1d` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and
 regular-file mode matches a clean staged install, and the exact APK passes an
 AArch64 installation simulation. Its SHA-256 is
-`0a2e13c5b4250a10720883290c1d1a2656f84a1d4bf13e7f671c370ca49c7ffd`.
-Those exact bytes pass installation after a cold boot plus live SMARTY LTE
-default-route, IPv4, DNS, HTTPS and exact Wi-Fi restoration acceptance on the
-reference phone. The tag remains a development pre-release while broader
-camera, Waydroid and daily-use acceptance continues.
+`5bb3feddda75859155e382f7a68de334c526411ab42b48d28a2982c62b591849`.
+Those exact bytes upgrade r23 on the reference phone. Their installed cellular
+and location commands match the hashes used for live native/Waydroid cellular
+acceptance, fresh Stroud-area GNSS injection and exact Android provider/app-op
+rollback. The tag remains a development pre-release while map-application,
+real Android GNSS HAL and broader device acceptance continue.
 
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
