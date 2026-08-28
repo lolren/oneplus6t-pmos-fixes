@@ -2081,3 +2081,37 @@ flags are fixture-tested while its default remains observational. The complete
 repository `make test` suite passes. Live execution against the newly inserted
 SIM remains gated by the unchanged wedged SSH channel and requires a physical
 phone reboot first.
+
+## Runtime r20 reproducible package
+
+Date: 2026-08-28. Recipe release `0.1.0-r20` was built from exact commit
+`d82dd96882a057ab5f753691831a5cbf8027a249` in the Alpine native pmbootstrap
+chroot with `abuild 3.18.0_rc5-r1`; the fixed source date was `1787893261`.
+The clean-build process first exposed an undeclared Git test dependency, a
+race in the camera-flash interruption fixture and three generated systemd
+units whose direct-install modes inherited the caller's umask. Those defects
+were corrected and committed before the final immutable builds.
+
+Two final builds from different absolute source and repository paths ran the
+complete suite and produced byte-identical signed APKs. Both signatures verify.
+Independent extraction matches a fresh `make install PREFIX=/usr` stage for
+all 93 regular files, all 26 command links and every regular-file mode. Package
+metadata reports `noarch`, release `0.1.0-r20`, build date `1787893261` and the
+expected 11 runtime dependencies, including `curl` and `cmd:getent`. The exact
+APK signature verifies in the AArch64 buildroot and a simulated AArch64 install
+resolves the package plus its dependencies successfully.
+
+```text
+APK: c5a60b6bac3fb032479edb6d27409e802656fe01dc5c822d72427a4990bfcea6
+SHA256SUMS: 5597edc8dd2ac4fa51230520cb8b124f0de0fdcb1f1570377b218d24674f9627
+signing public key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The assets are published as the
+[runtime-r20 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r20).
+Downloading both public assets back from GitHub reproduces the local APK and
+manifest byte for byte, and the remote tag resolves to the build commit above.
+The package contains the new cellular-only automation but has not been
+installed on the reference phone: its unchanged USB gadget still answers ping
+while SSH channels hang. Exact install, cold-boot and newly inserted SIM
+acceptance remain pending a physical reboot.

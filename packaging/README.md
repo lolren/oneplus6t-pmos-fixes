@@ -13,11 +13,11 @@ abuild -r
 ```
 
 The current reproducible `noarch` build is also available from the
-[runtime-r19 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r19).
+[runtime-r20 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r20).
 Its `SHA256SUMS` entry is:
 
 ```text
-ce4290a883133564d0d0cdd32f6744e047809ece244e010310bc78e65b3db1bd  oneplus6t-pmos-fixes-0.1.0-r19.apk
+c5a60b6bac3fb032479edb6d27409e802656fe01dc5c822d72427a4990bfcea6  oneplus6t-pmos-fixes-0.1.0-r20.apk
 ```
 
 Use `sha256sum -c SHA256SUMS` before installing the standalone APK. Since it
@@ -35,14 +35,16 @@ avoiding a hard dependency on systemd-resolved. Other diagnostics continue to
 degrade safely when optional systemd tools are absent, and the time helper
 reports an explicit error outside a systemd installation.
 
-Runtime r19 is built from commit `92e7c20`. Two clean `abuild` runs from
-different absolute source paths with `SOURCE_DATE_EPOCH=1787888364` produced
-byte-identical signed APKs. Signature verification passes with the packaged
-development public key, whose SHA-256 is
+Runtime r20 is built from commit `d82dd96`. Two clean `abuild` runs from
+different absolute source and repository paths with
+`SOURCE_DATE_EPOCH=1787893261` produced byte-identical signed APKs. Signature
+verification passes with the packaged development public key, whose SHA-256 is
 `31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6`.
-The APK's 91 regular files and 25 command links also match a clean
-`make install` stage exactly. Phone install/reboot acceptance remains pending,
-which is why the release is marked as a pre-release.
+The APK's 93 regular files, 26 command links and regular-file modes also match
+a clean `make install` stage exactly. Its metadata is `noarch`, and an AArch64
+installation simulation resolves every runtime dependency. Phone install,
+cellular and reboot acceptance remain pending, which is why the release is
+marked as a pre-release.
 
 The package installs a disabled system timer for the NetworkManager stale-
 activated/QMAP bearer failure. `pmos-configure-mobile-data` enables it only

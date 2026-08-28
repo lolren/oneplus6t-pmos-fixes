@@ -101,15 +101,15 @@ does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is published as the
-[runtime-r19 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r19).
+[runtime-r20 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r20).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r19/oneplus6t-pmos-fixes-0.1.0-r19.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r19/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r20/oneplus6t-pmos-fixes-0.1.0-r20.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r20/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r19.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r20.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
@@ -117,11 +117,13 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-Runtime r19 was built twice from commit `92e7c20` with a fixed source date;
-the signed APKs were byte-identical. Its SHA-256 is
-`ce4290a883133564d0d0cdd32f6744e047809ece244e010310bc78e65b3db1bd`.
-It remains a pre-release until those exact bytes pass installation and reboot
-acceptance on the reference phone.
+Runtime r20 was built twice from commit `d82dd96` with a fixed source date;
+the signed APKs were byte-identical. Every packaged file, command link and
+regular-file mode matches a clean staged install, and the exact APK passes an
+AArch64 installation simulation. Its SHA-256 is
+`c5a60b6bac3fb032479edb6d27409e802656fe01dc5c822d72427a4990bfcea6`.
+It remains a pre-release until those exact bytes pass installation, cellular
+and reboot acceptance on the reference phone.
 
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
