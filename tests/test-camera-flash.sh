@@ -26,7 +26,10 @@ PMOS_FLASH_SYSFS_ROOT="$LED_ROOT" "$FLASH" --pulse --duration-ms 5000 --level 32
 	>"$TEST_DIR/interrupted.out" 2>&1 &
 pulse_pid=$!
 poll=0
-while [ "$(cat "$LED_ROOT/white:flash/brightness")" = 7 ] && [ "$poll" -lt 50 ]; do
+while [ "$poll" -lt 50 ]; do
+	white_value=$(cat "$LED_ROOT/white:flash/brightness")
+	yellow_value=$(cat "$LED_ROOT/yellow:flash/brightness")
+	[ "$white_value" = 32 ] && [ "$yellow_value" = 16 ] && break
 	sleep 0.01
 	poll=$((poll + 1))
 done
