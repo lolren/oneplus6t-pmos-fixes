@@ -86,22 +86,28 @@ It supports both systemd and OpenRC, persists `sshd`, verifies the listener and
 does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
-The matching AArch64/noarch runtime package is published in the
-[runtime-r16 release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r16).
+The current signed `noarch` runtime package is published as the
+[runtime-r19 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r19).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r16/oneplus6t-pmos-fixes-0.1.0-r16.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r16/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r19/oneplus6t-pmos-fixes-0.1.0-r19.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r19/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r16.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r19.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
 phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
+
+Runtime r19 was built twice from commit `92e7c20` with a fixed source date;
+the signed APKs were byte-identical. Its SHA-256 is
+`ce4290a883133564d0d0cdd32f6744e047809ece244e010310bc78e65b3db1bd`.
+It remains a pre-release until those exact bytes pass installation and reboot
+acceptance on the reference phone.
 
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS

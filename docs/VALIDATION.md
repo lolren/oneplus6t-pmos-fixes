@@ -1974,3 +1974,30 @@ The verified archive and per-file manifest were published as the
 [r51 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-v4l2-codec-r51)
 from commit `8ba3382`. The pre-release notes preserve the same phone-acceptance
 warning.
+
+## Runtime r19 reproducible package
+
+Date: 2026-08-28. Recipe release `0.1.0-r19` was built from exact commit
+`92e7c203b60e563b3a8e8b6ebc03236612c1f4ad` in the existing Alpine native
+pmbootstrap chroot with `abuild 3.18.0_rc5-r1`. The source date was fixed at
+`1787888364`. Both complete package builds ran the full project test suite.
+
+The builds used different absolute source and repository paths and produced
+byte-identical signed APKs. `apk verify` accepted both. Independently extracting
+the package and comparing it with a clean `make install PREFIX=/usr` stage
+matched all 91 regular files by SHA-256 and all 25 symbolic links by path and
+target. Package metadata reports `arch = noarch`, the expected nine runtime
+dependencies and release `0.1.0-r19`.
+
+```text
+APK: ce4290a883133564d0d0cdd32f6744e047809ece244e010310bc78e65b3db1bd
+SHA256SUMS: 6a09e20cdc2e977dbc902f4ed483f2d57726aec3d3846e735cc1740bf533bfd1
+signing public key: 31d5d6663ebe400a93fd3d5a107da2ea4dd96e8f6835ba1cdfecf89389ec16f6
+```
+
+The artifacts are published as the
+[runtime-r19 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r19).
+It packages the APN/watchdog, PipeWire routing, diagnostics, safeguards and
+camera/Waydroid build-install tooling, but does not silently install a camera
+or Codec2 candidate. Exact APK installation and cold-boot acceptance on the
+reference phone remain pending its physical recovery.
