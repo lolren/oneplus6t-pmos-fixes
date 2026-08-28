@@ -13,7 +13,8 @@ For every camera reported by Android, the probe checks:
   logged for 2160p, 1080p, 720p, 480p, high, low and QVGA qualities;
 - a 640x480 YUV stream produces non-flat luminance and chroma data;
 - an implementation-defined preview stream continues to deliver frames at a
-  common large size (preferably 1600x1200, then 1920x1080); and
+  common useful size (an older 1600x1200 mode when present, otherwise the r44
+  1280x960 cap or its 1280x720 recording peer); and
 - private-preview frame timestamps are reported so before/after source-mode
   performance can be compared without treating FPS as a pass/fail claim;
 - a `TextureView` surface-only run counts frames reaching the displayed Android
@@ -154,7 +155,9 @@ fixed 30 FPS when the camera advertises it and
 records the selected range in the result. The `record` profile is still a
 diagnostic: it does not invoke an Android video encoder or save a file, so a
 separate native recording test is required for encoder and muxer acceptance.
-The runner installs the APK, grants its camera permission, stops any previous
+The runner streams the APK directly to Android's package manager, avoiding a
+dependency on Waydroid's host-side copy/install helper. It grants the camera
+permission, stops any previous
 probe instance, clears only the probe's old generated result, waits for
 `PROBE_DONE`, and refuses to overwrite an existing host result file. The runner
 allows twenty minutes for `full` and eight minutes for the shorter profiles.

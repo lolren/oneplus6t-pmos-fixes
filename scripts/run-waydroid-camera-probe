@@ -65,7 +65,9 @@ esac
 
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
 
-waydroid app install "$apk"
+apk_bytes=$(wc -c <"$apk" | tr -d ' ')
+[ "$apk_bytes" -gt 0 ] || die "APK is empty: $apk"
+waydroid shell -- pm install -r -S "$apk_bytes" <"$apk"
 waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe

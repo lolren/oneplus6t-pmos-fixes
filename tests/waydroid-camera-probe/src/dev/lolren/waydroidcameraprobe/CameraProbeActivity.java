@@ -344,8 +344,19 @@ public final class CameraProbeActivity extends Activity {
                     return;
                 }
             }
-            Size privateSize = choosePrivateProbeSize(
-                    map.getOutputSizes(ImageFormat.PRIVATE), size);
+            Size[] privateSizes = map.getOutputSizes(ImageFormat.PRIVATE);
+            if (privateSizes == null || privateSizes.length == 0)
+                privateSizes = map.getOutputSizes(SurfaceTexture.class);
+            /*
+             * Android 13 may retain format 34 in the static metadata while
+             * both public PRIVATE queries return null.  The libcamera HAL
+             * advertises the same ordinary dimensions for YUV and PRIVATE;
+             * using that list still lets camera session configuration be the
+             * authoritative support check.
+             */
+            if (privateSizes == null || privateSizes.length == 0)
+                privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888);
+            Size privateSize = choosePrivateProbeSize(privateSizes, size);
             if (privateSize == null) {
                 failCamera(token, id, "no PRIVATE output size");
                 return;
@@ -1259,8 +1270,8 @@ public final class CameraProbeActivity extends Activity {
 
     /**
      * Request a deliberately useful private preview size for the performance
-     * probe.  The common 1600x1200 request exercises the Waydroid reduced
-     * source-mode path; a smaller YUV probe alone would not.
+     * probe. Prefer the historical 1600x1200 mode when an older overlay still
+     * advertises it, then the r44 1280x960 cap and its 720p recording peer.
      */
     private static Size choosePrivateProbeSize(Size[] sizes, Size fallback) {
         if (sizes == null || sizes.length == 0)
@@ -1274,15 +1285,28 @@ public final class CameraProbeActivity extends Activity {
             if (size.getWidth() == 1920 && size.getHeight() == 1080)
                 return size;
         }
+        for (Size size : sizes) {
+            if (size.getWidth() == 1280 && size.getHeight() == 960)
+                return size;
+        }
+        for (Size size : sizes) {
+            if (size.getWidth() == 1280 && size.getHeight() == 720)
+                return size;
+        }
 
         Size best = Arrays.stream(sizes)
-                .filter(size -> size.getWidth() > 1280
-                        && size.getHeight() > 720
+                .filter(size -> size.getWidth() > 0 && size.getHeight() > 0
                         && (sameAspect(size, 4, 3) || sameAspect(size, 16, 9)))
-                .min(Comparator.comparingLong(
+                .max(Comparator.comparingLong(
                         size -> (long) size.getWidth() * size.getHeight()))
                 .orElse(null);
-        return best == null ? fallback : best;
+        if (best != null)
+            return best;
+        return Arrays.stream(sizes)
+                .filter(size -> size.getWidth() > 0 && size.getHeight() > 0)
+                .max(Comparator.comparingLong(
+                        size -> (long) size.getWidth() * size.getHeight()))
+                .orElse(fallback);
     }
 
     private static String normalizeProfile(String requested) {

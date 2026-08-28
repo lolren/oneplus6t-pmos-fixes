@@ -4,6 +4,11 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 RUNNER=$ROOT/scripts/run-waydroid-camera-probe
 PROBE_SOURCE=$ROOT/tests/waydroid-camera-probe/src/dev/lolren/waydroidcameraprobe/CameraProbeActivity.java
+
+grep -q 'map.getOutputSizes(SurfaceTexture.class)' "$PROBE_SOURCE"
+grep -q 'privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888)' \
+	"$PROBE_SOURCE"
+grep -q 'size.getWidth() == 1280 && size.getHeight() == 960' "$PROBE_SOURCE"
 TEST_DIR=$(mktemp -d /tmp/waydroid-probe-runner-test.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 
@@ -13,7 +18,7 @@ grep -q 'surfaceSamplePending.compareAndSet(false, true)' "$PROBE_SOURCE"
 
 mkdir -p "$TEST_DIR/bin"
 apk=$TEST_DIR/probe.apk
-touch "$apk"
+printf '%s\n' 'fixture apk' >"$apk"
 
 cat >"$TEST_DIR/bin/waydroid" <<'EOF'
 #!/bin/sh
@@ -21,8 +26,6 @@ set -eu
 
 printf '%s\n' "$*" >> "$WAYDROID_TEST_LOG"
 case "$*" in
-"app install "*)
-	;;
 "shell -- cat "*)
 	printf '%s\n' \
 		'CAMERA id=0 valid=true profile=preview privateFps=24.00' \
@@ -44,7 +47,7 @@ PATH="$TEST_DIR/bin:$PATH" \
 	"$RUNNER" "$apk" preview "$result" >"$TEST_DIR/stdout"
 grep -q '^result: ' "$TEST_DIR/stdout"
 grep -q 'PROBE_DONE profile=preview valid=1 total=1' "$result"
-grep -q "app install $apk" "$TEST_DIR/waydroid.log"
+grep -q 'shell -- pm install -r -S 12' "$TEST_DIR/waydroid.log"
 grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA' \
 	"$TEST_DIR/waydroid.log"
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
