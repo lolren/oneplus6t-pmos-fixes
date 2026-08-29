@@ -115,6 +115,14 @@ Camera3 test with a delayed synthetic fence, verify one wait for multiple
 consumers, and ask maintainers to review whether fence ownership belongs in
 `CameraDevice::requestComplete()` or a lower post-processor abstraction.
 
+Patch `0018` closes the next ownership boundary: `CameraDevice::stop()` drains
+the asynchronous YUV/JPEG workers before releasing Camera3 descriptors and
+streams, while Android `flush()` drains and restarts workers for configured
+stream reuse. It is a Waydroid Camera3 lifecycle candidate, not a generic
+sensor or GPU interface. The source applies and the Android HAL compiles on
+the host, but it still needs an ARM provider rebuild and repeated ordinary-app
+open/close acceptance before an upstream proposal.
+
 Do not upstream identity matrices as calibrated sensor tuning. They exist only
 to expose the generic saturation control and are explicitly uncalibrated.
 Likewise, the OnePlus gamma/contrast/saturation values are downstream defaults,

@@ -2703,3 +2703,40 @@ audio-bridge and Snapshot patch-integrity checks. These results are source and
 runtime-diagnostic evidence; real modem-call route selection, native
 touchscreen acceptance and prolonged unplugged battery measurements remain
 physical-device gates.
+
+## Waydroid Camera3 worker-drain and Advanced Snapshot r16 follow-up
+
+Date: 2026-08-29. The repeated Camera2 diagnostic now has a matching shared
+HAL lifecycle candidate. `0018-android-drain-post-processors-before-stream-reset.patch`
+drains asynchronous YUV/JPEG post-processors before `CameraDevice` releases
+request descriptors and streams, and restarts the workers after Android
+`flush()` keeps configured streams for reuse. It also makes the existing
+Android frame-duration clamp explicit for `int64_t` so the source compiles on
+host ABIs where `int64_t` is `long`.
+
+The patch applies cleanly after the complete patched r52 source tree, passes
+`git diff --check`, and the Android HAL target compiles in a clean host Meson
+build. The patch SHA-512 is:
+
+```text
+0018-android-drain-post-processors-before-stream-reset.patch: 301ef72ff98e10482518e83a511ee102fe74d5787e028429e8eb816e04cd02f48f231f26ee28d148ae69e7b92a1e4a47a850daab80ec94ef41c1f19c19e41d83
+```
+
+The installed Waydroid r52 provider still predates `0018`; no runtime fix is
+claimed until a new provider bundle is built, installed through the guarded
+installer and accepted with repeated ordinary-app open/close tests.
+
+The Advanced Snapshot r16 AArch64 pair was built from source commit
+`2c93c2fd094ad3011b9466ab5fc0779fda566cce` in the isolated pmaports build and
+installed on the connected phone without reboot. The package was signed by
+the local pmbootstrap key and is a development install, not a public release:
+
+```text
+advanced-snapshot-0.1.0-r16.apk: 4e2926bdaf40fc7f600095b52591c0be08edddbdb9a86527533d11e2f2a45904
+advanced-snapshot-lang-0.1.0-r16.apk: d6153444970592d041c6ee6d81048dc84d6d323906a1facc879d0603ccc4c1b0
+pmbootstrap signing key: pmos@local-6a92d930
+```
+
+No reboot or Waydroid overlay replacement was performed for this app-only
+installation. Native preview latency, touch reticle, saved stills, video and
+image-quality acceptance remain open.

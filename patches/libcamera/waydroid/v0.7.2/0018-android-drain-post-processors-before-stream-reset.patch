@@ -1,0 +1,145 @@
+From 2c93c2fd094ad3011b9466ab5fc0779fda566cce Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sat, 29 Aug 2026 14:42:00 +0100
+Subject: [PATCH] android: drain post-processors before stream reset
+
+Camera::stop() completes libcamera requests synchronously, but the Android
+YUV/JPEG post-processors run on separate threads. The HAL used to discard
+Camera3 request descriptors and CameraStream instances immediately after
+stopping the camera, allowing a late worker completion to dereference stale
+state and making the next configure/open fail with a stream error.
+
+Drain every post-processor before the descriptors and streams are released.
+Android flush keeps the configured streams, so restart the drained workers
+afterwards. This preserves the Camera3 flush reuse contract while making
+close/reconfigure ordering deterministic.
+
+Use an explicit int64_t clamp type for the existing Android frame-duration
+translation as well; this keeps the same code portable between Android's
+long-long int64_t and host ABIs where int64_t is long.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/android/camera_device.cpp | 18 ++++++++++++++++++
+ src/android/camera_stream.cpp | 29 +++++++++++++++++++++++++++--
+ src/android/camera_stream.h   |  1 +
+ 3 files changed, 46 insertions(+), 4 deletions(-)
+
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -510,8 +510,14 @@
+ 
+ 	camera_->stop();
+ 
++	for (CameraStream &cameraStream : streams_)
++		cameraStream.flush();
++
+ 	MutexLocker stateLock(stateMutex_);
+ 	state_ = State::Stopped;
++
++	for (CameraStream &cameraStream : streams_)
++		cameraStream.restart();
+ }
+ 
+ void CameraDevice::stop()
+@@ -520,6 +526,16 @@
+ 
+ 	camera_->stop();
+ 
++	/*
++	 * camera_->stop() synchronously completes the libcamera requests, but
++	 * mapped YUV/JPEG results are processed by separate workers. Drain those
++	 * workers before releasing their descriptors and CameraStream instances;
++	 * otherwise a late completion can dereference freed Camera3 state and the
++	 * next configure/open frequently fails with a stream error.
++	 */
++	for (CameraStream &cameraStream : streams_)
++		cameraStream.flush();
++
+ 	{
+ 		MutexLocker descriptorsLock(descriptorsMutex_);
+ 		descriptors_ = {};
+@@ -1020,9 +1036,9 @@
+ 				frameDurationInfo->second.min().get<int64_t>();
+ 			const int64_t maximum =
+ 				frameDurationInfo->second.max().get<int64_t>();
+-			const int64_t requestedMinimum = std::clamp(
++			const int64_t requestedMinimum = std::clamp<int64_t>(
+ 				durationForFps(maxFps), minimum, maximum);
+-			const int64_t requestedMaximum = std::clamp(
++			const int64_t requestedMaximum = std::clamp<int64_t>(
+ 				durationForFps(minFps), requestedMinimum, maximum);
+
+ 			controls.set(controls::FrameDurationLimits,
+ 				     { requestedMinimum, requestedMaximum });
+
+diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+--- a/src/android/camera_stream.cpp
++++ b/src/android/camera_stream.cpp
+@@ -211,6 +211,14 @@
+ 	worker_->flush();
+ }
+ 
++void CameraStream::restart()
++{
++	if (!postProcessor_)
++		return;
++
++	worker_->start();
++}
++
+ FrameBuffer *CameraStream::getBuffer()
+ {
+ 	if (!allocator_)
+@@ -292,7 +300,10 @@
+ {
+ 	{
+ 		MutexLocker lock(mutex_);
+-		ASSERT(state_ != State::Running);
++		if (state_ == State::Running)
++			return;
++
++		ASSERT(state_ == State::Stopped);
+ 		state_ = State::Running;
+ 	}
+ 
+@@ -349,9 +360,22 @@
+ 
+ void CameraStream::PostProcessorWorker::flush()
+ {
+-	MutexLocker lock(mutex_);
+-	state_ = State::Flushing;
+-	lock.unlock();
++	{
++		MutexLocker lock(mutex_);
++		if (state_ != State::Running)
++			return;
++
++		state_ = State::Flushing;
++	}
+ 
+ 	cv_.notify_one();
++
++	/*
++	 * A Camera3 descriptor owns the stream buffer pointers consumed by the
++	 * worker. Do not let CameraDevice discard descriptors until this worker has
++	 * either completed or reported every queued item. The worker transitions to
++	 * Stopped after reporting queued items, so it can be restarted after an
++	 * Android flush without rebuilding the configured stream.
++	 */
++	wait();
+ }
+diff --git a/src/android/camera_stream.h b/src/android/camera_stream.h
+--- a/src/android/camera_stream.h
++++ b/src/android/camera_stream.h
+@@ -131,6 +131,7 @@
+ 	libcamera::FrameBuffer *getBuffer();
+ 	void putBuffer(libcamera::FrameBuffer *buffer);
+ 	void flush();
++	void restart();
+ 
+ private:
+ 	class PostProcessorWorker : public libcamera::Thread
+-- 
+2.49.0

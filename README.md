@@ -327,7 +327,10 @@ reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
 patches `0013`–`0017` for mixed RGB/NV12 streams, preview sizing, direct
-contiguous NV12 output and source-fence-safe mapped post-processing. Kernel r10
+contiguous NV12 output and source-fence-safe mapped post-processing. Patch
+`0018` is the source-validated follow-up that drains asynchronous Camera3
+post-processors before stream reset; it is queued for the next provider bundle.
+Kernel r10
 and Codec2 r53 are installed. The exact r50 source completed a clean 198-target
 Android build and a full three-camera Camera2 run: all JPEGs decode and report
 zero repeated row discontinuities. A real front Aperture H.264/AAC recording

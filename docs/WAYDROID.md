@@ -12,11 +12,14 @@ The r52 camera bundle is complete on a clean image: it carries the required
 r51/r50 Camera3 stack. It exposes three Android cameras and advertises
 recording only for the accepted main and front cameras; auxiliary preview,
 YUV and JPEG remain enabled.
-Patches `0013`–`0017` add multi-output processing, retain a fast linear RGB
+Patches `0013`–`0018` add multi-output processing, retain a fast linear RGB
 preview beside coalesced NV12 consumers and cap private previews to a sensor
 mode suitable for video. Patch `0016` writes a compatible contiguous NV12
 allocation directly on the GPU while retaining the readback/libyuv fallback;
 `0017` waits for that GPU source before mapped YUV/JPEG post-processing.
+`0018` drains those asynchronous post-processors before the Camera3 HAL drops
+request descriptors and streams, and restarts them after Android `flush()` so
+the next configure/open cannot inherit a late completion.
 A separate Android 13 arm64 Codec2 service uses the SDM845 Venus encoder while
 preserving Android's software encoder as fallback. Aperture now configures
 simultaneous preview and encoder streams and saves playable H.264/AAC video.
@@ -43,6 +46,7 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | Coalesced NV12 consumers | Produces one largest NV12 source and centre-crops/scales other YUV/encoder outputs, avoiding repeated Bayer work and excess GPU readback. |
 | Contiguous NV12 GPU target | Imports compatible linear Y+UV planes as one `GR88` framebuffer and writes filtered luma/chroma in a single draw, avoiding `glReadPixels()` and CPU colour conversion while preserving the safe fallback for other layouts. |
 | Post-processor source-fence wait | Waits once per GPU-written source before mapped YUV/JPEG consumers run, preventing partially rendered scan lines while direct-only Android outputs retain asynchronous completion fences. |
+| Camera worker lifecycle drain | Waits for asynchronous YUV/JPEG workers before releasing Camera3 descriptors and streams, then restarts them after Android `flush()` so close/reconfigure and stream reuse do not race late completions. |
 | Linear RGB mixed preview | Keeps the fast RGB preview during preview-plus-record requests while requesting CPU-writable linear gralloc storage, avoiding tiled-buffer corruption. |
 | Private-preview cap | Stops CameraX selecting an oversized 1600x1200 private preview beside 720p video; full-size YUV and JPEG photography modes remain advertised. |
 | Mesa EGL/libyuv software ISP | Converts the validated Android preview path through the phone's Mesa GPU stack instead of the much slower CPU-only conversion. `mode: gpu` is recorded in the runtime configuration. |
@@ -82,6 +86,8 @@ camera UI by themselves; an Android camera application consumes them.
   `0015`. Patch `0016` adds the accepted contiguous-NV12 GPU target and keeps
   the existing readback/libyuv conversion as its runtime fallback. Patch
   `0017` synchronizes only CPU-mapped post-processors with their GPU source.
+  Patch `0018` drains all post-processors before stream/descriptors reset and
+  makes Android `flush()` workers restartable.
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -136,7 +142,10 @@ requests, aborts pending captures, waits for `CameraDevice.StateCallback`'s
 next sensor. This ordering is required for repeated camera switching on the
 OnePlus provider; opening the next sensor while the previous close is still
 draining can surface as an intermittent stream timeout even when an isolated
-camera open succeeds.
+camera open succeeds. The shared HAL's `0018` patch applies the same ownership
+boundary to its worker threads: `CameraDevice::stop()` drains mapped YUV/JPEG
+workers before releasing descriptors and streams, while `flush()` drains and
+restarts configured workers for reuse.
 
 The accepted Google-free image, exact hashes and read-only verifier are in
 [WAYDROID-VANILLA.md](WAYDROID-VANILLA.md). Optional GAPPS/Play Store setup is
@@ -179,7 +188,7 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 Apply the pmaports integration patch first. Its resulting libcamera recipe
 contains the two postmarketOS base patches and this project's seventeen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the seventeen Android patches in numeric order:
+the eighteen Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -206,6 +215,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0014-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0015-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0016-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0017-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0018-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -256,7 +266,9 @@ readback/libyuv path. Patch `0017` collects the unique GPU sources needed by
 pending mapped post-processors, waits on each source fence once and only then
 dispatches YUV/JPEG workers. This avoids both premature CPU reads and multiple
 consumers racing ownership of the same release fence. Requests whose outputs
-all go directly to Android keep the asynchronous fence path.
+all go directly to Android keep the asynchronous fence path. Patch `0018`
+drains the same worker queues before CameraDevice releases descriptors and
+streams, and restarts them after a reusable Android `flush()`.
 
 ## Build a runtime bundle
 
@@ -1044,6 +1056,35 @@ kernel, IOMMU, GPU, Venus, provider or Android fatal event followed the runs.
 These are functional and diagnostic results, not image-quality or Android
 performance parity. A private face/colour-chart comparison and full JPEG run
 remain required. Hardware encoding on camera ID 2 remains prohibited.
+
+## r53 Camera3 worker-lifecycle candidate
+
+Date: 2026-08-29. The live r52 provider passed the sequential diagnostic, but
+the broader intermittent `stream error` report pointed to a second lifecycle
+boundary in the shared Android HAL. `Camera::stop()` completes libcamera
+requests synchronously; its YUV/JPEG post-processors, however, run on separate
+workers. Before this patch, `CameraDevice::stop()` could clear request
+descriptors and streams while one of those workers still held a descriptor.
+That late completion could corrupt the next configure/open attempt.
+
+Patch `0018` drains every post-processor before clearing descriptors or streams.
+For Android `flush()`, it drains the workers and restarts them after keeping
+the configured streams, preserving stream reuse. The patch also makes the
+existing frame-duration `std::clamp` call explicit for `int64_t`, which keeps
+the Android source portable on host ABIs where `int64_t` is `long`.
+
+The patch applies cleanly after the complete r52 source tree, passes
+`git diff --check`, and the Android HAL target compiles in a clean host Meson
+build. Its SHA-512 is:
+
+```text
+0018 patch: 301ef72ff98e10482518e83a511ee102fe74d5787e028429e8eb816e04cd02f48f231f26ee28d148ae69e7b92a1e4a47a850daab80ec94ef41c1f19c19e41d83
+```
+
+The installed r52 bundle does not contain `0018` yet; build and install a new
+guarded provider bundle, then repeat the sequential Camera2 probe and ordinary
+camera-app open/close test before promoting it. This distinction keeps the
+successful source/compile evidence separate from phone runtime acceptance.
 
 ## Rollback
 

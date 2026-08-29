@@ -56,8 +56,9 @@ Applying the integration patch to the reviewed base produces:
 - `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
 - `advanced-snapshot-0.1.0-r16` plus
   `advanced-snapshot-lang-0.1.0-r16` (handheld-aligned Software HDR and
-  serialized camera teardown candidate; an exact AArch64 APK pair is not yet
-  built or installed); and
+  serialized camera teardown candidate; an exact AArch64 APK pair was built in
+  the isolated edge buildroot and installed as a local development package
+  without reboot); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
@@ -68,8 +69,9 @@ The r16 application recipe is pinned to Advanced Snapshot commit
 is
 `6d6086b5709cf4dc7df5c7ceeaa0bd09b76dfc4c91c0091d624c74519acce92dd83159dd3578fbf454294f62a229d151383994dec6fed45127b4c28d0c9a2145`.
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
-compatibility fix; an AArch64 package, signing and phone acceptance are still
-pending.
+compatibility fix. The exact AArch64 pair was built and installed with the
+local pmbootstrap signing key; repository-key release publication and phone
+visual acceptance are still pending.
 
 The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
 top of the earlier r3 package and r4 lifecycle guard, plus the GStreamer Rust

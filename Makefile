@@ -97,6 +97,7 @@ test:
 		tests/test-waydroid-rgb-preview.sh \
 		tests/test-waydroid-contiguous-nv12.sh \
 		tests/test-waydroid-postprocessor-fence.sh \
+		tests/test-waydroid-stream-lifecycle.sh \
 		tests/test-waydroid-gapps.sh \
 		tests/test-waydroid-vanilla.sh \
 		tests/test-power-policy.sh \
@@ -135,6 +136,7 @@ test:
 	sh tests/test-waydroid-rgb-preview.sh
 	sh tests/test-waydroid-contiguous-nv12.sh
 	sh tests/test-waydroid-postprocessor-fence.sh
+	sh tests/test-waydroid-stream-lifecycle.sh
 	sh tests/test-waydroid-gapps.sh
 	sh tests/test-waydroid-vanilla.sh
 	sh tests/test-display-report.sh
