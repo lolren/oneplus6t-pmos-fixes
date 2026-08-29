@@ -80,6 +80,14 @@ cameras. A large software-ISP preview can run at only a few frames per second,
 so the complete exposure sequence can take up to about twenty minutes. The
 activity closes itself when finished.
 
+Camera2 device closure is asynchronous. The probe stops repeating requests,
+aborts pending captures, closes the device, and waits for
+`CameraDevice.StateCallback.onClosed()` before releasing its ImageReader and
+recorder surfaces or opening the next camera. This ordering is intentional: it
+keeps the diagnostic from creating a false stream-drain failure by
+reconfiguring the next camera while the previous one is still closing. A
+bounded timeout records the close problem instead of hanging forever.
+
 Read the private result from the host:
 
 ```sh

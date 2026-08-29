@@ -42,6 +42,54 @@ the host audio session. It also rejects a legacy PulseAudio server and a stray
 `pipewire-pulse.socket` and runs the normal continuous two-second reconciliation
 loop.
 
+## Waydroid playback bridge
+
+Waydroid's Android audio HAL opens the host Pulse-compatible socket through
+ALSA's `pulse` PCM. On this phone the graph normally runs at 1024 frames, but
+the bridge can ask for a smaller quantum while a session is starting or being
+recreated. That has produced Android streams which are present but silent or
+which only recover after restarting the container. The same failure mode is
+tracked by [Waydroid issue 1683](https://github.com/waydroid/waydroid/issues/1683)
+and [issue 2333](https://github.com/waydroid/waydroid/issues/2333).
+
+This repository installs two small, persistent safeguards:
+
+* `config/pipewire/90-oneplus6t-waydroid.conf` sets
+  `default.clock.min-quantum = 512`. It is a floor, not a forced quantum, so
+  the normal 1024-frame graph and native camera latency remain available.
+* The Waydroid init overlay seeds
+  `waydroid.pulse_runtime_path=/run/xdg/pulse` before the audio HAL opens. The
+  path is the container-side mount of the current user's PipeWire Pulse
+  socket.
+
+The package does not force a user's Android media-volume preference. Check the
+Android music stream separately; on the reference phone it is currently
+`15/15`:
+
+```sh
+waydroid shell -- cmd media_session volume --stream 3 --get
+XDG_RUNTIME_DIR=/run/user/10000 pactl list short sink-inputs
+XDG_RUNTIME_DIR=/run/user/10000 pw-metadata -n settings 0
+```
+
+For a reproducible end-to-end check, build the dependency-free probe and play
+its 440 Hz tone:
+
+```sh
+ANDROID_SDK_ROOT="$HOME/Android/Sdk" \
+  ./tests/waydroid-audio-probe/build.sh
+waydroid app install tests/waydroid-audio-probe/build/waydroid-audio-probe.apk
+waydroid app launch dev.lolren.waydroidaudioprobe
+```
+
+During the 20-second tone, `pactl list sink-inputs` should show a `Waydroid`
+stream at 100%, unmuted, on the selected speaker sink. If the service has
+become stale after PipeWire was restarted, stop the Waydroid session and
+container, start the container, then start the session as the graphical login
+user before repeating the probe. This is intentionally a full Android-session
+recovery; killing only `vendor.audio-hal` can leave Android's binder service
+registration stale.
+
 ## Install and enable
 
 From this repository:
@@ -105,3 +153,9 @@ microphone source-output; the resulting MP4 contained 48 kHz mono AAC, and
 playing it created a sink-input on the physical speaker. Android exposes one
 logical input/output through its audio HAL; the host policy selects the correct
 physical OnePlus node underneath that standard bridge.
+
+After the Waydroid container was recreated with the bridge safeguards active,
+the Android probe produced a 100% unmuted sink-input and a speaker-monitor
+capture measured approximately -9.03 dB RMS / -6.02 dB peak, matching the
+probe's fixed 0.5-amplitude tone. The physical speaker sink remained at the
+user's existing 58% setting; no global gain was added to hide a routing fault.

@@ -2,6 +2,11 @@
 # The zz prefix makes this override load after the stock Waydroid camera
 # provider definition while leaving the provider binary itself unchanged.
 on early-init
+    # The host's Pulse socket is mounted at this path inside the container.
+    # Seed the property before the audio HAL can open so a cold Waydroid start
+    # cannot race the host-session property setup.
+    setprop waydroid.pulse_runtime_path /run/xdg/pulse
+
     # CameraX reads this file when constructing EncoderProfiles. Prefer Codec2
     # for software encoding; the legacy OMX encoder cannot consume Waydroid's
     # IMPLEMENTATION_DEFINED camera surface.

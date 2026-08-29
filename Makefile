@@ -3,6 +3,7 @@ LIBEXECDIR ?= $(PREFIX)/libexec/oneplus6t-pmos-fixes
 SBINDIR ?= $(PREFIX)/sbin
 DOCDIR ?= $(PREFIX)/share/doc/oneplus6t-pmos-fixes
 WIREPLUMBER_DIR ?= $(PREFIX)/share/wireplumber/wireplumber.conf.d
+PIPEWIRE_CONF_DIR ?= /etc/pipewire/pipewire.conf.d
 SYSTEMD_USER_DIR ?= $(PREFIX)/lib/systemd/user
 SYSTEMD_SYSTEM_DIR ?= $(PREFIX)/lib/systemd/system
 INSTALL ?= install
@@ -85,6 +86,8 @@ test:
 		tests/test-cellular-only.sh \
 		tests/test-ssh-recovery.sh \
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
+		tests/test-waydroid-audio-probe.sh \
+		tests/test-snapshot-patches.sh \
 		tests/test-waydroid-v4l2-codec-installer.sh \
 		tests/test-waydroid-v4l2-codec-build.sh \
 		tests/test-waydroid-provider-preparer.sh \
@@ -121,6 +124,8 @@ test:
 	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
+	sh tests/test-waydroid-audio-probe.sh
+	sh tests/test-snapshot-patches.sh
 	sh tests/test-waydroid-v4l2-codec-installer.sh
 	sh tests/test-waydroid-v4l2-codec-build.sh
 	sh tests/test-waydroid-provider-preparer.sh
@@ -157,6 +162,7 @@ install:
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/patches/android-v4l2-codec2"
 	$(INSTALL) -d "$(DESTDIR)$(LIBEXECDIR)/keys"
 	$(INSTALL) -d "$(DESTDIR)$(WIREPLUMBER_DIR)"
+	$(INSTALL) -d "$(DESTDIR)$(PIPEWIRE_CONF_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_USER_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)"
 	$(INSTALL) -d "$(DESTDIR)$(SBINDIR)"
@@ -182,6 +188,8 @@ install:
 		"$(DESTDIR)$(LIBEXECDIR)/config/libcamera/simple/"
 	$(INSTALL) -m 0644 config/wireplumber/90-oneplus6t-audio.conf \
 		"$(DESTDIR)$(WIREPLUMBER_DIR)/"
+	$(INSTALL) -m 0644 config/pipewire/90-oneplus6t-waydroid.conf \
+		"$(DESTDIR)$(PIPEWIRE_CONF_DIR)/"
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 		config/systemd/user/oneplus6t-audio-route.service \
 		> "$(DESTDIR)$(SYSTEMD_USER_DIR)/oneplus6t-audio-route.service"

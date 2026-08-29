@@ -147,6 +147,10 @@ public final class CameraProbeActivity extends Activity {
     private Surface recorderSurface;
     private File encodedFile;
     private Runnable recorderStop;
+    private CameraDevice closingCamera;
+    private Runnable cameraCloseContinuation;
+    private Runnable cameraCloseTimeout;
+    private int cameraCloseGeneration;
     private final AtomicBoolean surfaceSamplePending = new AtomicBoolean();
     private Runnable timeout;
 
@@ -296,7 +300,10 @@ public final class CameraProbeActivity extends Activity {
     }
 
     private void startNextCamera() {
-        closeCamera();
+        closeCamera(this::openNextCamera);
+    }
+
+    private void openNextCamera() {
         if (cameraIndex >= cameraIds.length) {
             finishProbe(null);
             return;
@@ -587,6 +594,11 @@ public final class CameraProbeActivity extends Activity {
             @Override
             public void onError(CameraDevice failed, int error) {
                 failCamera(token, id, "device error " + error);
+            }
+
+            @Override
+            public void onClosed(CameraDevice closed) {
+                finishCameraClose(closed);
             }
         };
     }
@@ -1403,9 +1415,10 @@ public final class CameraProbeActivity extends Activity {
             return;
         cameraCompleting = true;
         cancelTimeout();
-        closeCamera();
-        cameraIndex++;
-        handler.postDelayed(this::startNextCamera, 750);
+        closeCamera(() -> {
+            cameraIndex++;
+            handler.postDelayed(this::startNextCamera, 750);
+        });
     }
 
     private void failCamera(int token, String id, String message) {
@@ -1416,9 +1429,10 @@ public final class CameraProbeActivity extends Activity {
         results.add(result);
         Log.e(TAG, result);
         cancelTimeout();
-        closeCamera();
-        cameraIndex++;
-        handler.postDelayed(this::startNextCamera, 750);
+        closeCamera(() -> {
+            cameraIndex++;
+            handler.postDelayed(this::startNextCamera, 750);
+        });
     }
 
     private void finishProbe(String fatal) {
@@ -1428,7 +1442,7 @@ public final class CameraProbeActivity extends Activity {
             results.add("FATAL " + fatal);
             Log.e(TAG, "FATAL " + fatal);
         }
-        closeCamera();
+        closeCamera(null);
 
         int valid = 0;
         for (String result : results) {
@@ -1464,7 +1478,7 @@ public final class CameraProbeActivity extends Activity {
         timeout = null;
     }
 
-    private void closeCamera() {
+    private void closeCamera(Runnable continuation) {
         cancelTimeout();
         if (recorderStop != null && handler != null)
             handler.removeCallbacks(recorderStop);
@@ -1489,10 +1503,51 @@ public final class CameraProbeActivity extends Activity {
             recorderStarted = false;
         }
         previewRequest = null;
-        if (camera != null) {
-            camera.close();
-            camera = null;
+        if (closingCamera != null) {
+            // A previous close is still completing. Keep only the newest
+            // continuation; all callers are on the camera handler thread.
+            cameraCloseContinuation = continuation;
+            return;
         }
+
+        CameraDevice closing = camera;
+        camera = null;
+        if (closing != null) {
+            closingCamera = closing;
+            cameraCloseContinuation = continuation;
+            final int closeGeneration = ++cameraCloseGeneration;
+            cameraCloseTimeout = () -> {
+                if (cameraCloseGeneration == closeGeneration) {
+                    Log.w(TAG, "camera close callback timed out; releasing probe resources");
+                    finishCameraClose(closing);
+                }
+            };
+            if (handler != null)
+                handler.postDelayed(cameraCloseTimeout, CAMERA_TIMEOUT_MS);
+            closing.close();
+            return;
+        }
+
+        releaseCaptureResources();
+        if (continuation != null)
+            continuation.run();
+    }
+
+    private void finishCameraClose(CameraDevice closed) {
+        if (closingCamera == null || (closed != null && closed != closingCamera))
+            return;
+        if (cameraCloseTimeout != null && handler != null)
+            handler.removeCallbacks(cameraCloseTimeout);
+        cameraCloseTimeout = null;
+        closingCamera = null;
+        releaseCaptureResources();
+        Runnable continuation = cameraCloseContinuation;
+        cameraCloseContinuation = null;
+        if (continuation != null)
+            continuation.run();
+    }
+
+    private void releaseCaptureResources() {
         if (yuvReader != null) {
             yuvReader.close();
             yuvReader = null;
@@ -1522,7 +1577,8 @@ public final class CameraProbeActivity extends Activity {
     protected void onDestroy() {
         cameraCompleting = true;
         generation++;
-        closeCamera();
+        cameraCloseContinuation = null;
+        closeCamera(null);
         if (cameraThread != null) {
             cameraThread.quitSafely();
             cameraThread = null;

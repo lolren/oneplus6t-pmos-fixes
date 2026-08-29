@@ -1,0 +1,140 @@
+From 279ffe059eb2616e996f24326ac458474a837d1a Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sat, 29 Aug 2026 10:19:10 +0100
+Subject: [PATCH] fix(camera): serialize viewfinder stream lifecycle
+
+
+diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
+index 31e960b..4b8913a 100644
+--- a/aperture/src/viewfinder.rs
++++ b/aperture/src/viewfinder.rs
+@@ -96,6 +96,12 @@ mod imp {
+         pub is_taking_picture: Cell<bool>,
+         pub is_front_camera: Cell<bool>,
+ 
++        // State changes are asynchronous in GStreamer.  Keep a generation for
++        // every start/stop request so an old start cannot put camerabin back
++        // into PLAYING after a newer stop or camera reconfiguration.
++        pub stream_generation: Cell<u64>,
++        pub stream_wanted: Cell<bool>,
++
+         pub timeout_handler: RefCell<Option<glib::SourceId>>,
+         pub focus_indicator_handler: RefCell<Option<glib::SourceId>>,
+         pub focus_reset_handler: RefCell<Option<glib::SourceId>>,
+@@ -119,6 +125,26 @@ mod imp {
+             self.camerabin.get().unwrap()
+         }
+ 
++        pub(super) fn request_stream_start(&self) -> Option<u64> {
++            if self.stream_wanted.replace(true) {
++                return None;
++            }
++
++            let generation = self.stream_generation.get().wrapping_add(1);
++            self.stream_generation.set(generation);
++            Some(generation)
++        }
++
++        pub(super) fn request_stream_stop(&self) {
++            self.stream_wanted.set(false);
++            self.stream_generation
++                .set(self.stream_generation.get().wrapping_add(1));
++        }
++
++        pub(super) fn stream_request_is_current(&self, generation: u64) -> bool {
++            self.stream_wanted.get() && self.stream_generation.get() == generation
++        }
++
+         pub(crate) fn set_state(&self, state: ViewfinderState) {
+             if state != self.state.replace(state) {
+                 self.obj().notify_state();
+@@ -515,6 +541,7 @@ mod imp {
+             {
+                 log::error!("Could not stop recording: {err}");
+             }
++            self.request_stream_stop();
+             if let Err(err) = self.camerabin().set_state(gst::State::Null) {
+                 log::error!("Could not stop camerabin: {err}");
+             }
+@@ -1260,17 +1287,26 @@ impl Viewfinder {
+ 
+     /// Starts the viewfinder.
+     pub fn start_stream(&self) {
++        let Some(generation) = self.imp().request_stream_start() else {
++            return;
++        };
++
+         glib::spawn_future_local(glib::clone!(
+             #[weak(rename_to = obj)]
+             self,
+             async move {
+-                obj.change_state_inner(gst::State::Playing).await;
++                obj.change_state_inner(gst::State::Playing, generation)
++                    .await;
+             }
+         ));
+     }
+ 
+     // It is not needed to call this for gst::State::Null.
+-    async fn change_state_inner(&self, state: gst::State) {
++    async fn change_state_inner(&self, state: gst::State, generation: u64) {
++        if !self.imp().stream_request_is_current(generation) {
++            return;
++        }
++
+         let (sender, receiver) = futures_channel::oneshot::channel();
+ 
+         let camerabin = self.imp().camerabin();
+@@ -1300,6 +1336,11 @@ impl Viewfinder {
+             .unwrap();
+ 
+         let change_state = receiver.await.unwrap();
++        if !self.imp().stream_request_is_current(generation) {
++            log::debug!("Discarding stale camerabin state request {state:?}");
++            return;
++        }
++
+         match change_state {
+             StateChangeState::Equal => {
+                 // Nothing to do, the new state matches the current one.
+@@ -1332,11 +1373,16 @@ impl Viewfinder {
+     ///
+     /// A black frame will be shown after this methods has been called.
+     pub fn stop_stream(&self) {
+-        self.imp().clear_image_adjustment_state();
+-        self.imp().clear_exposure_state();
+-        if let Err(err) = self.imp().camerabin().set_state(gst::State::Null) {
++        let imp = self.imp();
++        // Invalidate any in-flight asynchronous PLAYING request before
++        // changing the GStreamer state.  This ordering is the important part:
++        // the pending future may finish at any time after this call returns.
++        imp.request_stream_stop();
++        imp.clear_image_adjustment_state();
++        imp.clear_exposure_state();
++        if let Err(err) = imp.camerabin().set_state(gst::State::Null) {
+             log::error!("Could not pause camerabin: {err}");
+-            self.imp().set_state(ViewfinderState::Error);
++            imp.set_state(ViewfinderState::Error);
+         } else {
+             log::debug!("Camerabin state successfully set to NULL");
+         }
+@@ -1428,11 +1474,16 @@ impl Viewfinder {
+             err.debug()
+         );
+ 
++        let imp = self.imp();
++        // An error can arrive while a state transition is still pending.  A
++        // clean NULL transition releases libcamera/PipeWire resources and the
++        // generation bump prevents the older transition from reviving them.
++        imp.request_stream_stop();
+         self.cancel_current_operation();
+-
+-        if self.imp().camerabin().current_state() != gst::State::Playing {
+-            self.imp().set_state(ViewfinderState::Error);
++        if let Err(stop_err) = imp.camerabin().set_state(gst::State::Null) {
++            log::debug!("Could not clean up camerabin after an error: {stop_err}");
+         }
++        imp.set_state(ViewfinderState::Error);
+     }
+ 
+     fn cancel_current_operation(&self) {

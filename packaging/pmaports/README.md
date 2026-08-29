@@ -2,10 +2,10 @@
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
 pmaports: seven SDM845 kernel patches, seventeen libcamera patches, three tuning
-files, one PipeWire control/state-transport patch, three Snapshot patches, the
+files, one PipeWire control/state-transport patch, six Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r15 Advanced Snapshot
+device-specific identifier. The current patch carries the r16 Advanced Snapshot
 source recipe and its verified AArch64 package pair, the
 libcamera r26 manual-exposure source candidate and the r25
 continuous-AF reference candidate; r24 and
@@ -53,22 +53,30 @@ Applying the integration patch to the reviewed base produces:
   source candidate; r25 remains the latest built AF reference and r24 remains
   the installed rollback);
 - `pipewire-spa-libcamera-1.6.8-r7`;
-- `snapshot-50.0-r3` plus `snapshot-lang-50.0-r3`; and
-- `advanced-snapshot-0.1.0-r15` plus
-  `advanced-snapshot-lang-0.1.0-r15` (handheld-aligned Software HDR candidate;
-  the exact AArch64 APK pair is signed and verified, but not installed); and
+- `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
+- `advanced-snapshot-0.1.0-r16` plus
+  `advanced-snapshot-lang-0.1.0-r16` (handheld-aligned Software HDR and
+  serialized camera teardown candidate; an exact AArch64 APK pair is not yet
+  built or installed); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
-The r15 application recipe is pinned to Advanced Snapshot commit
-`6813a64b499177d3d0ef5272b019c6da53400fba`. Its GitHub source archive SHA-512
+The r16 application recipe is pinned to Advanced Snapshot commit
+`2c93c2fd094ad3011b9466ab5fc0779fda566cce`. Its GitHub source archive SHA-512
 is
-`49252237523317fdd3e27aa4edb60c6ed932a0108757a32208f385d6698c07401bfd9f172045c57ad2af6b7109003dc061527e428d5663931b8685ec3a2771ad`.
-The source build passed the pinned GTK compilation, 27 unit tests and clippy.
-The signed AArch64 pair passed the independent package validator and is listed
-in the reference artifacts below.
+`6d6086b5709cf4dc7df5c7ceeaa0bd09b76dfc4c91c0091d624c74519acce92dd83159dd3578fbf454294f62a229d151383994dec6fed45127b4c28d0c9a2145`.
+The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
+compatibility fix; an AArch64 package, signing and phone acceptance are still
+pending.
+
+The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
+top of the earlier r3 package and r4 lifecycle guard, plus the GStreamer Rust
+state-tuple compatibility fix. It is source-tested and included in the
+integration patch. A clean isolated release build passes, but no r6 APK hash
+is claimed until an AArch64 package build and phone acceptance are completed.
+Keep the signed r3 packages as the rollback baseline.
 
 The r26 libcamera revision is now source- and package-validated. Its standalone
 manual-control patch and the full integration diff apply cleanly; the clean

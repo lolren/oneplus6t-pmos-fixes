@@ -32,6 +32,10 @@ grep -q 'selectedFpsRange = needsEncodedVideo() ? null' "$PROBE_SOURCE"
 grep -q 'size.getWidth() == 1280 && size.getHeight() == 720' "$PROBE_SOURCE"
 grep -q 'CaptureResult.SENSOR_TIMESTAMP' "$PROBE_SOURCE"
 grep -q 'captureFps=' "$PROBE_SOURCE"
+grep -q 'onClosed(CameraDevice closed)' "$PROBE_SOURCE"
+grep -q 'finishCameraClose(closed)' "$PROBE_SOURCE"
+grep -q 'releaseCaptureResources()' "$PROBE_SOURCE"
+grep -q 'camera close callback timed out' "$PROBE_SOURCE"
 TEST_DIR=$(mktemp -d /tmp/waydroid-probe-runner-test.XXXXXX)
 trap 'rm -rf "$TEST_DIR"' EXIT HUP INT TERM
 
@@ -80,6 +84,7 @@ grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.REC
 	"$TEST_DIR/waydroid.log"
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
+grep -q '^container unfreeze$' "$TEST_DIR/waydroid.log"
 
 skip_log=$TEST_DIR/waydroid-skip.log
 skip_result=$TEST_DIR/result-skip.txt

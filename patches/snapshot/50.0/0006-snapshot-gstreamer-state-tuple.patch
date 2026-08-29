@@ -1,0 +1,35 @@
+From 2c93c2fd094ad3011b9466ab5fc0779fda566cce Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sat, 29 Aug 2026 13:41:30 +0100
+Subject: [PATCH] fix(camera): handle current GStreamer state result
+
+---
+ aperture/src/viewfinder.rs | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/aperture/src/viewfinder.rs b/aperture/src/viewfinder.rs
+index 6c161b9..0cc23c8 100644
+--- a/aperture/src/viewfinder.rs
++++ b/aperture/src/viewfinder.rs
+@@ -1362,13 +1362,13 @@ impl Viewfinder {
+             camerabin,
+             move || {
+                 let timeout = gst::format::ClockTime::from_seconds(CAMERA_STATE_TIMEOUT);
+-                let state = camerabin
+-                    .state(Some(timeout))
+-                    .ok()
+-                    .map(|(change_done, current_state, _pending_state)| {
++                let (change_result, current_state, _pending_state) = camerabin.state(Some(timeout));
++                let state = match change_result {
++                    Ok(change_done) => {
+                         change_done != gst::StateChangeSuccess::Async && current_state == expected
+-                    })
+-                    .unwrap_or(false);
++                    }
++                    Err(_) => false,
++                };
+                 let _ = sender.send(state);
+             }
+         ));
+-- 
+2.49.0

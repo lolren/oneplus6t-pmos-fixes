@@ -3,10 +3,12 @@ set -eu
 
 program=${0##*/}
 timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
+control_timeout=${PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT:-45}
 camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
 skip_install=${PMOS_WAYDROID_PROBE_SKIP_INSTALL:-no}
 media_output=${PMOS_WAYDROID_PROBE_MEDIA_OUTPUT:-}
 allow_encoder=${PMOS_WAYDROID_PROBE_ALLOW_ENCODER:-no}
+unfreeze=${PMOS_WAYDROID_PROBE_UNFREEZE:-yes}
 
 usage() {
 	printf '%s\n' \
@@ -62,6 +64,11 @@ case "$timeout_seconds" in
 	die 'PMOS_WAYDROID_PROBE_TIMEOUT must be a non-negative integer'
 	;;
 esac
+case "$control_timeout" in
+''|*[!0-9]*)
+	die 'PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT must be a non-negative integer'
+	;;
+esac
 case "$camera_id" in
 ''|*[!0-9]*)
 	[ -z "$camera_id" ] || die 'PMOS_WAYDROID_PROBE_CAMERA_ID must be numeric'
@@ -74,6 +81,10 @@ esac
 case "$allow_encoder" in
 yes|no) ;;
 *) die 'PMOS_WAYDROID_PROBE_ALLOW_ENCODER must be yes or no' ;;
+esac
+case "$unfreeze" in
+yes|no) ;;
+*) die 'PMOS_WAYDROID_PROBE_UNFREEZE must be yes or no' ;;
 esac
 [ "$profile" != encode-720p ] || [ "$allow_encoder" = yes ] ||
 	die 'encode-720p requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes'
@@ -94,6 +105,15 @@ fi
 
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
 
+if [ "$unfreeze" = yes ]; then
+	# The supported battery policy freezes an idle Android container. A probe
+	# started over SSH must explicitly thaw it before an ImageReader/native
+	# window can return buffers; the normal Waydroid launcher does this through
+	# its graphical session.
+	timeout "$control_timeout" waydroid container unfreeze \
+		</dev/null >/dev/null 2>&1 || :
+fi
+
 if [ "$skip_install" = no ]; then
 	apk_bytes=$(wc -c <"$apk" | tr -d ' ')
 	[ "$apk_bytes" -gt 0 ] || die "APK is empty: $apk"
@@ -106,7 +126,8 @@ waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAM
 	2>/dev/null || :
 waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.RECORD_AUDIO \
 	2>/dev/null || :
-waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+timeout "$control_timeout" waydroid shell -- am force-stop \
+	dev.lolren.waydroidcameraprobe </dev/null >/dev/null 2>&1 || :
 waydroid shell -- rm -f \
 	/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 	2>/dev/null || :

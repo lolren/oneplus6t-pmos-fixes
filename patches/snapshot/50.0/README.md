@@ -1,13 +1,18 @@
 # Snapshot camera controls
 
-Apply this three-patch series in filename order to GNOME Snapshot 50.0:
+Apply this six-patch series in filename order to GNOME Snapshot 50.0:
 
 1. select a bounded full-frame 4:3 mode, up to 2048x1536, for still images
    while retaining the inexpensive preview stream; and
 2. add crop- and orientation-aware tap-to-focus using dynamically discovered
    PipeWire/libcamera controls; and
 3. show an immediate high-contrast focus reticle and add live Exposure,
-   Colour, Contrast, Detail and capture-wide digital Zoom controls.
+   Colour, Contrast, Detail and capture-wide digital Zoom controls; and
+4. serialize viewfinder stream lifecycle requests so a stale asynchronous
+   start cannot revive a source after stop, camera switching or teardown; and
+5. wait for camerabin to reach NULL before changing the camera source or
+   recording configuration after a stop; and
+6. adapt the teardown state query to the current GStreamer Rust tuple API.
 
 The focus helper does not contain OnePlus-specific node IDs or control
 numbers. It ignores fixed-focus cameras, sends one-shot autofocus mode,
@@ -20,12 +25,29 @@ uses the standard libcamera `ExposureValue`, `Saturation`, `Contrast` and
 `Sharpness` controls, and uses Camerabin's normal digital zoom so saved output
 matches the preview. It does not expose a false HDR switch.
 
-All three patches reapplied cleanly to Snapshot 50.0 and the exact aarch64 r3
-package build passed. Snapshot r3 and its matching libcamera r22 controls are
-installed on the reference phone. The helper accepted focus/reset on both rear
-nodes, moved the main physical lens from parked DAC 0 to DAC 400 and rejected
-the fixed-focus front node. All three nodes negotiated 2048x1536 through
-PipeWire and accepted the combined image-control operation.
+The fourth patch is generic Snapshot/Aperture code. It coalesces duplicate
+starts, tags each asynchronous GStreamer state request with a generation, and
+invalidates older generations before setting Camerabin to NULL. The fifth
+patch adds the missing asynchronous teardown barrier: camera/source changes
+and recording-pipeline restarts wait for the NULL transition to complete before
+reconfiguring. On libcamera devices this prevents a late PLAYING transition or
+early source replacement from reconfiguring a source after its buffers have
+been released, which otherwise appears as intermittent `not-negotiated`,
+allocator or stream-drain failures during rapid open/close cycles.
+
+The first three patches reapplied cleanly to Snapshot 50.0 and the exact
+aarch64 r3 package build passed. The fourth, fifth and sixth patches are
+source-level follow-ups; the lifecycle code has passed formatting and the
+independent Camera2 probe has completed two consecutive three-camera preview
+runs with the asynchronous close barrier. The combined r6 package now builds
+cleanly in the isolated GTK/GStreamer environment. Native touchscreen
+acceptance is still required before claiming the GUI fix installed on the
+phone.
+The earlier Snapshot r3 and its matching libcamera r22 controls remain the
+rollback baseline. The helper accepted focus/reset on both rear nodes, moved
+the main physical lens from parked DAC 0 to DAC 400 and rejected the fixed-focus
+front node. All three nodes negotiated 2048x1536 through PipeWire and accepted
+the combined image-control operation.
 
 The installed Snapshot package has SHA-256
 `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7`;

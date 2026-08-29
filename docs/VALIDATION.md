@@ -2661,3 +2661,45 @@ camera manifest verifies every archive entry. No photographs, exact locations,
 SIM identifiers, credentials or private device logs are release assets. After
 acceptance, the Waydroid session and container stopped cleanly, the optional
 location bridge remained inactive and the rootfs mount count returned to zero.
+
+## Camera close ordering and Waydroid playback bridge follow-up
+
+Date: 2026-08-29. The previous Android Camera2 probe could close one sensor
+asynchronously and immediately configure the next one. On the reference phone
+that occasionally produced `waitUntilDrainedLocked`/`getBuffer` timeouts, which
+matched the user's intermittent stream-error report. The probe now stops
+repeating requests, aborts captures, calls `CameraDevice.close()`, waits for
+`StateCallback.onClosed()`, and releases the old ImageReader/recorder surfaces
+only after that callback. A bounded close timeout records a real provider
+failure instead of hanging the diagnostic. The source is in commits
+`f08d927` and `2c93c2f` of the Advanced Snapshot repository and in the numbered
+Snapshot patches `0005-snapshot-await-camerabin-teardown.patch` and
+`0006-snapshot-gstreamer-state-tuple.patch`; the preceding generation guard is
+`279ffe0`/patch 0004.
+
+The rebuilt probe completed two consecutive sequential runs over camera IDs
+0, 1 and 2. Both ended `PROBE_DONE profile=preview valid=3 total=3`; the first
+reported 31, 133 and 205 private frames respectively, and the repeat reported
+31, 133 and 209. This validates the close ordering and provider stability for
+the diagnostic. It does not yet claim native Snapshot package acceptance: the
+new r6 package still needs an AArch64 package build and touchscreen
+verification. The Advanced Snapshot source candidate is now r16 at commit
+`2c93c2f`; its pinned native GTK/GStreamer build passed after the state-tuple
+compatibility correction, but its AArch64 package is not installed.
+
+The Waydroid playback bridge now installs a PipeWire minimum-quantum floor of
+512 frames and seeds `/run/xdg/pulse` as `waydroid.pulse_runtime_path` during
+Android early init. After a clean container/session restart, Android reported
+`STREAM_MUSIC` volume 15/15; the fixed 440 Hz AudioTrack probe appeared as a
+100% unmuted Waydroid sink-input, and the physical-speaker monitor measured
+approximately -9.03 dB RMS / -6.02 dB peak. The physical sink remained at its
+existing 58% user setting, so no global gain was used to mask a routing fault.
+The probe and installation checks are now part of `make test`; the source
+package revision is `0.1.0-r26`; the separate Snapshot package is now revision
+r6 after the GStreamer state-tuple compatibility fix.
+
+At 12:00 UTC the complete host `make test` suite passed, including the new
+audio-bridge and Snapshot patch-integrity checks. These results are source and
+runtime-diagnostic evidence; real modem-call route selection, native
+touchscreen acceptance and prolonged unplugged battery measurements remain
+physical-device gates.

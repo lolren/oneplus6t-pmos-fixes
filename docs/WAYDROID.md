@@ -120,12 +120,23 @@ camera UI by themselves; an Android camera application consumes them.
 - `scripts/run-waydroid-camera-probe` installs the probe APK, starts one of its
   validation/performance profiles and waits for a saved `PROBE_DONE` result;
   repeated A/B runs can verify and reuse the installed package instead of
-  updating it between samples.
+  updating it between samples. Because the supported idle power policy freezes
+  the container, the runner thaws it before an SSH-launched probe by default;
+  set `PMOS_WAYDROID_PROBE_UNFREEZE=no` when the session is already known to be
+  active. `PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT` bounds these control commands.
 - `tests/waydroid-camera-probe/` builds the validation APK.
 
 The Android series depends on the generic frame-duration and autofocus work. It
 is intentionally separate from pmaports because Android HAL code and its ABI
 dependencies do not belong in the native Alpine package.
+
+The Camera2 diagnostic closes a device asynchronously. It stops repeating
+requests, aborts pending captures, waits for `CameraDevice.StateCallback`'s
+`onClosed()` callback, and only then releases the old surfaces or opens the
+next sensor. This ordering is required for repeated camera switching on the
+OnePlus provider; opening the next sensor while the previous close is still
+draining can surface as an intermittent stream timeout even when an isolated
+camera open succeeds.
 
 The accepted Google-free image, exact hashes and read-only verifier are in
 [WAYDROID-VANILLA.md](WAYDROID-VANILLA.md). Optional GAPPS/Play Store setup is

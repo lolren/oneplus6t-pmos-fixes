@@ -146,6 +146,8 @@ grep -q 'setprop media.settings.xml /vendor/etc/media_profiles_V1_0.xml' \
 	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
 grep -q 'setprop debug.stagefright.ccodec 2' \
 	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
+grep -q 'setprop waydroid.pulse_runtime_path /run/xdg/pulse' \
+	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
 grep -q '^sched_setscheduler: 1$' \
 	"$ROOT/config/waydroid/mediaswcodec.policy"
 for camera_id in 0 1; do
