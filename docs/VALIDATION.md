@@ -2719,12 +2719,18 @@ The patch applies cleanly after the complete patched r52 source tree, passes
 build. The patch SHA-512 is:
 
 ```text
-0018-android-drain-post-processors-before-stream-reset.patch: 301ef72ff98e10482518e83a511ee102fe74d5787e028429e8eb816e04cd02f48f231f26ee28d148ae69e7b92a1e4a47a850daab80ec94ef41c1f19c19e41d83
+0018-android-drain-post-processors-before-stream-reset.patch: 0dd2918e36cf71333f01354959e46b1b2359286796d2a6dd747a2f107cab349f5fa540146d3cfd8df9e2da2f69506fcd29248fe35acef8900916e7e2d8b3529d
 ```
 
-The installed Waydroid r52 provider still predates `0018`; no runtime fix is
-claimed until a new provider bundle is built, installed through the guarded
-installer and accepted with repeated ordinary-app open/close tests.
+The r53-static9 provider overlay was then built and installed through the
+guarded installer. Its archive SHA-256 is
+`c64c04242692eb2279b2e579805bef2fefcc65b7453e5830d8c46aba216fdd38`, and the
+installed `vendor/lib/hw/camera.libcamera.so` SHA-256 is
+`da9f5c3bb75fc62b56a607c7774f27eb0cfb3ff49cf1276672118b6ff52742d7`.
+Five ID-0 preview reopen cycles, two rounds across IDs 0/1/2 and full
+YUV/JPEG/private probes for each ID completed successfully; the final
+`dumpsys media.camera` had no in-flight requests. Ordinary third-party-app
+open/close soak remains a device acceptance gate.
 
 The Advanced Snapshot r16 AArch64 pair was built from source commit
 `2c93c2fd094ad3011b9466ab5fc0779fda566cce` in the isolated pmaports build and

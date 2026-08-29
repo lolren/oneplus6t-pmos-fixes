@@ -20,6 +20,10 @@ allocation directly on the GPU while retaining the readback/libyuv fallback;
 `0018` drains those asynchronous post-processors before the Camera3 HAL drops
 request descriptors and streams, and restarts them after Android `flush()` so
 the next configure/open cannot inherit a late completion.
+A guarded r53-static9 provider overlay containing `0018` is installed on the
+reference phone and has passed repeated preview reopen tests plus full YUV,
+JPEG and private-preview probes on all three camera IDs. Ordinary third-party
+camera-app acceptance remains a separate gate.
 A separate Android 13 arm64 Codec2 service uses the SDM845 Venus encoder while
 preserving Android's software encoder as fallback. Aperture now configures
 simultaneous preview and encoder streams and saves playable H.264/AAC video.
@@ -1057,7 +1061,7 @@ These are functional and diagnostic results, not image-quality or Android
 performance parity. A private face/colour-chart comparison and full JPEG run
 remain required. Hardware encoding on camera ID 2 remains prohibited.
 
-## r53 Camera3 worker-lifecycle candidate
+## r53 Camera3 worker-lifecycle candidate and static9 runtime
 
 Date: 2026-08-29. The live r52 provider passed the sequential diagnostic, but
 the broader intermittent `stream error` report pointed to a second lifecycle
@@ -1069,22 +1073,45 @@ That late completion could corrupt the next configure/open attempt.
 
 Patch `0018` drains every post-processor before clearing descriptors or streams.
 For Android `flush()`, it drains the workers and restarts them after keeping
-the configured streams, preserving stream reuse. The patch also makes the
-existing frame-duration `std::clamp` call explicit for `int64_t`, which keeps
-the Android source portable on host ABIs where `int64_t` is `long`.
+the configured streams, preserving stream reuse. It also completes a pending
+Camera3 descriptor as an error at the stop boundary, supplies a monotonic
+fallback when the simple V4L2 path reports a zero sensor timestamp, keeps that
+timestamp identical in shutter and result metadata, and marks error-buffer
+results with their final metadata partial-result value. The existing
+frame-duration `std::clamp` call is explicit for `int64_t`, which keeps the
+Android source portable on host ABIs where `int64_t` is `long`.
 
 The patch applies cleanly after the complete r52 source tree, passes
 `git diff --check`, and the Android HAL target compiles in a clean host Meson
 build. Its SHA-512 is:
 
 ```text
-0018 patch: 301ef72ff98e10482518e83a511ee102fe74d5787e028429e8eb816e04cd02f48f231f26ee28d148ae69e7b92a1e4a47a850daab80ec94ef41c1f19c19e41d83
+0018 patch: 0dd2918e36cf71333f01354959e46b1b2359286796d2a6dd747a2f107cab349f5fa540146d3cfd8df9e2da2f69506fcd29248fe35acef8900916e7e2d8b3529d
 ```
 
-The installed r52 bundle does not contain `0018` yet; build and install a new
-guarded provider bundle, then repeat the sequential Camera2 probe and ordinary
-camera-app open/close test before promoting it. This distinction keeps the
-successful source/compile evidence separate from phone runtime acceptance.
+The static9 runtime archive was installed through the guarded provider
+installer after creating a dated rollback backup. Its reproducibility hashes
+are:
+
+```text
+archive: c64c04242692eb2279b2e579805bef2fefcc65b7453e5830d8c46aba216fdd38
+vendor/lib/hw/camera.libcamera.so: da9f5c3bb75fc62b56a607c7774f27eb0cfb3ff49cf1276672118b6ff52742d7
+```
+
+The latest runtime evidence is:
+
+- five consecutive ID-0 preview open/close cycles, followed by two rounds of
+  IDs 0/1/2, all returned valid frames and exited with status 0;
+- one full YUV+JPEG+private-preview probe for each ID returned
+  `PROBE_DONE valid=1 total=1`; and
+- `dumpsys media.camera` reported `In-flight requests: None` after each latest
+  full probe and after the stress runs.
+
+An earlier first ID-0 full probe left one diagnostic in-flight frame after the
+application exited; a clean repeat and the remaining full probes were clear.
+This is why the overlay is accepted for the reproducible diagnostic path but
+ordinary camera applications still need a real open/close soak before the
+intermittent stream-error issue can be called fully closed.
 
 ## Rollback
 

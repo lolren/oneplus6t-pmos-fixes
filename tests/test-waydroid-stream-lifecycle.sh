@@ -18,6 +18,11 @@ grep -Fq 'void CameraStream::restart()' "$PATCH"
 grep -Fq 'wait();' "$PATCH"
 grep -Fq 'ASSERT(state_ == State::Stopped);' "$PATCH"
 grep -Fq 'std::clamp<int64_t>' "$PATCH"
+grep -Fq 'completePendingDescriptors();' "$PATCH"
+grep -Fq 'void CameraDevice::completePendingDescriptors()' "$PATCH"
+grep -Fq 'std::chrono::steady_clock' "$PATCH"
+grep -Fq 'descriptor->sensorTimestamp_' "$PATCH"
+grep -Fq 'captureResult.partial_result = 1;' "$PATCH"
 
 # Optionally prove application against a complete patched libcamera tree. The
 # supplied source is never modified: all checks run in a temporary worktree.
@@ -37,6 +42,10 @@ if [ -n "${LIBCAMERA_WAYDROID_SOURCE:-}" ]; then
 	grep -Fq 'void CameraStream::restart()' \
 		"$check_tree/src/android/camera_stream.cpp"
 	grep -Fq 'for (CameraStream &cameraStream : streams_)' \
+		"$check_tree/src/android/camera_device.cpp"
+	grep -Fq 'void CameraDevice::completePendingDescriptors()' \
+		"$check_tree/src/android/camera_device.cpp"
+	grep -Fq 'std::chrono::steady_clock' \
 		"$check_tree/src/android/camera_device.cpp"
 	cleanup
 	trap - EXIT HUP INT TERM

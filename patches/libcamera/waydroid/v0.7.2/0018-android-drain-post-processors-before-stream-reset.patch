@@ -1,39 +1,70 @@
-From 2c93c2fd094ad3011b9466ab5fc0779fda566cce Mon Sep 17 00:00:00 2001
+From 14c2f24b1b2d9750e9ad6f0c688959b08aed56a4 Mon Sep 17 00:00:00 2001
 From: Lolren <loren.bufanu@gmail.com>
-Date: Sat, 29 Aug 2026 14:42:00 +0100
+Date: Sat, 29 Aug 2026 17:01:50 +0100
 Subject: [PATCH] android: drain post-processors before stream reset
 
-Camera::stop() completes libcamera requests synchronously, but the Android
-YUV/JPEG post-processors run on separate threads. The HAL used to discard
-Camera3 request descriptors and CameraStream instances immediately after
-stopping the camera, allowing a late worker completion to dereference stale
-state and making the next configure/open fail with a stream error.
+Camera::stop() completes libcamera requests synchronously, but Android YUV/JPEG
+post-processors run on separate workers. Drain those workers before releasing
+Camera3 descriptors and streams, and restart them after Android flush().
 
-Drain every post-processor before the descriptors and streams are released.
-Android flush keeps the configured streams, so restart the drained workers
-afterwards. This preserves the Camera3 flush reuse contract while making
-close/reconfigure ordering deterministic.
-
-Use an explicit int64_t clamp type for the existing Android frame-duration
-translation as well; this keeps the same code portable between Android's
-long-long int64_t and host ABIs where int64_t is long.
+The Camera3 bridge also supplies a monotonic fallback when the simple V4L2
+path returns a zero capture timestamp, keeps the same timestamp in shutter and
+result metadata, returns pending descriptors as errors at the stop boundary,
+and marks error-buffer results as the final metadata partial result. These
+details prevent Android's in-flight request map from retaining buffers and
+turning the next open into an intermittent stream error.
 
 Signed-off-by: Lolren <loren.bufanu@gmail.com>
 ---
- src/android/camera_device.cpp | 18 ++++++++++++++++++
- src/android/camera_stream.cpp | 29 +++++++++++++++++++++++++++--
- src/android/camera_stream.h   |  1 +
- 3 files changed, 46 insertions(+), 4 deletions(-)
+ src/android/camera_device.cpp | 104 ++++++++++++++++++++++++++++++++++++++++--
+ src/android/camera_device.h   |  1 +
+ src/android/camera_request.h  |  2 +
+ src/android/camera_stream.cpp | 67 +++++++++++++++++++++++----
+ src/android/camera_stream.h   |  6 ++-
+ 5 files changed, 166 insertions(+), 14 deletions(-)
 
 diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+index 3adf789..71afa9c 100644
 --- a/src/android/camera_device.cpp
 +++ b/src/android/camera_device.cpp
-@@ -510,8 +510,14 @@
+@@ -8,6 +8,7 @@
+ #include "camera_device.h"
  
+ #include <algorithm>
++#include <chrono>
+ #include <cmath>
+ #include <cstdint>
+ #include <errno.h>
+@@ -508,18 +509,62 @@ void CameraDevice::flush()
+ 		state_ = State::Flushing;
+ 	}
+ 
++	/*
++	 * Stop the source first while post-processors are still accepting work.
++	 * Camera::stop() synchronously completes every queued request; its
++	 * completion callbacks can therefore enqueue their post-processing work
++	 * before the workers are drained below. Stopping workers first leaves those
++	 * callbacks with no consumer and makes the Android framework retain
++	 * in-flight requests across the next open.
++	 */
  	camera_->stop();
  
 +	for (CameraStream &cameraStream : streams_)
 +		cameraStream.flush();
++
++	/*
++	 * A request can be accepted by the Camera3 queue immediately before the
++	 * source pipeline enters its stopping state. The source normally reports
++	 * that request synchronously, but complete any descriptor still pending at
++	 * this boundary as an error rather than silently dropping Android's buffer.
++	 */
++	completePendingDescriptors();
++
++	/* All source requests and post-processors are complete at this point. */
++	{
++		MutexLocker descriptorsLock(descriptorsMutex_);
++		descriptors_ = {};
++	}
 +
  	MutexLocker stateLock(stateMutex_);
  	state_ = State::Stopped;
@@ -43,24 +74,40 @@ diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
  }
  
  void CameraDevice::stop()
-@@ -520,6 +526,16 @@
- 
- 	camera_->stop();
+ {
+-	MutexLocker stateLock(stateMutex_);
++	{
++		MutexLocker stateLock(stateMutex_);
++		state_ = State::Flushing;
++	}
  
 +	/*
-+	 * camera_->stop() synchronously completes the libcamera requests, but
-+	 * mapped YUV/JPEG results are processed by separate workers. Drain those
-+	 * workers before releasing their descriptors and CameraStream instances;
-+	 * otherwise a late completion can dereference freed Camera3 state and the
-+	 * next configure/open frequently fails with a stream error.
++	 * camera_->stop() synchronously completes the libcamera requests. Keep the
++	 * post-processors running while that happens so every completion can queue
++	 * its work against a live descriptor; drain them before releasing the
++	 * descriptors and CameraStream instances. Otherwise a late completion can
++	 * dereference freed Camera3 state and the next configure/open frequently
++	 * fails with a stream error.
 +	 */
+ 	camera_->stop();
+ 
 +	for (CameraStream &cameraStream : streams_)
 +		cameraStream.flush();
++
++	completePendingDescriptors();
 +
  	{
  		MutexLocker descriptorsLock(descriptorsMutex_);
  		descriptors_ = {};
-@@ -1020,9 +1036,9 @@
+@@ -527,6 +572,7 @@ void CameraDevice::stop()
+ 
+ 	streams_.clear();
+ 
++	MutexLocker stateLock(stateMutex_);
+ 	state_ = State::Stopped;
+ }
+ 
+@@ -1020,9 +1066,9 @@ int CameraDevice::processControls(Camera3RequestDescriptor *descriptor)
  				frameDurationInfo->second.min().get<int64_t>();
  			const int64_t maximum =
  				frameDurationInfo->second.max().get<int64_t>();
@@ -70,14 +117,142 @@ diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
 -			const int64_t requestedMaximum = std::clamp(
 +			const int64_t requestedMaximum = std::clamp<int64_t>(
  				durationForFps(minFps), requestedMinimum, maximum);
-
+ 
  			controls.set(controls::FrameDurationLimits,
- 				     { requestedMinimum, requestedMaximum });
-
+@@ -1514,6 +1560,22 @@ void CameraDevice::requestComplete(Request *request)
+ 	uint64_t sensorTimestamp = static_cast<uint64_t>(request->metadata()
+ 								 .get(controls::SensorTimestamp)
+ 								 .value_or(0));
++	if (!sensorTimestamp) {
++		/*
++		 * The simple V4L2 path can return a zero buffer timestamp when the
++		 * driver does not provide a capture clock. Android treats a zero
++		 * shutter timestamp as "not received": it holds the result buffers
++		 * in its in-flight map and the next close eventually times out. Use
++		 * the monotonic completion time as a valid fallback and use exactly
++		 * the same value in ANDROID_SENSOR_TIMESTAMP below.
++		 */
++		sensorTimestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
++			std::chrono::steady_clock::now().time_since_epoch()).count();
++		LOG(HAL, Debug)
++			<< "Missing sensor timestamp for frame "
++			<< descriptor->frameNumber_ << ", using monotonic fallback";
++	}
++	descriptor->sensorTimestamp_ = sensorTimestamp;
+ 	notifyShutter(descriptor->frameNumber_, sensorTimestamp);
+ 
+ 	LOG(HAL, Debug) << "Request " << request->cookie() << " completed with "
+@@ -1602,6 +1664,29 @@ void CameraDevice::completeDescriptor(Camera3RequestDescriptor *descriptor)
+ 	sendCaptureResults();
+ }
+ 
++void CameraDevice::completePendingDescriptors()
++{
++	while (true) {
++		Camera3RequestDescriptor *descriptor = nullptr;
++		{
++			MutexLocker lock(descriptorsMutex_);
++			if (descriptors_.empty())
++				return;
++
++			if (!descriptors_.front()->isPending()) {
++				sendCaptureResults();
++				continue;
++			}
++
++			descriptor = descriptors_.front().get();
++		}
++
++		/* Notify Android before completeDescriptor releases the descriptor. */
++		abortRequest(descriptor);
++		completeDescriptor(descriptor);
++	}
++}
++
+ /**
+  * \brief Sequentially send capture results to the framework
+  *
+@@ -1652,7 +1737,14 @@ void CameraDevice::sendCaptureResults()
+ 		captureResult.num_output_buffers = resultBuffers.size();
+ 		captureResult.output_buffers = resultBuffers.data();
+ 
+-		if (descriptor->status_ == Camera3RequestDescriptor::Status::Success)
++		/*
++		 * A post-processor may fail after result metadata has already been
++		 * prepared. This is still a final (non-partial) metadata result, even
++		 * though one or more returned buffers are marked as errors. Leaving
++		 * partial_result at zero makes Android reject the result and poison the
++		 * next stream configuration.
++		 */
++		if (descriptor->resultMetadata_)
+ 			captureResult.partial_result = 1;
+ 
+ 		callbacks_->process_capture_result(callbacks_, &captureResult);
+@@ -1912,7 +2004,9 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) cons
+ 				 rolling_shutter_skew);
+ 
+ 	/* Add metadata tags reported by libcamera. */
+-	const int64_t timestamp = metadata.get(controls::SensorTimestamp).value_or(0);
++	const int64_t timestamp = descriptor.sensorTimestamp_
++		? static_cast<int64_t>(descriptor.sensorTimestamp_)
++		: metadata.get(controls::SensorTimestamp).value_or(0);
+ 	resultMetadata->addEntry(ANDROID_SENSOR_TIMESTAMP, timestamp);
+ 
+ 	const auto &pipelineDepth = metadata.get(controls::draft::PipelineDepth);
+diff --git a/src/android/camera_device.h b/src/android/camera_device.h
+index 194ca30..0d34b93 100644
+--- a/src/android/camera_device.h
++++ b/src/android/camera_device.h
+@@ -96,6 +96,7 @@ private:
+ 	int processControls(Camera3RequestDescriptor *descriptor);
+ 	void completeDescriptor(Camera3RequestDescriptor *descriptor)
+ 		LIBCAMERA_TSA_EXCLUDES(descriptorsMutex_);
++	void completePendingDescriptors();
+ 	void sendCaptureResults() LIBCAMERA_TSA_REQUIRES(descriptorsMutex_);
+ 	void setBufferStatus(Camera3RequestDescriptor::StreamBuffer &buffer,
+ 			     Camera3RequestDescriptor::Status status);
+diff --git a/src/android/camera_request.h b/src/android/camera_request.h
+index 6493c3c..c0654cd 100644
+--- a/src/android/camera_request.h
++++ b/src/android/camera_request.h
+@@ -75,6 +75,8 @@ public:
+ 	CameraMetadata settings_;
+ 	std::unique_ptr<libcamera::Request> request_;
+ 	std::unique_ptr<CameraMetadata> resultMetadata_;
++	/* Monotonic timestamp used for both the shutter and result metadata. */
++	uint64_t sensorTimestamp_ = 0;
+ 
+ 	bool complete_ = false;
+ 	Status status_ = Status::Success;
 diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
+index 253f799..9dd4998 100644
 --- a/src/android/camera_stream.cpp
 +++ b/src/android/camera_stream.cpp
-@@ -211,6 +211,14 @@
+@@ -198,11 +198,22 @@ int CameraStream::process(Camera3RequestDescriptor::StreamBuffer *streamBuffer)
+ 		return -EINVAL;
+ 	}
+ 
+-	worker_->queueRequest(streamBuffer);
++	if (!worker_->queueRequest(streamBuffer)) {
++		LOG(HAL, Warning) << "Post-processing worker is not running";
++		return -ESHUTDOWN;
++	}
+ 
+ 	return 0;
+ }
+ 
++void CameraStream::prepareFlush()
++{
++	if (!postProcessor_)
++		return;
++
++	worker_->prepareFlush();
++}
++
+ void CameraStream::flush()
+ {
+ 	if (!postProcessor_)
+@@ -211,6 +222,14 @@ void CameraStream::flush()
  	worker_->flush();
  }
  
@@ -92,7 +267,7 @@ diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
  FrameBuffer *CameraStream::getBuffer()
  {
  	if (!allocator_)
-@@ -292,7 +300,10 @@
+@@ -292,22 +311,49 @@ void CameraStream::PostProcessorWorker::start()
  {
  	{
  		MutexLocker lock(mutex_);
@@ -104,42 +279,90 @@ diff --git a/src/android/camera_stream.cpp b/src/android/camera_stream.cpp
  		state_ = State::Running;
  	}
  
-@@ -349,9 +360,22 @@
+ 	Thread::start();
+ }
+ 
+-void CameraStream::PostProcessorWorker::queueRequest(Camera3RequestDescriptor::StreamBuffer *dest)
++bool CameraStream::PostProcessorWorker::queueRequest(Camera3RequestDescriptor::StreamBuffer *dest)
+ {
+ 	{
+ 		MutexLocker lock(mutex_);
+-		ASSERT(state_ == State::Running);
++		if (state_ != State::Running)
++			return false;
++
+ 		requests_.push(dest);
+ 	}
+ 
+ 	cv_.notify_one();
++	return true;
++}
++
++bool CameraStream::PostProcessorWorker::isRunning()
++{
++	MutexLocker lock(mutex_);
++	return state_ == State::Running;
++}
++
++void CameraStream::PostProcessorWorker::prepareFlush()
++{
++	bool notify = false;
++	{
++		MutexLocker lock(mutex_);
++		if (state_ == State::Running) {
++			state_ = State::Flushing;
++			notify = true;
++		}
++	}
++
++	if (notify)
++		cv_.notify_one();
+ }
+ 
+ void CameraStream::PostProcessorWorker::run()
+@@ -349,9 +395,14 @@ void CameraStream::PostProcessorWorker::run()
  
  void CameraStream::PostProcessorWorker::flush()
  {
 -	MutexLocker lock(mutex_);
 -	state_ = State::Flushing;
 -	lock.unlock();
-+	{
-+		MutexLocker lock(mutex_);
-+		if (state_ != State::Running)
-+			return;
-+
-+		state_ = State::Flushing;
-+	}
++	prepareFlush();
  
- 	cv_.notify_one();
-+
+-	cv_.notify_one();
 +	/*
 +	 * A Camera3 descriptor owns the stream buffer pointers consumed by the
-+	 * worker. Do not let CameraDevice discard descriptors until this worker has
-+	 * either completed or reported every queued item. The worker transitions to
-+	 * Stopped after reporting queued items, so it can be restarted after an
++	 * worker. Do not let CameraDevice discard descriptors until this worker
++	 * has either completed or reported every queued item. The worker
++	 * transitions to Stopped after reporting queued items, so it can be restarted after an
 +	 * Android flush without rebuilding the configured stream.
 +	 */
 +	wait();
  }
 diff --git a/src/android/camera_stream.h b/src/android/camera_stream.h
+index e4c03ea..663e212 100644
 --- a/src/android/camera_stream.h
 +++ b/src/android/camera_stream.h
-@@ -131,6 +131,7 @@
+@@ -130,7 +130,9 @@ public:
+ 	int process(Camera3RequestDescriptor::StreamBuffer *streamBuffer);
  	libcamera::FrameBuffer *getBuffer();
  	void putBuffer(libcamera::FrameBuffer *buffer);
++	void prepareFlush();
  	void flush();
 +	void restart();
  
  private:
  	class PostProcessorWorker : public libcamera::Thread
+@@ -146,7 +148,9 @@ private:
+ 		~PostProcessorWorker();
+ 
+ 		void start();
+-		void queueRequest(Camera3RequestDescriptor::StreamBuffer *request);
++		bool queueRequest(Camera3RequestDescriptor::StreamBuffer *request);
++		bool isRunning();
++		void prepareFlush();
+ 		void flush();
+ 
+ 	protected:
 -- 
 2.49.0

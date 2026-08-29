@@ -308,6 +308,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid private-preview cap | Limits only CameraX private previews to 1280x960 so 720p recording stays on a practical sensor mode; larger explicit YUV/JPEG photography modes remain available. |
 | Waydroid contiguous NV12 GPU target | Writes a compatible linear Y+UV allocation with one filtered GPU draw, avoiding RGBA readback and CPU colour conversion; unsupported layouts retain the safe libyuv fallback. The r49 direct-path baseline is published, and its source-fence-corrected r50 runtime is retained by the installed r52 clean-Vanilla generation. |
 | Waydroid post-processor fence synchronization | Waits once on each GPU-written source fence before mapped YUV/JPEG post-processing, preventing front/auxiliary stills from reading partially rendered rows while direct-only Android surfaces retain asynchronous completion fences. |
+| Waydroid Camera3 worker-lifecycle drain | Completes asynchronous YUV/JPEG workers and pending Camera3 descriptors before close/reset, restarts workers after `flush()`, and supplies valid monotonic timestamps when the simple V4L2 path reports zero; this prevents stale requests poisoning the next camera open. |
 | Waydroid recording profiles and Codec2 policy | Publishes guarded main/front 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. Auxiliary video is deliberately not advertised after a reproducible Venus teardown fault. |
 | Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated H.264/AAC recordings and clean teardown. Exact main-rear r49 video averages 11.78 fps, while exact-HAL front r50 video averages 24.77 fps, so performance remains sensor/path dependent. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
@@ -326,10 +327,12 @@ and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
-patches `0013`–`0017` for mixed RGB/NV12 streams, preview sizing, direct
-contiguous NV12 output and source-fence-safe mapped post-processing. Patch
-`0018` is the source-validated follow-up that drains asynchronous Camera3
-post-processors before stream reset; it is queued for the next provider bundle.
+patches `0013`–`0018` for mixed RGB/NV12 streams, preview sizing, direct
+contiguous NV12 output, source-fence-safe mapped post-processing and
+worker-safe Camera3 shutdown. The r53-static9 provider overlay containing
+`0018` is installed and has passed repeated preview reopen plus full
+three-camera YUV/JPEG/private probes; ordinary third-party camera-app soak
+testing remains open.
 Kernel r10
 and Codec2 r53 are installed. The exact r50 source completed a clean 198-target
 Android build and a full three-camera Camera2 run: all JPEGs decode and report
@@ -602,8 +605,9 @@ The current requirement-by-requirement audit is maintained in
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
 - signed AArch64 camera r26/r13 and r26/r14, plus the complete Waydroid r52
-  clean-Vanilla bundle, are published; the installed r52 camera layer, kernel
-  r10 and byte-reproducible Codec2 r53 complete repeated main/front recording. The
+  clean-Vanilla bundle, are published; the installed r53-static9 camera
+  overlay, kernel r10 and byte-reproducible Codec2 r53 complete repeated
+  main/front recording. The
   exact r10/r8 and r53 artifacts are also public. Android frame-rate work and
   a safe non-Venus auxiliary encoder remain open;
 - live SMARTY cellular routing, DNS and HTTPS pass; Google-free Waydroid

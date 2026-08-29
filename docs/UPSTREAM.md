@@ -118,10 +118,13 @@ consumers, and ask maintainers to review whether fence ownership belongs in
 Patch `0018` closes the next ownership boundary: `CameraDevice::stop()` drains
 the asynchronous YUV/JPEG workers before releasing Camera3 descriptors and
 streams, while Android `flush()` drains and restarts workers for configured
-stream reuse. It is a Waydroid Camera3 lifecycle candidate, not a generic
-sensor or GPU interface. The source applies and the Android HAL compiles on
-the host, but it still needs an ARM provider rebuild and repeated ordinary-app
-open/close acceptance before an upstream proposal.
+stream reuse. It also completes pending descriptors with valid error results
+and replaces zero simple-V4L2 timestamps with one monotonic value shared by
+the shutter and metadata callbacks. It is a Waydroid Camera3 lifecycle
+candidate, not a generic sensor or GPU interface. The source applies, the
+Android HAL compiles on the host and the ARM provider passed the diagnostic
+reopen/full-probe checks; ordinary third-party-app soak and a focused
+framework test remain required before an upstream proposal.
 
 Do not upstream identity matrices as calibrated sensor tuning. They exist only
 to expose the generic saturation control and are explicitly uncalibrated.

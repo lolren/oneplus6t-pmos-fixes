@@ -159,3 +159,14 @@ the Android probe produced a 100% unmuted sink-input and a speaker-monitor
 capture measured approximately -9.03 dB RMS / -6.02 dB peak, matching the
 probe's fixed 0.5-amplitude tone. The physical speaker sink remained at the
 user's existing 58% setting; no global gain was added to hide a routing fault.
+
+The follow-up low-volume check on 2026-08-29 found the same result at every
+layer: Android `STREAM_MUSIC` was 15/15, AudioFlinger reported master volume
+1.0 and stream 3 at 0 dB, and the Waydroid Pulse stream was 100% unmuted on
+`HiFi__Speaker__sink`. A 440 Hz Android probe and a same-level native
+`speaker-test` tone both measured about -7.0 dB RMS / -3.5 dB peak on the
+speaker monitor. This rules out a fixed Waydroid bridge attenuation in the
+tested path. Do not add an automatic gain above 100% or change the global
+speaker level; if a particular Android application is still quieter, capture
+its live sink-input and compare its stream volume/target with the commands
+above before changing a per-application rule.
