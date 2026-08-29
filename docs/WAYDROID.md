@@ -12,7 +12,7 @@ The r52 camera bundle is complete on a clean image: it carries the required
 r51/r50 Camera3 stack. It exposes three Android cameras and advertises
 recording only for the accepted main and front cameras; auxiliary preview,
 YUV and JPEG remain enabled.
-Patches `0013`–`0018` add multi-output processing, retain a fast linear RGB
+Patches `0013`–`0019` add multi-output processing, retain a fast linear RGB
 preview beside coalesced NV12 consumers and cap private previews to a sensor
 mode suitable for video. Patch `0016` writes a compatible contiguous NV12
 allocation directly on the GPU while retaining the readback/libyuv fallback;
@@ -20,9 +20,12 @@ allocation directly on the GPU while retaining the readback/libyuv fallback;
 `0018` drains those asynchronous post-processors before the Camera3 HAL drops
 request descriptors and streams, and restarts them after Android `flush()` so
 the next configure/open cannot inherit a late completion.
-A guarded r53-static9 provider overlay containing `0018` is installed on the
-reference phone and has passed repeated preview reopen tests plus full YUV,
-JPEG and private-preview probes on all three camera IDs. Ordinary third-party
+Patch `0019` forwards Android `LENS_FOCUS_DISTANCE`/`AF_MODE_OFF` to the
+simple-IPA manual lens contract and subtracts the sensor active-array origin
+from Android AF regions. A guarded r53-static10-focus provider overlay is
+installed on the reference phone and has passed repeated preview reopen tests,
+manual focus on both rear IDs, tap-focus region/state checks and full YUV/JPEG/
+private-preview probes on all three camera IDs. Ordinary third-party
 camera-app acceptance remains a separate gate.
 A separate Android 13 arm64 Codec2 service uses the SDM845 Venus encoder while
 preserving Android's software encoder as fallback. Aperture now configures
@@ -69,6 +72,8 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | Exposure result metadata | Exposure time, sensor sensitivity and frame duration let applications understand what automatic exposure actually selected. |
 | Rear autofocus bridge | Camera2 auto/continuous modes, triggers, states and one metering region reach both physical rear actuators. |
 | Bounded explicit focus scan | Tap-focus does not spend hundreds of frames traversing the entire actuator range; it uses a fast bounded scan and local refinement. |
+| Rear manual focus | Camera2 `LENS_FOCUS_DISTANCE` maps to the simple-IPA `LensPosition` 0.0–2.0 contract and moves both rear actuators; result metadata is echoed back. |
+| Correct AF-region origin | Android active-array coordinates are converted to the libcamera active-area-relative `AfWindows` coordinates before the simple IPA evaluates them. |
 | Fixed-focus reporting | The front camera honestly advertises no autofocus instead of accepting controls that cannot move hardware. |
 | SIGPIPE-safe IPA teardown | A closed software-IPA Unix socket returns `EPIPE` through libcamera's existing error path instead of killing the Android provider with signal 13. |
 | Automated Camera2 probe | A reproducible APK verifies every stream, AF state and exposure path without depending on a store camera application. |
@@ -78,9 +83,10 @@ camera UI by themselves; an Android camera application consumes them.
 
 ## Source layout
 
-- `patches/libcamera/v0.7.2/` contains the seventeen generic native patches. The
-  final two add `FrameDurationLimits` and stable progressive autofocus
-  transitions to simple-pipeline sensors.
+- `patches/libcamera/v0.7.2/` contains the eighteen generic native patches. The
+  final three add `FrameDurationLimits`, stable progressive autofocus
+  transitions and the bounded `LensPosition` manual-focus contract to
+  simple-pipeline sensors.
 - `patches/libcamera/waydroid/v0.7.2/` contains the Android-only Camera3 HAL
   series. Apply `0001` first, followed by the libyuv conversion, Mesa GPU
   software-ISP, robust DMA/JPEG, SIGPIPE-safe IPC, reduced-preview-source,
@@ -91,7 +97,8 @@ camera UI by themselves; an Android camera application consumes them.
   the existing readback/libyuv conversion as its runtime fallback. Patch
   `0017` synchronizes only CPU-mapped post-processors with their GPU source.
   Patch `0018` drains all post-processors before stream/descriptors reset and
-  makes Android `flush()` workers restartable.
+  makes Android `flush()` workers restartable. Patch `0019` adds manual focus
+  and corrects AF-region coordinates for the OnePlus active arrays.
 - `config/waydroid/camera_hal.yaml` maps stable OnePlus media paths to Android
   facing and rotation values.
 - `config/waydroid/configuration.yaml` selects GPU software-ISP mode, preserves
@@ -190,9 +197,9 @@ Do not install these ARMv7 Android libraries into native `/usr/lib`.
 ## Prepare the source
 
 Apply the pmaports integration patch first. Its resulting libcamera recipe
-contains the two postmarketOS base patches and this project's seventeen generic
+contains the two postmarketOS base patches and this project's eighteen generic
 patches. Apply that sequence to a clean libcamera 0.7.2 source tree, then apply
-the eighteen Android patches in numeric order:
+the nineteen Android patches in numeric order:
 
 ```sh
 git clone https://gitlab.freedesktop.org/camera/libcamera.git libcamera-waydroid
@@ -220,6 +227,7 @@ git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0015-*.pa
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0016-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0017-*.patch
 git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0018-*.patch
+git am /path/to/oneplus6t-pmos-fixes/patches/libcamera/waydroid/v0.7.2/0019-*.patch
 ```
 
 Stop if any patch rejects. Do not use `--3way` to hide a source-version
@@ -1112,6 +1120,31 @@ application exited; a clean repeat and the remaining full probes were clear.
 This is why the overlay is accepted for the reproducible diagnostic path but
 ordinary camera applications still need a real open/close soak before the
 intermittent stream-error issue can be called fully closed.
+
+## r53-static10-focus manual-focus checkpoint
+
+The follow-up provider archive is
+`/tmp/waydroid-camera-r53-static10-focus.tar.gz` during the reference build;
+its SHA-256 is
+`c5a805378cecc2bca656b44fcdd06e5414951394e503ab713aa9aaa73767f174`.
+It includes the Android `0019` bridge, the r28 simple IPA and the current
+sensor tuning. It was installed over the guarded r53 provider without changing
+the Android image or native `/usr/lib`.
+
+The reproducible probe results were:
+
+```text
+CAMERA id=0 valid=true profile=manual-focus privateFrames=12 manualFocusSupported=false manualFocusDistanceMax=0.000 manualFocusResult=[NaN,NaN] manualFocusDelta=NaN
+CAMERA id=1 valid=true profile=manual-focus privateFrames=24 manualFocusSupported=true manualFocusDistanceMax=2.000 manualFocusResult=[0.000,2.000] manualFocusDelta=2.000
+CAMERA id=2 valid=true profile=manual-focus privateFrames=24 manualFocusSupported=true manualFocusDistanceMax=2.000 manualFocusResult=[0.000,2.000] manualFocusDelta=2.000
+PROBE_DONE profile=manual-focus valid=3 total=3
+```
+
+The matching `tap-focus` run returned terminal rear AF states `[3,4]` and
+non-empty center regions on IDs 1 and 2; the fixed-focus front remained
+`afMode=0` with no region. These results prove Android request/result routing
+and actuator movement. They do not prove a factory-calibrated distance scale,
+vendor colour tuning or ordinary third-party camera-app acceptance.
 
 ## Rollback
 

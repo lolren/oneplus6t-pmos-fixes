@@ -582,7 +582,7 @@ index d0a1016..fd146ce 100644
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000..c9492b2
+index 0000000..b661c74
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -591,7 +591,7 @@ index 0000000..c9492b2
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
 +pkgrel=16
-+_commit="2c93c2fd094ad3011b9466ab5fc0779fda566cce"
++_commit="51139b2df475fa34a7e798452fcda0fac184b3a1"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -652,7 +652,7 @@ index 0000000..c9492b2
 +}
 +
 +sha512sums="
-+6d6086b5709cf4dc7df5c7ceeaa0bd09b76dfc4c91c0091d624c74519acce92dd83159dd3578fbf454294f62a229d151383994dec6fed45127b4c28d0c9a2145  advanced-snapshot-0.1.0.tar.gz
++97d670f2fe6e858cc61c4879eefd8ba025f01f7664097dc9ec1af0a61cb3ff6456ff8748e2b5f364731b7259dae5f2e922ef5c73a9c888c4c46b22fccb17acf2  advanced-snapshot-0.1.0.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
@@ -5505,8 +5505,177 @@ index 0000000..a9f9dba
 +2.49.0
 +
 +af4141ed03b1c0647ef55eb1c61ed113933adc82d5651bc39930387bae0c72e717d1bbc24121c775c9b8baa60c5271f6d94029e4e756bbfe3b1ecdf3a94f6172  /home/lolren/Desktop/oneplus6t-pmos-fixes/patches/libcamera/v0.7.2/0017-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
+diff --git a/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch b/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
+new file mode 100644
+index 0000000..5c29639
+--- /dev/null
++++ b/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
+@@ -0,0 +1,163 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sat, 29 Aug 2026 00:00:00 +0100
++Subject: [PATCH] ipa: simple: expose standard lens-position manual focus
++
++Expose the simple IPA's bounded lens-position range through the standard
++libcamera control and accept AfModeManual requests. The physical OnePlus 6T
++actuator remains bounded to the measured 400..800 contrast-focus range; the
++public 0..2 normalized range is a documented device contract until a factory
++optical calibration is available.
++
++Publish the current lens position in every result so Camera2 applications can
++verify that a manual focus request reached the actuator.
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/ipa/simple/algorithms/af.cpp | 52 +++++++++++++++++++++++++++++++++++++++-
++ src/ipa/simple/algorithms/af.h   |  4 +++
++ 2 files changed, 55 insertions(+), 1 deletion(-)
++
++diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
++--- a/src/ipa/simple/algorithms/af.cpp
+++++ b/src/ipa/simple/algorithms/af.cpp
++@@ -33,6 +33,10 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
++ 	fineRange_ = tuningData["fineRange"].get<int32_t>(coarseStep_);
++ 	configuredInitialPosition_ = tuningData["initialPosition"].get<int32_t>(
++ 		configuredMin_ + (configuredMax_ - configuredMin_) / 2);
+++	configuredLensPositionMin_ =
+++		tuningData["lensPositionMin"].get<float>(0.0f);
+++	configuredLensPositionMax_ =
+++		tuningData["lensPositionMax"].get<float>(2.0f);
++ 	settleTimeMs_ = tuningData["settleTimeMs"].get<unsigned int>(200);
++ 	settleFrames_ = tuningData["settleFrames"].get<unsigned int>(0);
++ 	startupDelayMs_ = tuningData["startupDelayMs"].get<unsigned int>(2000);
++@@ -63,6 +67,10 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
++ 	    fineStep_ > coarseStep_ || fineStep_ > fineRange_ ||
++ 	    configuredInitialPosition_ < configuredMin_ ||
++ 	    configuredInitialPosition_ > configuredMax_ ||
+++	    !std::isfinite(configuredLensPositionMin_) ||
+++	    !std::isfinite(configuredLensPositionMax_) ||
+++	    configuredLensPositionMin_ < 0.0f ||
+++	    configuredLensPositionMax_ <= configuredLensPositionMin_ ||
++ 	    !settleTimeMs_ || !measureTimeMs_ ||
++ 	    !measureSamples_ || !fastMeasureSamples_ ||
++ 	    !monitorWindowMs_ || !restartHoldMs_ ||
++@@ -79,8 +87,15 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
++ 	defaultMode_ = continuous ? controls::AfModeContinuous
++ 				  : controls::AfModeAuto;
++ 	context.ctrlMap[&controls::AfMode] =
++-		ControlInfo(controls::AfModeAuto, controls::AfModeContinuous,
+++		ControlInfo(controls::AfModeManual, controls::AfModeContinuous,
++ 			    defaultMode_);
+++	const float defaultLensPosition = configuredLensPositionMin_ +
+++		(static_cast<float>(configuredInitialPosition_ - configuredMin_) /
+++		 static_cast<float>(configuredMax_ - configuredMin_)) *
+++		(configuredLensPositionMax_ - configuredLensPositionMin_);
+++	context.ctrlMap[&controls::LensPosition] =
+++		ControlInfo(configuredLensPositionMin_, configuredLensPositionMax_,
+++			    defaultLensPosition);
++ 	context.ctrlMap[&controls::AfTrigger] =
++ 		ControlInfo(controls::AfTriggerValues);
++ 	context.ctrlMap[&controls::AfMetering] =
++@@ -161,7 +176,8 @@ void Af::queueRequest(IPAContext &context,
++ 
++ 	const auto &mode = requestControls.get(controls::AfMode);
++ 	if (mode && *mode != mode_) {
++-		if (*mode != controls::AfModeAuto &&
+++		if (*mode != controls::AfModeManual &&
+++		    *mode != controls::AfModeAuto &&
++ 		    *mode != controls::AfModeContinuous) {
++ 			LOG(IPASoftAf, Warning)
++ 				<< "Ignoring unsupported autofocus mode " << *mode;
++@@ -177,6 +193,18 @@ void Af::queueRequest(IPAContext &context,
++ 		}
++ 	}
++ 
+++	const auto &lensPosition = requestControls.get(controls::LensPosition);
+++	if (lensPosition && mode_ == controls::AfModeManual) {
+++		const float boundedLensPosition = std::clamp(
+++			*lensPosition, configuredLensPositionMin_,
+++			configuredLensPositionMax_);
+++		const int32_t position = actuatorForLensPosition(boundedLensPosition);
+++		if (position != currentPosition_)
+++			requestPosition(context, position);
+++		phase_ = ScanPhase::Idle;
+++		state_ = controls::AfStateIdle;
+++	}
+++
++ 	const auto &metering = requestControls.get(controls::AfMetering);
++ 	if (metering && *metering != metering_) {
++ 		if (*metering != controls::AfMeteringAuto &&
++@@ -328,6 +356,38 @@ void Af::requestPosition(IPAContext &context, int32_t position)
++ 	LOG(IPASoftAf, Debug) << "Requesting lens position " << position;
++ }
++ 
+++float Af::lensPositionForActuator(int32_t position) const
+++{
+++	if (maxPosition_ <= minPosition_)
+++		return configuredLensPositionMin_;
+++
+++	const float fraction = std::clamp(
+++		static_cast<float>(position - minPosition_) /
+++			static_cast<float>(maxPosition_ - minPosition_),
+++		0.0f, 1.0f);
+++	return configuredLensPositionMin_ +
+++		fraction * (configuredLensPositionMax_ - configuredLensPositionMin_);
+++}
+++
+++int32_t Af::actuatorForLensPosition(float position) const
+++{
+++	if (maxPosition_ <= minPosition_ ||
+++	    configuredLensPositionMax_ <= configuredLensPositionMin_)
+++		return initialPosition_;
+++
+++	const float bounded = std::clamp(position,
+++					 configuredLensPositionMin_,
+++					 configuredLensPositionMax_);
+++	const float fraction =
+++		(bounded - configuredLensPositionMin_) /
+++		(configuredLensPositionMax_ - configuredLensPositionMin_);
+++	return std::clamp(
+++		static_cast<int32_t>(std::lround(
+++			static_cast<float>(minPosition_) +
+++			fraction * static_cast<float>(maxPosition_ - minPosition_))),
+++		minPosition_, maxPosition_);
+++}
+++
++ void Af::startScan(IPAContext &context, bool fast)
++ {
++ 	fastScan_ = fast;
++@@ -632,6 +692,8 @@ void Af::process(IPAContext &context,
++ 	}
++ 
++ 	metadata.set(controls::AfMode, mode_);
+++	metadata.set(controls::LensPosition,
+++			 lensPositionForActuator(currentPosition_));
++ 	metadata.set(controls::AfMetering, metering_);
++ 	if (!focusWindow_.isNull())
++ 		metadata.set(controls::AfWindows,
++diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
++--- a/src/ipa/simple/algorithms/af.h
+++++ b/src/ipa/simple/algorithms/af.h
++@@ -51,6 +51,8 @@ private:
++ 	bool extendCoarsePositions();
++ 	void buildFinePositions();
++ 	static double focusMetric(const SwIspStats *stats);
+++	float lensPositionForActuator(int32_t position) const;
+++	int32_t actuatorForLensPosition(float position) const;
++ 
++ 	int32_t configuredMin_ = 400;
++ 	int32_t configuredMax_ = 800;
++@@ -58,6 +60,8 @@ private:
++ 	int32_t fineStep_ = 25;
++ 	int32_t fineRange_ = 100;
++ 	int32_t configuredInitialPosition_ = 600;
+++	float configuredLensPositionMin_ = 0.0f;
+++	float configuredLensPositionMax_ = 2.0f;
++ 	unsigned int settleTimeMs_ = 200;
++ 	unsigned int settleFrames_ = 0;
++ 	unsigned int startupDelayMs_ = 2000;
++
++-- 
++2.49.0
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef2..8624a13 100644
+index 3857ef2..16efa1d 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -5514,11 +5683,11 @@ index 3857ef2..8624a13 100644
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=26
++pkgrel=28
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,23 @@ _tuning_files="
+@@ -59,6 +59,24 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5539,10 +5708,11 @@ index 3857ef2..8624a13 100644
 +	0017-ipa-simple-Add-frame-duration-control.patch
 +	0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 +	0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
++	0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +192,30 @@ sha512sums="
+@@ -175,13 +193,31 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5563,6 +5733,7 @@ index 3857ef2..8624a13 100644
 +cd6a28e3c0d8e0e2ee6da560c0d435752bc3ab48b19354e5f1aa2993d38fe52d9b845dc706e7351d6bc58dc17f0c81ca7514852413fe0b30d83e9fe77553329b  0017-ipa-simple-Add-frame-duration-control.patch
 +fe165f6c165c4aebc587abe5c704a4a201e444ecaf60bc6d07fe2f1e99c7b88dea3dddee47552f21abfc0a6046f56588f519b0b0862f47485d68b9b600fb9042  0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 +bfc381b8e1cb1201e0552ddc6f76c41d33d5fb358e00922a4afc79d0cf41ac183094e83d0b974042e2e92728fab03f40c13d8d5de4cf05b4b382db0146968046  0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
++cd764a9bcb567be117badd04d87c3c11c9b3105ae136bcf5e21b48849afd3bf354f5e8feafba1c2568681e9a47bb21b48482350334205f056095aebd624ff420  0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -5570,14 +5741,14 @@ index 3857ef2..8624a13 100644
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+dd02900b32cf922d1edd433c1611ba088ae9428e434130e76ceb25fdb85d6063c168d9eddf2d3013633374189d74ce1ef72922646b821046f252cea0109b1899  imx371.yaml
-+9442ab7ffbccdf17283408fe5e9bf7b5829a367ac1b219b7ac4ef3bfcd6e85fca103f71c9ed65f1fd3ba81b070951589c3b0481faf237c556780afffe44e5da7  imx376.yaml
-+10e0ab8a1d517ee601684702d44da12a45838a544bf78b954ff9b7496e24950cc060fa4c3cf993474801ec49a0c22bc99dd729e5f0833a887fda5c328ad32e4e  imx519.yaml
++20a5c5d3ce3645fb16601c95fe60a7ac066f37f589ef0c4716d047b2a6a482abc75898c8d55ff8fbe70ae151c9bf895cd70670cfb9626711fcddcf049143fb18  imx371.yaml
++633018a106a79ab67d82025c40b6c440e3ca506b60bb9479d6caa55f92aac37cd610088bf6c6d556125a95bc9dac07d9bdd2580fbef1dd190baaee74ba57a19d  imx376.yaml
++b9e985bbe9d1f22fb16b6e3c67fbdf1c15048d3e3319dd13d80dbb6e39472c41f965af5a2c12488cdca5b07f27e2d7c42531c264e28f53b6633235a408a73e1d  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96..f977660 100644
+index e903d96..e9f144e 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
 @@ -6,6 +6,19 @@ algorithms:
@@ -5593,7 +5764,7 @@ index e903d96..f977660 100644
    - Adjust:
 +      gamma: 2.0
 +      contrast: 1.1
-+      saturation: 1.25
++      saturation: 1.35
 +      sharpness: 1.0
    - Agc:
 +      target: 2.0
@@ -5601,10 +5772,10 @@ index e903d96..f977660 100644
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e..9eccfd7 100644
+index 2c5ea9e..fe2ebd5 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,42 @@ algorithms:
+@@ -7,36 +7,44 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -5646,6 +5817,8 @@ index 2c5ea9e..9eccfd7 100644
 +      minPosition: 400
 +      maxPosition: 800
 +      initialPosition: 600
++      lensPositionMin: 0.0
++      lensPositionMax: 2.0
 +      coarseStep: 100
 +      fineStep: 25
 +      fineRange: 50
@@ -5668,8 +5841,8 @@ index 2c5ea9e..9eccfd7 100644
 +      continuous: true
    - Adjust:
 +      gamma: 2.1
-+      contrast: 1.05
-+      saturation: 1.15
++      contrast: 1.1
++      saturation: 1.35
 +      sharpness: 1.0
    - Agc:
 +      target: 2.0
@@ -5677,10 +5850,10 @@ index 2c5ea9e..9eccfd7 100644
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96..bd77248 100644
+index e903d96..dc944b2 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,43 @@ algorithms:
+@@ -6,6 +6,45 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
@@ -5694,6 +5867,8 @@ index e903d96..bd77248 100644
 +      minPosition: 400
 +      maxPosition: 800
 +      initialPosition: 600
++      lensPositionMin: 0.0
++      lensPositionMax: 2.0
 +      coarseStep: 100
 +      fineStep: 25
 +      fineRange: 50
@@ -5716,8 +5891,8 @@ index e903d96..bd77248 100644
 +      continuous: true
    - Adjust:
 +      gamma: 2.2
-+      contrast: 1.05
-+      saturation: 1.25
++      contrast: 1.1
++      saturation: 1.35
 +      sharpness: 1.0
    - Agc:
 +      target: 2.0
@@ -8444,7 +8619,7 @@ index 0000000..5755964
 +
 diff --git a/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch b/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch
 new file mode 100644
-index 0000000..d085cbd09bda9ae0f46fea399c755d8866e9d589
+index 0000000..d085cbd
 --- /dev/null
 +++ b/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch
 @@ -0,0 +1,140 @@
@@ -8590,7 +8765,7 @@ index 0000000..d085cbd09bda9ae0f46fea399c755d8866e9d589
 +     fn cancel_current_operation(&self) {
 diff --git a/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch b/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch
 new file mode 100644
-index 0000000..e388bcdd2c576634b651c8a6dff80e48e08f49e5
+index 0000000..e388bcd
 --- /dev/null
 +++ b/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch
 @@ -0,0 +1,316 @@
@@ -8912,7 +9087,7 @@ index 0000000..e388bcdd2c576634b651c8a6dff80e48e08f49e5
 +
 diff --git a/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch b/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch
 new file mode 100644
-index 0000000..3bdc4cfbc1c2d60981238f6c4c16c68f35b86d38
+index 0000000..3bdc4cf
 --- /dev/null
 +++ b/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch
 @@ -0,0 +1,35 @@
@@ -8951,13 +9126,12 @@ index 0000000..3bdc4cfbc1c2d60981238f6c4c16c68f35b86d38
 +         ));
 +-- 
 +2.49.0
-+
 diff --git a/temp/snapshot/APKBUILD b/temp/snapshot/APKBUILD
 new file mode 100644
-index 0000000..7772821
+index 0000000..cce9da6
 --- /dev/null
 +++ b/temp/snapshot/APKBUILD
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,79 @@
 +# Contributor: Thomas Aldrian <aldrian.thom@proton.me>
 +maintainer="team/gnome <achill@achill.org>"
 +pkgname=snapshot

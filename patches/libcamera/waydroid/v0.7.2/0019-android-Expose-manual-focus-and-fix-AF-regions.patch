@@ -51,7 +51,7 @@ diff --git a/src/android/camera_capabilities.cpp b/src/android/camera_capabiliti
 -	 * Android uses a non-zero value to distinguish an autofocus lens from a
 -	 * fixed-focus lens. The simple IPA exposes actuator positions rather than
 -	 * calibrated dioptres, so report a conservative capability marker.
-+	 * LensPosition is calibrated by the simple-IPA tuning in dioptres. Use its
++	 * LensPosition is bounded by the simple-IPA tuning contract. Use its
 +	 * advertised maximum for Android's closest-focus distance rather than the
 +	 * old generic marker, while retaining the marker for older autofocus IPAs.
  	 */

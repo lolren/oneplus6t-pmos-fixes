@@ -5,18 +5,15 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-Kernel r10, libcamera/IPA r24, `pipewire-spa-libcamera` r7 and Snapshot r3 are
-installed on the reference phone, with Advanced Snapshot r1 beside Snapshot.
-The complete baseline was built for aarch64, hash-verified, simulated offline
-and installed without a reboot. Exact r23 libcamera packages are the immediate
-r24 rollback, and the complete r20/r6/r2 set is also retained. The matching
-PipeWire r7 and Advanced Snapshot r1 generation passed coherent all-sensor
-acceptance and retains r6/r0 for rollback. The r21
-libcamera build is also retained as diagnostic evidence but is superseded
-because its fixed highlight ceiling weakened positive EV compensation. Kernel
-r8 is retained as the verified rollback. Installing r10 through `apk` ran the
-normal postmarketOS trigger that updated the active boot image; no bootloader,
-slot metadata or firmware was changed, and the reboot was a separate action.
+The current reference phone runs kernel r10, libcamera/IPA r28,
+`pipewire-spa-libcamera` r7, Snapshot r3 and Advanced Snapshot r16. The r28
+lower layer and r16 app were built for AArch64 and installed without a reboot.
+Both rear modules now expose bounded manual `LensPosition` control as well as
+contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded.
+The exact r24/r25/r26 packages and earlier r0/r1 app generations remain
+rollback and diagnostic evidence. Installing r10 through `apk` ran the normal
+postmarketOS trigger that updated the active boot image; no bootloader, slot
+metadata or firmware was changed, and that reboot was a separate action.
 
 ## Hardware map
 
@@ -96,9 +93,9 @@ normal libcamera controls as application overrides:
 
 | Sensor | Gamma | Contrast | Saturation | Sharpness |
 | --- | ---: | ---: | ---: | ---: |
-| Front IMX371 | 2.0 | 1.10 | 1.25 | 1.0 |
-| Secondary IMX376 | 2.1 | 1.05 | 1.15 | 1.0 |
-| Main IMX519 | 2.2 | 1.05 | 1.25 | 1.0 |
+| Front IMX371 | 2.0 | 1.10 | 1.35 | 1.0 |
+| Secondary IMX376 | 2.1 | 1.10 | 1.35 | 1.0 |
+| Main IMX519 | 2.2 | 1.10 | 1.35 | 1.0 |
 
 These are conservative open tone/detail defaults selected from bounded
 captures. Sharpness 1 applies a restrained five-tap unsharp mask; 0 disables
@@ -154,26 +151,29 @@ The allowed range remains DAC `400..800`, with coarse step 100, fine step 25
 and two settle frames. A cold start begins at 600; later scans begin around the
 last focused position and expand only toward a better edge. Tap-focus uses the
 same bounded search with faster measurements. Positions within 10% of the peak
-metric form a plateau, and the selected position is its centre. `LensPosition`
-is deliberately not advertised: the
-kernel value is an uncalibrated DAC code, while libcamera defines that control
-in dioptres. Advertising a knowingly false unit would break applications.
+metric form a plateau, and the selected position is its centre.
 
-The r25 source candidate adds `monitorReferenceRiseWindows: 3` and
-`monitorReferenceRise: 0.2` to the IMX376 and IMX519 tuning. A single bright
+The r28 simple IPA also advertises `LensPosition` as a bounded device contract
+from `0.0` (far end) to `2.0` (near end). It linearly maps that public range to
+the measured safe DAC span `400..800`, publishes the normalized position in
+metadata and holds the selected actuator in `AfModeManual`. This is not a
+factory-calibrated object-distance/dioptre table; the normalized range is used
+because the available hardware evidence does not justify claiming one.
+Reset submits `AfModeContinuous` without a forced full-range scan.
+
+The r28 build includes the sustained-rise filter (`monitorReferenceRiseWindows: 3`
+and `monitorReferenceRise: 0.2`) on the IMX376 and IMX519. A single bright
 or unusually detailed frame can therefore not raise the long-lived reference;
 three consecutive 250 ms monitor windows are required, and the reference
-moves only 20% toward the least extreme candidate. Downward adaptation and a
-sustained contrast-loss restart remain unchanged. The deterministic
+moves only 20% toward the least extreme candidate window. Downward adaptation
+and a sustained contrast-loss restart remain unchanged. The deterministic
 `tests/test-af-reference.py` model covers the isolated-spike, sustained-rise,
-sustained-loss and transient-loss boundaries. This is a source/package
-candidate until it has been installed and exercised with a real actuator.
-
-On the installed r24 stack, main and secondary tap-focus both completed local
-searches, then Reset preserved the selected DAC position and issued no further
-lens request. A 70-second main run recorded 177 continuous measurements; a
-95-second secondary run, including tap/reset, recorded 220 post-reset
-measurements. Neither run restarted autofocus or moved the lens after settling.
+sustained-loss and transient-loss boundaries.
+On the installed r28 stack, both rear modules completed local searches and the
+manual 0.0-to-2.0 sweep. A 60-second native validation for each rear module
+returned metadata-confirmed `focused` and recorded zero post-reset lens
+requests or autofocus restarts. The exact summary is recorded in the current
+validation entry below.
 
 ### Snapshot tap-to-focus and still resolution
 
@@ -190,10 +190,14 @@ through a phone-specific actuator command:
    metering, one focus rectangle and `AfTriggerStart`.
 
 Snapshot r3 draws a complete yellow focus square immediately so touch feedback
-is never hidden behind PipeWire discovery. Only an accepted helper request
-schedules the eight-second return to continuous autofocus. Camera changes and
-stale async callbacks clear the marker safely. The fixed-focus front camera has
-no AF controls and is rejected without claiming focus success.
+is never hidden behind PipeWire discovery. Advanced Snapshot r16 handles the
+tap on the Camera ancestor in capture phase, maps it through the negotiated
+crop/orientation, and keeps one-shot autofocus at the selected position after
+the metadata-confirmed result. **Reset** explicitly returns to continuous
+autofocus; there is no delayed reset that can blur a subsequent still. Camera
+changes and stale async callbacks clear the marker safely. The fixed-focus
+front camera has no AF controls and is rejected without claiming focus
+success.
 
 Advanced Snapshot's stricter result path is packaged separately. PipeWire r7
 publishes an accepted-trigger generation and correlates it with real
@@ -256,21 +260,22 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; installed r24/r3 |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r28/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
 | Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
 | Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
+| Manual rear focus | Yes | Yes | No hardware | `LensPosition` 0..2 maps to DAC 400..800; live metadata sweep passed |
 | Contrast | Yes | Yes | Yes | `0..2` |
 | Gamma | Yes | Yes | Yes | `0.1..10` |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
-| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; installed r3 |
+| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; current app |
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
 | HDR | No | No | No | No valid merge/tone-map implementation |
 | Hardware flash pulse | Optional | Optional | No | `pmos-camera-flash` helper; writable rear `*:flash` channels required; live LED/capture acceptance pending |
-| Manual shutter and analogue gain | Candidate | Candidate | Candidate | Standard `ExposureTime`/`AnalogueGain` controls; requires the libcamera r26 source candidate and live acceptance |
+| Manual shutter and analogue gain | Yes | Yes | Yes | Standard `ExposureTime`/`AnalogueGain` controls; lower-layer source/package path live-tested |
 | Manual AWB | No | No | No | Not implemented by the simple IPA |
 | Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
 | Temporal denoise | No | No | No | No equivalent algorithm in this pipeline |
@@ -297,14 +302,16 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The seventeen-patch libcamera 0.7.2 series is in
+The eighteen-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
 50.0 three-patch application series have their own versioned directories under
 `patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
 all patches, tuning, checksums, package revision bumps and the pinned Advanced
-Snapshot aport. The Android-only Camera3 patch, build helper and provider
-configuration are documented in [WAYDROID.md](WAYDROID.md).
+Snapshot aport. The Android-only Camera3 patches, build helper and provider
+configuration are documented in [WAYDROID.md](WAYDROID.md). The Android series
+now contains nineteen patches, including the manual-focus bridge and
+active-array AF-region correction.
 
 No APK, private photograph, raw capture, device identifier, Android camera
 library or vendor tuning blob is committed.
@@ -326,15 +333,39 @@ pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The current reference build produced `libcamera`/`libcamera-ipa` r24,
-`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r1 and the existing
-SDM845 kernel r8. See `packaging/pmaports/README.md` for hashes and rollback
-rules. These commands build packages only.
+The current reference build produced `libcamera`/`libcamera-ipa` r28,
+`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r16 and the SDM845
+kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
+These commands build packages only; no reboot is implicit.
 
 ## Validation
 
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
+
+### Current r28/r16 runtime entry
+
+- Native PipeWire validation passed on the installed r28/r16 stack. Main and
+  secondary returned `focused`, completed the scan-free Reset transition and
+  recorded 183 and 239 continuous-focus metrics respectively during the
+  60-second stability windows; both recorded zero restarts and zero
+  post-reset lens requests. The front completed 120 frames and returned the
+  expected fixed-focus status.
+- Direct manual `LensPosition` requests at 0.0, 1.0 and 2.0 returned success
+  on the active main rear node. The Waydroid Camera2 probe confirmed result
+  distances `[0.000,2.000]` with delta `2.000` on both rear IDs and correctly
+  reported `manualFocusSupported=false` for the front.
+- The Waydroid `tap-focus` probe passed all three cameras; both rear IDs
+  reported terminal AF states `[3,4]` and non-empty center AF regions, while
+  the front remained AF-disabled. These are control/transport checks, not a
+  claim of factory lens calibration or Android image-processing parity.
+- The installed tone defaults are gamma 2.0/2.1/2.2, contrast 1.10 and
+  saturation 1.35 for IMX371/IMX376/IMX519 respectively. A controlled
+  flash-lit preview sweep showed the middle manual position produced the
+  strongest measured detail in the staged scene; ambient dark captures were
+  deliberately not used as optical-quality evidence.
+
+The historical r24 validation below is retained for rollback provenance.
 
 - Both rear continuous-AF tests selected position 600 and reached `Focused`.
 - A one-shot main-camera test reported 240 frames in `Scanning` followed by 60
@@ -414,28 +445,29 @@ lenses were parked at DAC 0 after tests.
   non-image runtime acceptance; visual photo/video checks remain separate.
 
 The retained r23 libcamera APKs remain the immediate r24 rollback. The r8 plus
-r20/r6/r2 package set remains the complete older baseline. The reference phone
-currently runs kernel r8 with validated r24/r7/r3 userspace and Advanced
-Snapshot r1. Exact r6/r0 packages remain the immediate app/transport rollback.
+r20/r6/r2 package set remains the complete older baseline. The current phone
+validation described above uses kernel r10 with r28/r7/r3 userspace and
+Advanced Snapshot r16. Keep the exact r24/r1 or r24/r3 package set as a
+rollback before changing the lower layer or application independently.
 
 ## Installation boundary
 
 Do not unload camera modules on a running phone. A kernel package replaces
 modules under the current release path, so after any approved kernel upgrade
 do not open the camera or load modules before the approved reboot. The current
-r7/r1 generation is userspace-only and does not require a kernel upgrade or
-reboot.
+r28/r16 camera generation is userspace-only and does not require a kernel
+upgrade or reboot.
 
 To reproduce the completed installation safely:
 
-1. retain exact copies or verified rebuilds of the prior r23 libcamera and IPA
+1. retain exact copies or verified rebuilds of the prior libcamera/IPA and app
    packages;
 2. stage patched and rollback APKs in separate offline repositories;
 3. put the aarch64 APKs and `APKINDEX.tar.gz` under each repository's
    `aarch64/` directory;
 4. pass the repository root—not its `aarch64/` subdirectory—to apk-tools 3,
-   run `apk upgrade --simulate`, and from the r23 baseline require only the two
-   r23-to-r24 libcamera upgrades, with no removal;
+   run `apk upgrade --simulate`, and require only the intended userspace
+   upgrades, with no removal;
 5. record the exact-version rollback command and a hash of `/etc/apk/world`;
    and
 6. close camera applications before installation. No reboot is needed for

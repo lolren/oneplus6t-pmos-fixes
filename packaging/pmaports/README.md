@@ -1,14 +1,13 @@
 # Reproducible OnePlus 6T camera packages
 
 `0001-oneplus6t-camera-stack.patch` integrates the complete camera stack into
-pmaports: seven SDM845 kernel patches, seventeen libcamera patches, three tuning
+pmaports: seven SDM845 kernel patches, eighteen project libcamera patches, three tuning
 files, one PipeWire control/state-transport patch, six Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r16 Advanced Snapshot
 source recipe and its verified AArch64 package pair, the
-libcamera r26 manual-exposure source candidate and the r25
-continuous-AF reference candidate; r24 and
+libcamera r28 manual-focus/tone generation; r24, r25 and r26 plus
 the previously signed app generations remain available as rollback baselines.
 It also carries the Samsung panel brightness-serialization patch and bounded
 Qualcomm Venus firmware-error recovery as kernel r10, with kernel r8 retained
@@ -16,15 +15,27 @@ as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
-The phone's accepted runtime baseline remains Advanced Snapshot r1 and
-libcamera r24 until recovery and a fresh device check.
+The reference phone now has r28/r7/r3 userspace and Advanced Snapshot r16
+installed without reboot; r24/r7/r3 and r0/r1 app packages remain rollback
+baselines.
+
+The current r28/r16 evidence is:
+
+- libcamera/IPA r28 with the normalized rear `LensPosition` contract;
+- Advanced Snapshot commit `51139b2df475fa34a7e798452fcda0fac184b3a1`;
+- main APK SHA-256 `46cc19ac583d3ba84fcd400b3e1be4506f583eee404cce11dc8312acea85408d`;
+- language APK SHA-256 `3da06127a14216a2463b4454ade32c5d239f03c53cd4d501ac0713e3a1084f9e`;
+- native main/secondary AF validation with 183/239 post-reset metrics and
+  zero lens requests; and
+- Waydroid manual-focus result deltas of 2.000 on both rear IDs plus
+  terminal tap-focus results on both rear IDs.
 
 ## Reviewed base and build
 
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`ce5daeadec278087ee0d334b0c9819c71022e9bb70f056adaf14762924c65d06`.
+`3839727bbf77a963e77aa2f00c04c62d10e366fd79d2edbc4c6322fab2771851`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -49,25 +60,25 @@ Applying the integration patch to the reviewed base produces:
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r10` (display brightness
   serialization plus bounded Venus firmware-error recovery; r8 remains the
   rollback package);
-- `libcamera-99990.7.2-r26` and `libcamera-ipa-99990.7.2-r26` (manual-exposure
-  source candidate; r25 remains the latest built AF reference and r24 remains
-  the installed rollback);
+- `libcamera-99990.7.2-r28` and `libcamera-ipa-99990.7.2-r28` (manual-focus,
+  stable-AF and conservative tone generation; r24/r25/r26 remain retained
+  diagnostic and rollback candidates);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
 - `advanced-snapshot-0.1.0-r16` plus
   `advanced-snapshot-lang-0.1.0-r16` (handheld-aligned Software HDR and
-  serialized camera teardown candidate; an exact AArch64 APK pair was built in
-  the isolated edge buildroot and installed as a local development package
-  without reboot); and
+  serialized camera teardown, rear manual-focus and tone-default build; an
+  exact AArch64 APK pair was built in the isolated edge buildroot and installed
+  as a local development package without reboot); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
 The r16 application recipe is pinned to Advanced Snapshot commit
-`2c93c2fd094ad3011b9466ab5fc0779fda566cce`. Its GitHub source archive SHA-512
+`51139b2df475fa34a7e798452fcda0fac184b3a1`. Its GitHub source archive SHA-512
 is
-`6d6086b5709cf4dc7df5c7ceeaa0bd09b76dfc4c91c0091d624c74519acce92dd83159dd3578fbf454294f62a229d151383994dec6fed45127b4c28d0c9a2145`.
+`97d670f2fe6e858cc61c4879eefd8ba025f01f7664097dc9ec1af0a61cb3ff6456ff8748e2b5f364731b7259dae5f2e922ef5c73a9c888c4c46b22fccb17acf2`.
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
 compatibility fix. The exact AArch64 pair was built and installed with the
 local pmbootstrap signing key; repository-key release publication and phone
@@ -80,11 +91,10 @@ integration patch. A clean isolated release build passes, but no r6 APK hash
 is claimed until an AArch64 package build and phone acceptance are completed.
 Keep the signed r3 packages as the rollback baseline.
 
-The r26 libcamera revision is now source- and package-validated. Its standalone
-manual-control patch and the full integration diff apply cleanly; the clean
-AArch64 runtime and IPA APKs are signed and verified below. They remain
-uninstalled until the phone transport is usable and the live manual-exposure
-test passes. Keep the signed r24/r25 APKs for rollback.
+The r28 libcamera revision is source-, package- and runtime-validated. Its
+standalone manual-focus patch and the full integration diff apply cleanly; the
+installed AArch64 runtime and IPA packages expose the normalized rear
+`LensPosition` range. Keep the signed r24/r25/r26 APKs for rollback.
 
 The complete opt-in userspace transition is described by
 `data/camera-generation-r26-r15.psv`. Its five-package candidate updates the
@@ -122,6 +132,8 @@ ISP processing. Review the complete candidate with:
 | `libcamera-ipa-99990.7.2-r25.apk` (AF reference candidate) | `11efa3eaa05e00e0921cbf081fb1b1fe8fdd356a4fc1244cbbb13d90fc14608a` |
 | `libcamera-99990.7.2-r26.apk` (manual-exposure candidate) | `9d7f18701c19db365e981d0e6e741ce87232ccb7f022b47ac525fc90aac60552` |
 | `libcamera-ipa-99990.7.2-r26.apk` (manual-exposure candidate) | `1a2d6228ed4afe9ac5c90500caa92f7c7370799ebbe89c9770da747a615e18d3` |
+| `libcamera-99990.7.2-r28.apk` (installed manual-focus/tone generation) | `f2715804c65132fa4f547a11472f5afe722aa3a3afafecefaed940269509f9d1` |
+| `libcamera-ipa-99990.7.2-r28.apk` (installed manual-focus/tone generation) | `619f9de2d4eabefb24437847821aa858c3c369c2b8d61af8a4a4b887b4a0669d` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
 | `snapshot-lang-50.0-r3.apk` | `8eb9fd567ce10c91afb00a98e10b0056d7adbd7683ab0514c217806512b0b108` |
@@ -141,6 +153,8 @@ ISP processing. Review the complete candidate with:
 | `advanced-snapshot-lang-0.1.0-r14.apk` (Software HDR candidate) | `25d01d10d69099c6c6d837a0cdd30c8724b3e831bf8fbbdf0730e36d75b4d98f` |
 | `advanced-snapshot-0.1.0-r15.apk` (handheld-HDR-alignment candidate) | `16581bcf5c96aa74c522c4f51bbd5cb03711a3e41abd02f00a6d9eec7cf61705` |
 | `advanced-snapshot-lang-0.1.0-r15.apk` (handheld-HDR-alignment candidate) | `dec0ec0c229848a0e157e2eba49ab9e74d30423e69ae76bbd73773eea97b61d2` |
+| `advanced-snapshot-0.1.0_p20260829215222-r16.apk` (installed manual-focus build) | `46cc19ac583d3ba84fcd400b3e1be4506f583eee404cce11dc8312acea85408d` |
+| `advanced-snapshot-lang-0.1.0_p20260829215222-r16.apk` (installed manual-focus build) | `3da06127a14216a2463b4454ade32c5d239f03c53cd4d501ac0713e3a1084f9e` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -233,20 +247,21 @@ use the release archive for the documented installer flow.
 
 ## Current installation and rollback baseline
 
-The reference phone currently runs:
+The reference phone's current development camera stack runs:
 
 - kernel package `7.1_rc1-r8`;
-- `libcamera` and `libcamera-ipa` `99990.7.2-r24`;
+- `libcamera` and `libcamera-ipa` `99990.7.2-r28`;
 - `pipewire-spa-libcamera` `1.6.8-r7`;
 - Snapshot and Snapshot language data `50.0-r3`; and
-- Advanced Snapshot and its language data `0.1.0-r1`.
+- Advanced Snapshot and its language data `0.1.0_p20260829215222-r16`.
 
-The r7/r1 packages above are one coherent installed generation: r7 transports
-generation-correlated `AfState`, while r1 waits for that result and never
-reports control acceptance as optical success. Both rear cameras returned a
-correlated `focused` result and survived the 60-second post-reset test; the
-fixed-focus front completed 120 frames and rejected focus as unsupported. Keep
-all three r6/r0 APKs as the immediate rollback and install or roll them back
+The r28/r16 packages above are the current coherent generation: r7 transports
+generation-correlated `AfState`, r28 adds the normalized rear `LensPosition`
+contract, and r16 waits for correlated results while exposing manual focus and
+Reset-to-continuous-AF in the UI. Both rear cameras returned a correlated
+`focused` result and survived the 60-second post-reset test; the fixed-focus
+front completed 120 frames and rejected focus as unsupported. Keep the exact
+r24/r7/r3 plus prior app pair as rollback and install or roll them back
 together.
 
 The exact r24 libcamera packages are the preferred rollback for the r25

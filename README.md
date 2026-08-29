@@ -293,13 +293,14 @@ and through an open Camera3 HAL in Waydroid.
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
 | Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
-| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; installed r7/r1 correlates the result and uses amber/green/red state. |
+| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; r7 transport and Advanced Snapshot r16 correlate the result and use amber/green/red state. |
+| Manual rear focus | Exposes `LensPosition` 0.0–2.0 in Advanced Snapshot; the simple IPA maps it to the bounded 400–800 actuator span and the fixed-focus front disables it. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
-| Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing and rear tap-focus without vendor camera blobs. |
+| Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
 | Complete clean-image camera provider | Bundles the reviewed 32-bit legacy provider, implementation libraries and VINTF declaration and sets both host camera properties with exact rollback, so cameras work after a fresh ARM64 Vanilla initialization. |
 | Verified Google-free Waydroid | Pins an official Vanilla/MAINLINE image pair by archive and extracted-image hashes and verifies that GMS, GSF and Play Store are absent. |
 | Waydroid Mesa GPU software-ISP path | Uses the validated EGL/libyuv path for substantially faster Android preview processing than the CPU-only path. |
@@ -321,18 +322,17 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid RGB private-preview candidate | Texture-only Android private previews can use RGBX/XBGR DMA-BUFs and avoid the NV12 GPU readback/conversion; YUV and encoder streams retain NV12. The follow-on native-fence candidate exports GPU completion to Android when supported and keeps a synchronous fallback; phone acceptance is pending. Download the [r37/r38 development bundles](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/waydroid-camera-r37-r38). |
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
-The repository retains the previously accepted r8/r24/r7/r3 userspace camera
-baseline
-and publishes the newer r26/r13 and r26/r14 lower-stack generations. The
+The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
+publishes the newer r28/r16 development line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
-patches `0013`–`0018` for mixed RGB/NV12 streams, preview sizing, direct
-contiguous NV12 output, source-fence-safe mapped post-processing and
-worker-safe Camera3 shutdown. The r53-static9 provider overlay containing
-`0018` is installed and has passed repeated preview reopen plus full
-three-camera YUV/JPEG/private probes; ordinary third-party camera-app soak
-testing remains open.
+patches `0013`–`0019` for mixed RGB/NV12 streams, preview sizing, direct
+contiguous NV12 output, source-fence-safe mapped post-processing, worker-safe
+Camera3 shutdown, rear manual focus and active-array-correct AF regions. The
+r53-static10-focus provider overlay is installed and has passed repeated
+preview reopen plus manual-focus, tap-focus and full three-camera probes;
+ordinary third-party camera-app soak testing remains open.
 Kernel r10
 and Codec2 r53 are installed. The exact r50 source completed a clean 198-target
 Android build and a full three-camera Camera2 run: all JPEGs decode and report
@@ -342,18 +342,19 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-Advanced Snapshot r14 source and the matching libcamera/IPA r26 and PipeWire r7
-packages are now pinned and the signed AArch64 APK pair is published in the
-r26/r14 generation. The candidate has not been hardware-accepted yet. The
-earlier r7/r1 focus result and stability evidence remains in
-[docs/VALIDATION.md](docs/VALIDATION.md) as historical evidence, not a current
-installation claim.
+The current native line is libcamera/IPA r28 with Advanced Snapshot r16 from
+commit `51139b2df475fa34a7e798452fcda0fac184b3a1`. It is installed on the
+reference phone without reboot. Native and Waydroid rear focus controls pass
+their live metadata/actuator probes; saved-photo colour and visual UI checks
+remain scene-dependent and are not claimed as vendor Android parity.
 
 The current native UI source exposes a visible tap reticle plus Exposure, Colour,
 Contrast, Detail, Zoom, Reset and an opt-in rear **Hardware flash** switch when
 the helper is installed. The lower-layer focus instability is fixed:
 both rear cameras now use bounded progressive tap-focus and return to
-continuous monitoring without moving the lens. The UI is not yet an
+continuous monitoring without moving the lens. Advanced Snapshot additionally
+offers a manual rear-lens slider and explicitly returns to continuous AF on
+Reset. The UI is not yet an
 Android-level camera application; that work continues in the separately
 maintained Advanced Snapshot project. HDR, calibrated
 colour/lens shading, temporal denoise and Android vendor computational
@@ -534,7 +535,10 @@ On installed Snapshot r3:
 
 Open **Advanced Snapshot** for the truthful reticle: amber means scanning,
 green means libcamera reported `Focused`, and red means `Failed` or a transport
-error. The fixed-focus front camera has no focus gesture.
+error. In **Image Controls**, use **Manual focus position** on either rear
+camera to hold 0 (far) through 2 (near); tapping the preview replaces that
+lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
+front camera has no focus gesture or manual slider.
 
 The sliders affect both preview and saved output. The Advanced Snapshot r15
 candidate also exposes opt-in Software HDR when its helper is installed; it
@@ -604,9 +608,9 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r26/r13 and r26/r14, plus the complete Waydroid r52
-  clean-Vanilla bundle, are published; the installed r53-static9 camera
-  overlay, kernel r10 and byte-reproducible Codec2 r53 complete repeated
+- signed AArch64 camera r28 and Advanced Snapshot r16 development packages,
+  plus the complete Waydroid r52 clean-Vanilla bundle, are published; the
+  installed r53-static10-focus camera overlay, kernel r10 and byte-reproducible Codec2 r53 complete repeated
   main/front recording. The
   exact r10/r8 and r53 artifacts are also public. Android frame-rate work and
   a safe non-Venus auxiliary encoder remain open;
@@ -614,8 +618,9 @@ The current requirement-by-requirement audit is maintained in
   networking and all-camera preview pass. Previously accepted rear/front
   video, microphone and speaker playback remain installed; time-after-boot,
   modem-call audio,
-  display stability, native camera quality/video, outdoor GNSS, NFC, battery
-  and rollback persistence still need their respective device tests;
+  display stability, saved-image colour/quality, native camera video, outdoor
+  GNSS, NFC, battery and rollback persistence still need their respective
+  device tests;
 - Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are
   not claimed because the open stack does not provide those proprietary
   components.

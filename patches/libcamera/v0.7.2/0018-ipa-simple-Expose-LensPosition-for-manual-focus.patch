@@ -3,11 +3,11 @@ From: Lolren <loren.bufanu@gmail.com>
 Date: Sat, 29 Aug 2026 00:00:00 +0100
 Subject: [PATCH] ipa: simple: expose standard lens-position manual focus
 
-Expose the simple IPA's calibrated lens-position range in libcamera dioptres
-and accept AfModeManual requests. The physical OnePlus 6T actuator remains
-bounded to the measured 400..800 contrast-focus range; the public 0..2 D range
-is a documented normalized contract until a factory optical calibration is
-available.
+Expose the simple IPA's bounded lens-position range through the standard
+libcamera control and accept AfModeManual requests. The physical OnePlus 6T
+actuator remains bounded to the measured 400..800 contrast-focus range; the
+public 0..2 normalized range is a documented device contract until a factory
+optical calibration is available.
 
 Publish the current lens position in every result so Camera2 applications can
 verify that a manual focus request reached the actuator.
