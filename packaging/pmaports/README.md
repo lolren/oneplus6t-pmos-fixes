@@ -15,16 +15,17 @@ as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
-The reference phone now has r28/r7/r3 userspace and Advanced Snapshot r16
-installed without reboot; r24/r7/r3 and r0/r1 app packages remain rollback
-baselines.
+The reference phone has r28/r7/r3 userspace and the previous Advanced Snapshot
+r16 build installed without reboot; r24/r7/r3 and r0/r1 app packages remain
+rollback baselines. The newer r16 source candidate adds a labelled Controls
+button to the camera bar and is documented below pending phone installation.
 
 The current r28/r16 evidence is:
 
 - libcamera/IPA r28 with the normalized rear `LensPosition` contract;
-- Advanced Snapshot commit `51139b2df475fa34a7e798452fcda0fac184b3a1`;
-- main APK SHA-256 `46cc19ac583d3ba84fcd400b3e1be4506f583eee404cce11dc8312acea85408d`;
-- language APK SHA-256 `3da06127a14216a2463b4454ade32c5d239f03c53cd4d501ac0713e3a1084f9e`;
+- Advanced Snapshot source candidate commit `2d9639bcb58d3b5b0689928e03946242def036cd`;
+- main APK SHA-256 `677c09016eb673ee1f6bc033435073871da551aaadfe7291f09ea7b81c57d10e`;
+- language APK SHA-256 `968f885fdd01ee6661bf63f0d58d969c290cf9a09865c733f841a1101a22c4af`;
 - native main/secondary AF validation with 183/239 post-reset metrics and
   zero lens requests; and
 - Waydroid manual-focus result deltas of 2.000 on both rear IDs plus
@@ -35,7 +36,7 @@ The current r28/r16 evidence is:
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its SHA-256 is
-`3839727bbf77a963e77aa2f00c04c62d10e366fd79d2edbc4c6322fab2771851`.
+`5ad6a5c8d0f20080b42c3dfa13b0d6134bab680d129e847cedddce4f2433f01c`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -67,21 +68,21 @@ Applying the integration patch to the reviewed base produces:
 - `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
 - `advanced-snapshot-0.1.0-r16` plus
   `advanced-snapshot-lang-0.1.0-r16` (handheld-aligned Software HDR and
-  serialized camera teardown, rear manual-focus and tone-default build; an
-  exact AArch64 APK pair was built in the isolated edge buildroot and installed
-  as a local development package without reboot); and
+  serialized camera teardown, rear manual-focus, tone-default and visible
+  Controls-button build; an exact AArch64 APK pair was built in the isolated
+  edge buildroot; phone installation is pending SSH-service recovery); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
 The r16 application recipe is pinned to Advanced Snapshot commit
-`51139b2df475fa34a7e798452fcda0fac184b3a1`. Its GitHub source archive SHA-512
+`2d9639bcb58d3b5b0689928e03946242def036cd`. Its GitHub source archive SHA-512
 is
-`97d670f2fe6e858cc61c4879eefd8ba025f01f7664097dc9ec1af0a61cb3ff6456ff8748e2b5f364731b7259dae5f2e922ef5c73a9c888c4c46b22fccb17acf2`.
+`02c30af24bd726b7aa5e09acf92804dbc6e24b10e939a1a08e875ddcfc2540d58a88747f04ee0ae46ba3a2a950fe9084cf8fd8079b9a4921c9a251fad2cc6375`.
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
-compatibility fix. The exact AArch64 pair was built and installed with the
-local pmbootstrap signing key; repository-key release publication and phone
+compatibility fix. The exact AArch64 pair was built with the local pmbootstrap
+signing key; phone installation, repository-key release publication and phone
 visual acceptance are still pending.
 
 The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
@@ -155,6 +156,8 @@ ISP processing. Review the complete candidate with:
 | `advanced-snapshot-lang-0.1.0-r15.apk` (handheld-HDR-alignment candidate) | `dec0ec0c229848a0e157e2eba49ab9e74d30423e69ae76bbd73773eea97b61d2` |
 | `advanced-snapshot-0.1.0_p20260829215222-r16.apk` (installed manual-focus build) | `46cc19ac583d3ba84fcd400b3e1be4506f583eee404cce11dc8312acea85408d` |
 | `advanced-snapshot-lang-0.1.0_p20260829215222-r16.apk` (installed manual-focus build) | `3da06127a14216a2463b4454ade32c5d239f03c53cd4d501ac0713e3a1084f9e` |
+| `advanced-snapshot-0.1.0_p20260829225220-r16.apk` (visible Controls source candidate) | `677c09016eb673ee1f6bc033435073871da551aaadfe7291f09ea7b81c57d10e` |
+| `advanced-snapshot-lang-0.1.0_p20260829225220-r16.apk` (visible Controls source candidate) | `968f885fdd01ee6661bf63f0d58d969c290cf9a09865c733f841a1101a22c4af` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -253,7 +256,9 @@ The reference phone's current development camera stack runs:
 - `libcamera` and `libcamera-ipa` `99990.7.2-r28`;
 - `pipewire-spa-libcamera` `1.6.8-r7`;
 - Snapshot and Snapshot language data `50.0-r3`; and
-- Advanced Snapshot and its language data `0.1.0_p20260829215222-r16`.
+- Advanced Snapshot and its language data `0.1.0_p20260829215222-r16` (the
+  visible-Controls `0.1.0_p20260829225220-r16` candidate is built but not yet
+  installed).
 
 The r28/r16 packages above are the current coherent generation: r7 transports
 generation-correlated `AfState`, r28 adds the normalized rear `LensPosition`

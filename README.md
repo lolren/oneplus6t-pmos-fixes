@@ -342,15 +342,18 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current native line is libcamera/IPA r28 with Advanced Snapshot r16 from
-commit `51139b2df475fa34a7e798452fcda0fac184b3a1`. It is installed on the
-reference phone without reboot. Native and Waydroid rear focus controls pass
-their live metadata/actuator probes; saved-photo colour and visual UI checks
-remain scene-dependent and are not claimed as vendor Android parity.
+The current native line is libcamera/IPA r28 with Advanced Snapshot r16. The
+latest app source is commit `2d9639bcb58d3b5b0689928e03946242def036cd`, which
+adds a labelled **Controls** button beside the shutter and camera switch while
+retaining the hamburger-menu entry. Its AArch64 package is built and recorded
+in the app repository; installation on the reference phone is pending recovery
+of its SSH service. Native and Waydroid rear focus controls pass their live
+metadata/actuator probes; saved-photo colour and visual UI checks remain
+scene-dependent and are not claimed as vendor Android parity.
 
-The current native UI source exposes a visible tap reticle plus Exposure, Colour,
-Contrast, Detail, Zoom, Reset and an opt-in rear **Hardware flash** switch when
-the helper is installed. The lower-layer focus instability is fixed:
+The current native UI source exposes a visible **Controls** entry, tap reticle
+plus Exposure, Colour, Detail, Zoom, Reset and an opt-in rear **Hardware flash**
+switch when the helper is installed. The lower-layer focus instability is fixed:
 both rear cameras now use bounded progressive tap-focus and return to
 continuous monitoring without moving the lens. Advanced Snapshot additionally
 offers a manual rear-lens slider and explicitly returns to continuous AF on

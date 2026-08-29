@@ -193,7 +193,9 @@ Snapshot r3 draws a complete yellow focus square immediately so touch feedback
 is never hidden behind PipeWire discovery. Advanced Snapshot r16 handles the
 tap on the Camera ancestor in capture phase, maps it through the negotiated
 crop/orientation, and keeps one-shot autofocus at the selected position after
-the metadata-confirmed result. **Reset** explicitly returns to continuous
+the metadata-confirmed result. Its camera bar now has a labelled **Controls**
+button beside the shutter and camera switch; the hamburger menu retains
+**Image Controls** as a fallback. **Reset** explicitly returns to continuous
 autofocus; there is no delayed reset that can blur a subsequent still. Camera
 changes and stale async callbacks clear the marker safely. The fixed-focus
 front camera has no AF controls and is rejected without claiming focus
