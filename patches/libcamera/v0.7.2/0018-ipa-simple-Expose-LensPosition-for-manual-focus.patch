@@ -1,0 +1,163 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sat, 29 Aug 2026 00:00:00 +0100
+Subject: [PATCH] ipa: simple: expose standard lens-position manual focus
+
+Expose the simple IPA's calibrated lens-position range in libcamera dioptres
+and accept AfModeManual requests. The physical OnePlus 6T actuator remains
+bounded to the measured 400..800 contrast-focus range; the public 0..2 D range
+is a documented normalized contract until a factory optical calibration is
+available.
+
+Publish the current lens position in every result so Camera2 applications can
+verify that a manual focus request reached the actuator.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/ipa/simple/algorithms/af.cpp | 52 +++++++++++++++++++++++++++++++++++++++-
+ src/ipa/simple/algorithms/af.h   |  4 +++
+ 2 files changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -33,6 +33,10 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	fineRange_ = tuningData["fineRange"].get<int32_t>(coarseStep_);
+ 	configuredInitialPosition_ = tuningData["initialPosition"].get<int32_t>(
+ 		configuredMin_ + (configuredMax_ - configuredMin_) / 2);
++	configuredLensPositionMin_ =
++		tuningData["lensPositionMin"].get<float>(0.0f);
++	configuredLensPositionMax_ =
++		tuningData["lensPositionMax"].get<float>(2.0f);
+ 	settleTimeMs_ = tuningData["settleTimeMs"].get<unsigned int>(200);
+ 	settleFrames_ = tuningData["settleFrames"].get<unsigned int>(0);
+ 	startupDelayMs_ = tuningData["startupDelayMs"].get<unsigned int>(2000);
+@@ -63,6 +67,10 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	    fineStep_ > coarseStep_ || fineStep_ > fineRange_ ||
+ 	    configuredInitialPosition_ < configuredMin_ ||
+ 	    configuredInitialPosition_ > configuredMax_ ||
++	    !std::isfinite(configuredLensPositionMin_) ||
++	    !std::isfinite(configuredLensPositionMax_) ||
++	    configuredLensPositionMin_ < 0.0f ||
++	    configuredLensPositionMax_ <= configuredLensPositionMin_ ||
+ 	    !settleTimeMs_ || !measureTimeMs_ ||
+ 	    !measureSamples_ || !fastMeasureSamples_ ||
+ 	    !monitorWindowMs_ || !restartHoldMs_ ||
+@@ -79,8 +87,15 @@ int Af::init(IPAContext &context, const ValueNode &tuningData)
+ 	defaultMode_ = continuous ? controls::AfModeContinuous
+ 				  : controls::AfModeAuto;
+ 	context.ctrlMap[&controls::AfMode] =
+-		ControlInfo(controls::AfModeAuto, controls::AfModeContinuous,
++		ControlInfo(controls::AfModeManual, controls::AfModeContinuous,
+ 			    defaultMode_);
++	const float defaultLensPosition = configuredLensPositionMin_ +
++		(static_cast<float>(configuredInitialPosition_ - configuredMin_) /
++		 static_cast<float>(configuredMax_ - configuredMin_)) *
++		(configuredLensPositionMax_ - configuredLensPositionMin_);
++	context.ctrlMap[&controls::LensPosition] =
++		ControlInfo(configuredLensPositionMin_, configuredLensPositionMax_,
++			    defaultLensPosition);
+ 	context.ctrlMap[&controls::AfTrigger] =
+ 		ControlInfo(controls::AfTriggerValues);
+ 	context.ctrlMap[&controls::AfMetering] =
+@@ -161,7 +176,8 @@ void Af::queueRequest(IPAContext &context,
+ 
+ 	const auto &mode = requestControls.get(controls::AfMode);
+ 	if (mode && *mode != mode_) {
+-		if (*mode != controls::AfModeAuto &&
++		if (*mode != controls::AfModeManual &&
++		    *mode != controls::AfModeAuto &&
+ 		    *mode != controls::AfModeContinuous) {
+ 			LOG(IPASoftAf, Warning)
+ 				<< "Ignoring unsupported autofocus mode " << *mode;
+@@ -177,6 +193,18 @@ void Af::queueRequest(IPAContext &context,
+ 		}
+ 	}
+ 
++	const auto &lensPosition = requestControls.get(controls::LensPosition);
++	if (lensPosition && mode_ == controls::AfModeManual) {
++		const float boundedLensPosition = std::clamp(
++			*lensPosition, configuredLensPositionMin_,
++			configuredLensPositionMax_);
++		const int32_t position = actuatorForLensPosition(boundedLensPosition);
++		if (position != currentPosition_)
++			requestPosition(context, position);
++		phase_ = ScanPhase::Idle;
++		state_ = controls::AfStateIdle;
++	}
++
+ 	const auto &metering = requestControls.get(controls::AfMetering);
+ 	if (metering && *metering != metering_) {
+ 		if (*metering != controls::AfMeteringAuto &&
+@@ -328,6 +356,38 @@ void Af::requestPosition(IPAContext &context, int32_t position)
+ 	LOG(IPASoftAf, Debug) << "Requesting lens position " << position;
+ }
+ 
++float Af::lensPositionForActuator(int32_t position) const
++{
++	if (maxPosition_ <= minPosition_)
++		return configuredLensPositionMin_;
++
++	const float fraction = std::clamp(
++		static_cast<float>(position - minPosition_) /
++			static_cast<float>(maxPosition_ - minPosition_),
++		0.0f, 1.0f);
++	return configuredLensPositionMin_ +
++		fraction * (configuredLensPositionMax_ - configuredLensPositionMin_);
++}
++
++int32_t Af::actuatorForLensPosition(float position) const
++{
++	if (maxPosition_ <= minPosition_ ||
++	    configuredLensPositionMax_ <= configuredLensPositionMin_)
++		return initialPosition_;
++
++	const float bounded = std::clamp(position,
++					 configuredLensPositionMin_,
++					 configuredLensPositionMax_);
++	const float fraction =
++		(bounded - configuredLensPositionMin_) /
++		(configuredLensPositionMax_ - configuredLensPositionMin_);
++	return std::clamp(
++		static_cast<int32_t>(std::lround(
++			static_cast<float>(minPosition_) +
++			fraction * static_cast<float>(maxPosition_ - minPosition_))),
++		minPosition_, maxPosition_);
++}
++
+ void Af::startScan(IPAContext &context, bool fast)
+ {
+ 	fastScan_ = fast;
+@@ -632,6 +692,8 @@ void Af::process(IPAContext &context,
+ 	}
+ 
+ 	metadata.set(controls::AfMode, mode_);
++	metadata.set(controls::LensPosition,
++			 lensPositionForActuator(currentPosition_));
+ 	metadata.set(controls::AfMetering, metering_);
+ 	if (!focusWindow_.isNull())
+ 		metadata.set(controls::AfWindows,
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -51,6 +51,8 @@ private:
+ 	bool extendCoarsePositions();
+ 	void buildFinePositions();
+ 	static double focusMetric(const SwIspStats *stats);
++	float lensPositionForActuator(int32_t position) const;
++	int32_t actuatorForLensPosition(float position) const;
+ 
+ 	int32_t configuredMin_ = 400;
+ 	int32_t configuredMax_ = 800;
+@@ -58,6 +60,8 @@ private:
+ 	int32_t fineStep_ = 25;
+ 	int32_t fineRange_ = 100;
+ 	int32_t configuredInitialPosition_ = 600;
++	float configuredLensPositionMin_ = 0.0f;
++	float configuredLensPositionMax_ = 2.0f;
+ 	unsigned int settleTimeMs_ = 200;
+ 	unsigned int settleFrames_ = 0;
+ 	unsigned int startupDelayMs_ = 2000;
+
+-- 
+2.49.0

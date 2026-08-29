@@ -12,7 +12,7 @@ unfreeze=${PMOS_WAYDROID_PROBE_UNFREEZE:-yes}
 
 usage() {
 	printf '%s\n' \
-		"usage: $program APK [full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p] [OUTPUT_FILE]" \
+		"usage: $program APK [full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p|tap-focus|manual-focus] [OUTPUT_FILE]" \
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
 		'An output file is optional and must not already exist.' \
@@ -46,7 +46,7 @@ output=${3:-}
 
 [ -f "$apk" ] || die "APK does not exist: $apk"
 case "$profile" in
-full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p)
+full|preview|preview-yuv|surface|surface-yuv|record|record-yuv-720p|encode-720p|tap-focus|manual-focus)
 	;;
 *)
 	die "unsupported profile: $profile"

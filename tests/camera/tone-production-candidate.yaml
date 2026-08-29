@@ -1,0 +1,15 @@
+frames:
+  - 0:
+      # Match the installed IMX519 production defaults for the first half.
+      AfMode: 0
+      LensPosition: 1.0
+      Gamma: 2.2
+      Contrast: 1.05
+      Saturation: 1.25
+  - 120:
+      # Candidate only: add restrained contrast and colour separation without
+      # changing exposure or lens position. Promote only after a like-for-like
+      # scene comparison accepts the result.
+      Gamma: 2.2
+      Contrast: 1.10
+      Saturation: 1.40

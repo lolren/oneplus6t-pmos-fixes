@@ -1,0 +1,12 @@
+frames:
+  - 0:
+      AfMode: 0
+      LensPosition: 0.0
+  - 12:
+      LensPosition: 0.5
+  - 24:
+      LensPosition: 1.0
+  - 36:
+      LensPosition: 1.5
+  - 48:
+      LensPosition: 2.0

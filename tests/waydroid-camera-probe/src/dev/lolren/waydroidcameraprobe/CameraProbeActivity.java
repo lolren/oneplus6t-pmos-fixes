@@ -60,7 +60,10 @@ public final class CameraProbeActivity extends Activity {
     private static final String PROFILE_RECORD = "record";
     private static final String PROFILE_RECORD_YUV_720P = "record-yuv-720p";
     private static final String PROFILE_ENCODE_720P = "encode-720p";
+    private static final String PROFILE_TAP_FOCUS = "tap-focus";
+    private static final String PROFILE_MANUAL_FOCUS = "manual-focus";
     private static final int SETTLE_FRAMES = 6;
+    private static final int MANUAL_FOCUS_SETTLE_FRAMES = 12;
     private static final int EV_SETTLE_FRAMES = 60;
     private static final int EV_SAMPLE_FRAMES = 8;
     private static final int MIN_WARMUP_FRAMES = 30;
@@ -95,6 +98,15 @@ public final class CameraProbeActivity extends Activity {
     private long captureLastTimestamp;
     private Size privateStreamSize;
     private int selectedAfMode;
+    private boolean manualFocusSupported;
+    private float manualFocusDistanceMax;
+    private int manualFocusStage;
+    private int manualFocusStageFrames;
+    private float manualFocusFirstDistance;
+    private float manualFocusSecondDistance;
+    private boolean manualFocusFirstObserved;
+    private boolean manualFocusSecondObserved;
+    private boolean manualFocusComplete;
     private int currentExposureCompensation;
     private int[] exposureRequests;
     private double[] exposureMeans;
@@ -360,6 +372,15 @@ public final class CameraProbeActivity extends Activity {
         currentExposureCompensation = 0;
         exposureComplete = false;
         focusRegions = null;
+        manualFocusSupported = false;
+        manualFocusDistanceMax = 0.0f;
+        manualFocusStage = 0;
+        manualFocusStageFrames = 0;
+        manualFocusFirstDistance = Float.NaN;
+        manualFocusSecondDistance = Float.NaN;
+        manualFocusFirstObserved = false;
+        manualFocusSecondObserved = false;
+        manualFocusComplete = false;
         afStates.clear();
         exposureMetadata.clear();
 
@@ -452,6 +473,16 @@ public final class CameraProbeActivity extends Activity {
             int[] modes = characteristics.get(
                     CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
             selectedAfMode = chooseAutofocusMode(modes, needsRecordTemplate());
+            if (PROFILE_TAP_FOCUS.equals(profile)
+                    && contains(modes, CaptureRequest.CONTROL_AF_MODE_AUTO))
+                selectedAfMode = CaptureRequest.CONTROL_AF_MODE_AUTO;
+            Float minimumFocusDistance = characteristics.get(
+                    CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+            manualFocusDistanceMax = minimumFocusDistance == null
+                    ? 0.0f : minimumFocusDistance;
+            manualFocusSupported = needsManualFocus()
+                    && manualFocusDistanceMax > 0.0f
+                    && contains(modes, CaptureRequest.CONTROL_AF_MODE_OFF);
             Integer maxAfRegions = characteristics.get(
                     CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
             Integer lensFacing = characteristics.get(
@@ -511,6 +542,8 @@ public final class CameraProbeActivity extends Activity {
             Log.i(TAG, "CAPABILITY id=" + id + " afModes=" + Arrays.toString(modes)
                     + " maxAfRegions=" + maxAfRegions + " lensFacing=" + lensFacing
                     + " sensorOrientation=" + sensorOrientation
+                    + " manualFocusSupported=" + manualFocusSupported
+                    + " manualFocusDistanceMax=" + manualFocusDistanceMax
                     + " probeSize=" + size + " aeRange=" + exposureRange
                     + " aeStep=" + exposureStep
                     + " privateSize=" + privateSize
@@ -621,7 +654,10 @@ public final class CameraProbeActivity extends Activity {
                         previewRequest.addTarget(yuvReader.getSurface());
                     if (recorderSurface != null)
                         previewRequest.addTarget(recorderSurface);
-                    applyAutomaticControls(previewRequest, false);
+                    if (needsManualFocus() && manualFocusSupported)
+                        applyManualControls(previewRequest, 0.0f);
+                    else
+                        applyAutomaticControls(previewRequest, false);
                     configured.setRepeatingRequest(previewRequest.build(),
                             captureCallback(token), handler);
 
@@ -668,6 +704,46 @@ public final class CameraProbeActivity extends Activity {
                 if (state != null) {
                     afStates.add(state);
                     maybeCompleteCamera(token);
+                }
+                if (needsManualFocus() && manualFocusSupported
+                        && !manualFocusComplete) {
+                    Float focusDistance = result.get(
+                            CaptureResult.LENS_FOCUS_DISTANCE);
+                    Float requestedDistance = request.get(
+                            CaptureRequest.LENS_FOCUS_DISTANCE);
+                    if (focusDistance != null && requestedDistance != null) {
+                        if (requestedDistance <= manualFocusDistanceMax / 2.0f) {
+                            /* Keep the settled result from the first
+                             * request. A few old requests can be delivered
+                             * after the second repeating request is queued. */
+                            if (!manualFocusFirstObserved) {
+                                manualFocusFirstDistance = focusDistance;
+                                manualFocusFirstObserved = true;
+                            }
+                        } else {
+                            if (!manualFocusSecondObserved) {
+                                manualFocusSecondDistance = focusDistance;
+                                manualFocusSecondObserved = true;
+                            }
+                        }
+                    }
+
+                    manualFocusStageFrames++;
+                    if (manualFocusStage == 0
+                            && manualFocusStageFrames >= MANUAL_FOCUS_SETTLE_FRAMES) {
+                        manualFocusStage = 1;
+                        manualFocusStageFrames = 0;
+                        requestManualFocus(token, 1.0f * manualFocusDistanceMax);
+                    } else if (manualFocusStage == 1
+                            && manualFocusStageFrames >= MANUAL_FOCUS_SETTLE_FRAMES) {
+                        manualFocusStage = 2;
+                        manualFocusComplete = true;
+                        Log.i(TAG, String.format(Locale.US,
+                                "MANUAL_FOCUS requested=[0.000,%.3f] result=[%.3f,%.3f]",
+                                manualFocusDistanceMax, manualFocusFirstDistance,
+                                manualFocusSecondDistance));
+                        maybeCompleteCamera(token);
+                    }
                 }
                 Integer compensation = result.get(
                         CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION);
@@ -731,6 +807,35 @@ public final class CameraProbeActivity extends Activity {
         request.set(CaptureRequest.CONTROL_AF_TRIGGER,
                 trigger ? CaptureRequest.CONTROL_AF_TRIGGER_START
                         : CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+    }
+
+    private void applyManualControls(CaptureRequest.Builder request, float distance) {
+        request.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+        request.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        request.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                currentExposureCompensation);
+        if (selectedFpsRange != null)
+            request.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                    selectedFpsRange);
+        request.set(CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_OFF);
+        request.set(CaptureRequest.LENS_FOCUS_DISTANCE,
+                Math.max(0.0f, Math.min(manualFocusDistanceMax, distance)));
+    }
+
+    private void requestManualFocus(int token, float distance) {
+        if (!isCurrent(token) || camera == null || session == null)
+            return;
+        try {
+            CaptureRequest.Builder request = camera.createCaptureRequest(
+                    captureTemplate());
+            request.addTarget(privateReader.getSurface());
+            applyManualControls(request, distance);
+            session.setRepeatingRequest(request.build(), captureCallback(token), handler);
+        } catch (Exception error) {
+            failCamera(token, cameraIds[cameraIndex],
+                    "manual focus update failed: " + compactError(error));
+        }
     }
 
     private void prepareMediaRecorder(String id, CamcorderProfile recordingProfile)
@@ -1108,6 +1213,34 @@ public final class CameraProbeActivity extends Activity {
                 || (needsJpeg() && !jpegAccepted)
                 || (needsEncodedVideo() && !recorderAccepted))
             return;
+
+        if (needsManualFocus()) {
+            if (manualFocusSupported && !manualFocusComplete)
+                return;
+            if (!manualFocusSupported && privateFrames < MANUAL_FOCUS_SETTLE_FRAMES)
+                return;
+
+            String id = cameraIds[cameraIndex];
+            boolean valid = !manualFocusSupported
+                    || (manualFocusFirstObserved && manualFocusSecondObserved
+                            && Float.isFinite(manualFocusFirstDistance)
+                            && Float.isFinite(manualFocusSecondDistance)
+                            && Math.abs(manualFocusSecondDistance
+                                    - manualFocusFirstDistance) >= 0.25f);
+            String result = String.format(Locale.US,
+                    "CAMERA id=%s valid=%s profile=%s privateFrames=%d "
+                            + "manualFocusSupported=%s manualFocusDistanceMax=%.3f "
+                            + "manualFocusResult=[%.3f,%.3f] manualFocusDelta=%.3f",
+                    id, valid, profile, privateFrames, manualFocusSupported,
+                    manualFocusDistanceMax, manualFocusFirstDistance,
+                    manualFocusSecondDistance,
+                    manualFocusSecondDistance - manualFocusFirstDistance);
+            results.add(result);
+            Log.i(TAG, result);
+            completeCamera(token);
+            return;
+        }
+
         if (privateTimedFrames < MIN_PRIVATE_TIMING_FRAMES)
             return;
 
@@ -1661,13 +1794,19 @@ public final class CameraProbeActivity extends Activity {
                 || PROFILE_SURFACE_YUV.equals(requested)
                 || PROFILE_RECORD.equals(requested)
                 || PROFILE_RECORD_YUV_720P.equals(requested)
-                || PROFILE_ENCODE_720P.equals(requested))
+                || PROFILE_ENCODE_720P.equals(requested)
+                || PROFILE_TAP_FOCUS.equals(requested)
+                || PROFILE_MANUAL_FOCUS.equals(requested))
             return requested;
         return PROFILE_FULL;
     }
 
     private boolean needsFullValidation() {
         return PROFILE_FULL.equals(profile);
+    }
+
+    private boolean needsManualFocus() {
+        return PROFILE_MANUAL_FOCUS.equals(profile);
     }
 
     private long cameraTimeoutMs() {

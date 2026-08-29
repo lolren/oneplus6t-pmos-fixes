@@ -35,6 +35,11 @@ For every camera reported by Android, the probe checks:
 - a JPEG request produces a decodable, non-empty image without repeated
   full-width row discontinuities from an unsignalled GPU source fence;
 - rear autofocus accepts a sensor-region request and reports scan/focus states;
+- the `tap-focus` profile submits a real center metering rectangle with an
+  Android `AF_TRIGGER_START` request and waits for a terminal rear focus state;
+- the `manual-focus` profile switches each rear camera between 0 and its
+  advertised minimum-focus distance and verifies that `LENS_FOCUS_DISTANCE`
+  changes in capture results; fixed-focus cameras are reported as unsupported;
 - the fixed-focus front camera reports autofocus as unavailable;
 - -1, 0 and +1 EV requests are returned in capture metadata;
 - exposure time, sensitivity and frame duration metadata are present; and
@@ -167,6 +172,18 @@ waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile encode-720p --es camera-id 0
+
+# Camera2 metering rectangle plus AF_TRIGGER_START (rear autofocus)
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -W -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile tap-focus
+
+# Verify the standard Camera2 manual-focus control on a rear camera
+waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
+waydroid shell -- am start -W -n \
+  dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
+  --es profile manual-focus --es camera-id 1
 ```
 
 After installing this repository, the same operation can be run and saved
@@ -177,7 +194,8 @@ pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
   /tmp/oneplus6t-camera-preview.txt
 ```
 
-Use `preview-yuv` or `full` as the second argument for the other profiles.
+Use `preview-yuv`, `full`, `tap-focus`, or `manual-focus` as the second argument for the
+other profiles.
 Use `surface` to measure updates reaching a real Android `TextureView`,
 `surface-yuv` to add a simultaneous YUV consumer, or `record` to use Camera2's
 `TEMPLATE_RECORD` while measuring that same displayed surface. Use
@@ -190,6 +208,20 @@ camera timestamps and the per-camera `CamcorderProfile` to negotiate cadence.
 It also follows Android's recording teardown order: stop and close the capture
 session before stopping `MediaRecorder`, so no new DMA-BUFs race Codec2
 `STREAMOFF`.
+Use `manual-focus` with camera ID 1 or 2 to verify that Android's standard
+focus-distance request reaches the rear actuator. The profile sends 0.0 D and
+the advertised maximum distance in separate repeating requests, waits for
+each request to settle, and requires a result-distance delta of at least 0.25
+D. A fixed-focus camera is reported as `manualFocusSupported=false` rather than
+treated as a failure. This checks control transport and actuator movement; it
+does not claim that every scene has the same optical sharpness.
+
+Use `tap-focus` with camera ID 1 or 2 to verify the separate Camera2 tap-style
+path. It sends a center `CONTROL_AF_REGIONS` rectangle together with
+`CONTROL_AF_TRIGGER_START` and requires `FOCUSED_LOCKED` or
+`NOT_FOCUSED_LOCKED` before passing. This validates Android request routing and
+state reporting; it remains a transport test, not a colour-chart or lens
+calibration claim.
 
 To copy the generated MP4 to a new host path, isolate one camera and set the
 media-output variable:

@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sat, 29 Aug 2026 00:00:00 +0100
+Subject: [PATCH] android: expose manual focus and correct AF regions
+
+Translate Android AF_MODE_OFF and LENS_FOCUS_DISTANCE into the simple IPA's
+standard manual-focus controls, and publish the settled lens position back to
+Camera2. This lets Android camera applications and tap-to-focus code select a
+real actuator position instead of silently leaving the lens at a stale value.
+
+Android AF rectangles are expressed in full active-array coordinates, while
+libcamera's AfWindows is relative to the active area. Subtract the sensor
+active-array origin before forwarding the rectangle so taps near the edge are
+metered in the intended place on the OnePlus sensors.
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/android/camera_capabilities.cpp | 25 ++++++++++++++++++++-----
+ src/android/camera_device.cpp       | 42 +++++++++++++++++++++++++++++++++++--
+ 2 files changed, 60 insertions(+), 7 deletions(-)
+
+diff --git a/src/android/camera_capabilities.cpp b/src/android/camera_capabilities.cpp
+--- a/src/android/camera_capabilities.cpp
++++ b/src/android/camera_capabilities.cpp
+@@ -841,6 +841,9 @@ int CameraCapabilities::initializeStaticMetadata()
+ 	const ControlList &properties = camera_->properties();
+ 	const auto afModeInfo = controlsInfo.find(&controls::AfMode);
+ 	const bool autofocusSupported = afModeInfo != controlsInfo.end();
++	const auto lensPositionInfo = controlsInfo.find(&controls::LensPosition);
++	const bool manualFocusSupported =
++		autofocusSupported && lensPositionInfo != controlsInfo.end();
+ 	const bool afRegionsSupported =
+ 		controlsInfo.find(&controls::AfWindows) != controlsInfo.end() &&
+ 		controlsInfo.find(&controls::AfMetering) != controlsInfo.end();
+@@ -976,6 +979,11 @@ int CameraCapabilities::initializeStaticMetadata()
+ 		ANDROID_STATISTICS_SCENE_FLICKER,
+ 	};
+ 
++	if (manualFocusSupported) {
++		availableRequestKeys_.insert(ANDROID_LENS_FOCUS_DISTANCE);
++		availableResultKeys_.insert(ANDROID_LENS_FOCUS_DISTANCE);
++	}
++
+ 	if (afRegionsSupported) {
+ 		availableRequestKeys_.insert(ANDROID_CONTROL_AF_REGIONS);
+ 		availableResultKeys_.insert(ANDROID_CONTROL_AF_REGIONS);
+@@ -1386,11 +1394,15 @@ int CameraCapabilities::initializeStaticMetadata()
+ 				  hypeFocalDistance);
+ 
+ 	/*
+-	 * Android uses a non-zero value to distinguish an autofocus lens from a
+-	 * fixed-focus lens. The simple IPA exposes actuator positions rather than
+-	 * calibrated dioptres, so report a conservative capability marker.
++	 * LensPosition is calibrated by the simple-IPA tuning in dioptres. Use its
++	 * advertised maximum for Android's closest-focus distance rather than the
++	 * old generic marker, while retaining the marker for older autofocus IPAs.
+ 	 */
+-	float minFocusDistance = autofocusSupported ? 1.0f : 0.0f;
++	float minFocusDistance = 0.0f;
++	if (manualFocusSupported)
++		minFocusDistance = lensPositionInfo->second.max().get<float>();
++	else if (autofocusSupported)
++		minFocusDistance = 1.0f;
+ 	staticMetadata_->addEntry(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE,
+ 				  minFocusDistance);
+ 
+diff --git a/src/android/camera_device.cpp b/src/android/camera_device.cpp
+--- a/src/android/camera_device.cpp
++++ b/src/android/camera_device.cpp
+@@ -1078,11 +1078,20 @@ int CameraDevice::processControls(Camera3RequestDescriptor *descriptor)
+ 
+ 	const bool autofocusSupported =
+ 		availableControls.find(&controls::AfMode) != availableControls.end();
++	const auto lensPositionInfo =
++		availableControls.find(&controls::LensPosition);
++	const bool manualFocusSupported =
++		autofocusSupported && lensPositionInfo != availableControls.end();
+ 	if (autofocusSupported &&
+ 	    settings.getEntry(ANDROID_CONTROL_AF_MODE, &entry)) {
+ 		int32_t mode;
+ 		switch (*entry.data.u8) {
+ 		case ANDROID_CONTROL_AF_MODE_OFF:
++			/* Older AF IPAs have no LensPosition control. Preserve their
++			 * historical fallback instead of sending an out-of-range mode. */
++			mode = manualFocusSupported ? controls::AfModeManual
++						   : controls::AfModeAuto;
++			break;
+ 		case ANDROID_CONTROL_AF_MODE_AUTO:
+ 			mode = controls::AfModeAuto;
+ 			break;
+@@ -1098,6 +1107,15 @@ int CameraDevice::processControls(Camera3RequestDescriptor *descriptor)
+ 		controls.set(controls::AfMode, mode);
+ 	}
+ 
++	if (manualFocusSupported &&
++	    settings.getEntry(ANDROID_LENS_FOCUS_DISTANCE, &entry)) {
++		const float focusDistance = std::clamp(
++			*entry.data.f,
++			lensPositionInfo->second.min().get<float>(),
++			lensPositionInfo->second.max().get<float>());
++		controls.set(controls::LensPosition, focusDistance);
++	}
++
+ 	const bool afRegionsSupported =
+ 		availableControls.find(&controls::AfWindows) !=
+ 			availableControls.end() &&
+@@ -1116,10 +1134,22 @@ int CameraDevice::processControls(Camera3RequestDescriptor *descriptor)
+ 			bestWeight = region[4];
+ 		}
+ 
++		/* Android regions use the active-array origin. libcamera's
++		 * AfWindows uses coordinates relative to that active area. The
++		 * OnePlus sensors have non-zero active-array offsets, so subtract
++		 * them before handing the window to the simple IPA. */
++		const Span<const Rectangle> activeAreas =
++			camera_->properties()
++				.get(properties::PixelArrayActiveAreas)
++				.value_or(utils::defopt);
++		const Rectangle activeArea = activeAreas.empty()
++			? Rectangle{}
++			: activeAreas[0];
+ 		Rectangle focusWindow;
+ 		if (best) {
+ 			focusWindow = Rectangle{
+-				best[0], best[1],
++				best[0] - activeArea.x,
++				best[1] - activeArea.y,
+ 				static_cast<unsigned int>(best[2] - best[0]),
+ 				static_cast<unsigned int>(best[3] - best[1])
+ 			};
+@@ -1922,6 +1952,9 @@ CameraDevice::getResultMetadata(const Camera3RequestDescriptor &descriptor) const
+ 	value = androidAfState(afState.value_or(controls::AfStateIdle),
+ 			       requestedAfMode);
+ 	resultMetadata->addEntry(ANDROID_CONTROL_AF_STATE, value);
++	const auto &lensPosition = metadata.get(controls::LensPosition);
++	if (lensPosition)
++		resultMetadata->addEntry(ANDROID_LENS_FOCUS_DISTANCE, *lensPosition);
+ 	const bool lensMoving =
+ 		afState && *afState == controls::AfStateScanning;
+ 
+-- 
+2.49.0

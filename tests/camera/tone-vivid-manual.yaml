@@ -1,0 +1,9 @@
+frames:
+  - 0:
+      # Diagnostic candidate only. It keeps the lens fixed while comparing a
+      # stronger tone curve against the production defaults.
+      AfMode: 0
+      LensPosition: 1.0
+      Gamma: 2.2
+      Contrast: 1.15
+      Saturation: 1.5

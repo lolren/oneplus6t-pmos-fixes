@@ -16,6 +16,8 @@ algorithms:
       minPosition: 400
       maxPosition: 800
       initialPosition: 600
+      lensPositionMin: 0.0
+      lensPositionMax: 2.0
       coarseStep: 100
       fineStep: 25
       fineRange: 50
@@ -38,8 +40,8 @@ algorithms:
       continuous: true
   - Adjust:
       gamma: 2.1
-      contrast: 1.05
-      saturation: 1.15
+      contrast: 1.1
+      saturation: 1.35
       sharpness: 1.0
   - Agc:
       target: 2.0

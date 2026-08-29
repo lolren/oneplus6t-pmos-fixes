@@ -1,0 +1,8 @@
+frames:
+  - 0:
+      # LensPosition is the public libcamera value exposed by the OnePlus
+      # tuning file: 0.0 is the far end and 2.0 is the near end. Keep this
+      # fixture at the midpoint; use the bounded sweep runner for a full
+      # actuator check.
+      AfMode: 0
+      LensPosition: 1.0

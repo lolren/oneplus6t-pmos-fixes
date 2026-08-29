@@ -146,16 +146,17 @@ restore_services() {
 		systemctl --user stop xdg-desktop-portal.service \
 			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
 	fi
-	systemctl --user stop wireplumber.service pipewire.service pipewire.socket \
-		>/dev/null 2>&1 || true
 	systemctl --user unset-environment LIBCAMERA_LOG_FILE LIBCAMERA_LOG_LEVELS \
 		>/dev/null 2>&1 || true
 	$had_log_file && systemctl --user set-environment \
 		"LIBCAMERA_LOG_FILE=$old_log_file"
 	$had_log_levels && systemctl --user set-environment \
 		"LIBCAMERA_LOG_LEVELS=$old_log_levels"
-	systemctl --user start pipewire.socket pipewire.service wireplumber.service \
-		>/dev/null 2>&1 || true
+	# pMOS uses socket activation. Stopping the socket and service in one
+	# transaction can return "job canceled" while leaving PipeWire alive with
+	# stale camera links. Restart the services individually instead.
+	systemctl --user restart pipewire.service >/dev/null 2>&1 || true
+	systemctl --user restart wireplumber.service >/dev/null 2>&1 || true
 	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
 		systemctl --user reset-failed xdg-desktop-portal.service \
 			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
@@ -202,14 +203,16 @@ restart_camera_services() {
 	log_file=$1
 	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
 		systemctl --user stop xdg-desktop-portal.service \
-			xdg-desktop-portal-wlr.service
+			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
 	fi
-	systemctl --user stop wireplumber.service pipewire.service pipewire.socket
 	: >"$log_file"
 	systemctl --user set-environment \
 		"LIBCAMERA_LOG_FILE=$log_file" \
 		'LIBCAMERA_LOG_LEVELS=*:ERROR,IPASoftAf:DEBUG'
-	systemctl --user start pipewire.socket pipewire.service wireplumber.service
+	# Restart the service, keeping its socket. This avoids systemd canceling the
+	# combined stop transaction on socket-activated pMOS user units.
+	systemctl --user restart pipewire.service
+	systemctl --user restart wireplumber.service
 	if [ "$portal_active" = active ] || [ "$wlr_portal_active" = active ]; then
 		systemctl --user reset-failed xdg-desktop-portal.service \
 			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true

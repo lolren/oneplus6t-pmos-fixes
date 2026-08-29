@@ -1,0 +1,9 @@
+frames:
+  - 0:
+      # A repeatable colour/tone comparison: hold the lens at the public
+      # midpoint so autofocus movement cannot change the measured frame.
+      AfMode: 0
+      LensPosition: 1.0
+      Gamma: 2.0
+      Contrast: 1.1
+      Saturation: 1.25

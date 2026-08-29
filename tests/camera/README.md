@@ -6,6 +6,12 @@ validation.
 - `af-auto-trigger.yaml` selects `AfModeAuto` and sends one
   `AfTriggerStart` request.
 - `af-continuous.yaml` selects `AfModeContinuous` for a bounded capture.
+- `focus-manual.yaml` selects `AfModeManual` and a midpoint `LensPosition`
+  for a still capture with the rear actuator held, proving that manual focus
+  is a real lens request rather than a metadata-only control.
+- `focus-sweep.yaml` steps a held manual lens through 0.0, 0.5, 1.0, 1.5
+  and 2.0 while streaming, providing a bounded actuator/metric check for
+  either rear module.
 - `saturation-zero.yaml` requests monochrome output through saturation 0.
 - `saturation-double.yaml` requests saturation 2.
 - `sharpness-zero.yaml` disables the software-ISP unsharp mask.
@@ -15,6 +21,15 @@ validation.
 - `tone-balanced-af-continuous.yaml` combines that request with continuous AF.
   These two fixtures override tuning controls and are diagnostics, not sensor
   calibration or the secondary camera's production defaults.
+- `tone-balanced-manual.yaml` combines the tone candidate with a held lens so
+  colour comparisons are not confounded by autofocus movement.
+- `tone-production-candidate.yaml` compares the installed IMX519 defaults with
+  the restrained 1.10 contrast/1.40 saturation candidate in one stream. The
+  production tuning uses the slightly safer 1.35 saturation value on all
+  three sensors after the live comparison.
+- `tone-vivid-manual.yaml` is a diagnostic-only stronger contrast/saturation
+  candidate; it is not a production default until a like-for-like chart or
+  scene comparison accepts it.
 - `ppm-metrics.py` reports luma, average channel spread, HSV-style saturation,
   near-clipping percentages and two luma-detail signals from private binary
   PPM captures. Edge and Laplacian values are scene-dependent and are valid
