@@ -5,9 +5,12 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The current reference phone runs kernel r10, libcamera/IPA r30,
+The current reference phone runs kernel r10, libcamera/IPA r31,
 `pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r32. The r30/r8
-lower layer and r32 app were built for AArch64 and installed without a reboot.
+lower layer and r32 app were built for AArch64 and installed without a reboot;
+r31 is the same lower-layer control stack with the sensor-specific colour
+profiles described below. Both r30 and r31 remain reproducible rollback
+generations.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
 focus controls. All three sensors expose standard automatic/manual white
@@ -101,11 +104,18 @@ normal libcamera controls as application overrides:
 
 These are conservative open tone/detail defaults selected from bounded
 captures. Sharpness 1 applies a restrained five-tap unsharp mask; 0 disables
-it and 2 is the supported maximum. The
-CCMs remain identity matrices because no colour chart, calibrated illuminants
-or flat field were available. Android/vendor matrices were inspected only as
-private diagnostic evidence and are not copied, redistributed or represented
-as compatible calibration.
+it and 2 is the supported maximum.
+
+The r31 downstream package also ships sensor-specific 3×3 colour matrices for
+IMX371, IMX376 and IMX519, selected by the estimated colour temperature. They
+are represented as ordinary libcamera YAML in `config/libcamera/simple/` and
+were recovered as numeric transforms from the matching stock sensor tuning.
+They are useful interoperability defaults, not a measured factory calibration:
+there is no accompanying colour-chart, illuminant, lens-shading or flat-field
+measurement. The profile test checks the entry counts, ordering and sentinels;
+rebuilding the package from this repository reproduces the exact data without
+shipping a vendor binary. Android/vendor processing remains outside this open
+pipeline.
 
 The simple AGC also exposes the standard `ExposureValue` control from -1 to +1
 EV. It shifts both the configured histogram target and the protective
@@ -347,8 +357,8 @@ pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The current reference build produced `libcamera`/`libcamera-ipa` r28,
-`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r24 and the SDM845
+The current reference build produced `libcamera`/`libcamera-ipa` r31,
+`pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r32 and the SDM845
 kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only; no reboot is implicit.
 
@@ -357,7 +367,21 @@ These commands build packages only; no reboot is implicit.
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
 
-### Current r28/r24 runtime entry
+### Current r31 runtime entry
+
+- The signed AArch64 `libcamera`/IPA r31 pair is installed and its three
+  deployed profile hashes match the source and build output exactly.
+- The bounded live validator completed both rear tap/reset transitions and
+  10-second stability windows with zero restarts and zero post-reset lens
+  requests: main recorded 41 post-reset metrics, secondary 54, and the fixed-
+  focus front stream completed 120 frames.
+- PipeWire, WirePlumber and pipewire-pulse remained active after the package
+  replacement. No reboot, bootloader or kernel change was involved.
+
+This validates profile selection, packaging and stream stability. It does not
+replace a controlled chart comparison or prove Android-vendor image parity.
+
+### Historical r28/r24 runtime entry
 
 - Native PipeWire validation passed on the installed r28/r24 stack. Main and
   secondary returned `focused`, completed the scan-free Reset transition and

@@ -17,18 +17,21 @@ applies a requested matrix only while automatic white balance is disabled, as
 required by libcamera. The manual matrix is retained across requests until AWB
 is re-enabled; ordinary manual-white-balance requests without an override keep
 the temperature-interpolated tuned matrix. The applied matrix is returned in
-request metadata. Identity is the safe default because no factory or
-chart-derived coefficients are shipped.
+request metadata. Identity remains the safe generic default in this patch
+series. The OnePlus downstream r31 pmaports recipe supplies separate sensor
+YAML profiles; those are numeric stock-derived interoperability data, not
+factory or chart-derived calibration and not part of an upstream patch
+submission.
 
 The complete series applies cleanly to libcamera v0.7.2. Its nineteen-patch
 predecessor passed a clean native GCC Meson suite with 46 passes, one expected
 failure, 30 skips and no unexpected failure. The complete twenty-patch
 pmbootstrap AArch64 build produced and installed:
 
-- `libcamera-99990.7.2-r30.apk`, SHA-256
-  `02617ef50c66d0e6c19d78a8dafe18491ac6b5131f7912282ec90d18ea5dc39f`;
-- `libcamera-ipa-99990.7.2-r30.apk`, SHA-256
-  `d6b4ff5875fbd465c73c42323dc4876e92eea7abece04aa164476ee2ed30e1d2`.
+- `libcamera-99990.7.2-r31.apk`, SHA-256
+  `573b24e1249e2e2a91731dfd5fe57949e966e48ca2f3a2a4e5ff128c71dc4038`;
+- `libcamera-ipa-99990.7.2-r31.apk`, SHA-256
+  `f04b0ab0c147129484d6ae8c57bac6c4f49fa35513f581d2b2ab0214dffeafaf`.
 
 Patch `0019` has SHA-512
 `abb838dd82f87fda3d32f24e0322f62f8619ce6b8200223dc9da570e287bc503e23aecf9fbbd55fb2940224f1791c1b8d513df1f815e967953aadc64b80798c1`.

@@ -6,7 +6,7 @@ three tuning files, two PipeWire control/state-transport patches, six Snapshot p
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r32 Advanced Snapshot
-source recipe and its verified AArch64 package pair, the libcamera r30 colour-
+source recipe and its verified AArch64 package pair, the libcamera r31 colour-
 matrix/white-balance/manual-focus/tone generation and PipeWire r8 float-array
 transport; r24, r25, r26 and r28 plus
 the previously signed app generations remain available as rollback baselines.
@@ -16,15 +16,16 @@ as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
-The reference phone has r30/r8/r3 userspace and the visible Image Controls
+The reference phone has r31/r8/r3 userspace and the visible Image Controls
 Advanced Snapshot r32 build installed without reboot; the earlier r30 app,
 r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
 
-The current r30/r32/r8 evidence is:
+The current r31/r32/r8 evidence is:
 
 - libcamera/IPA r30 with normalized rear `LensPosition`, `AwbEnable`, two-
   element `ColourGains` and nine-element `ColourCorrectionMatrix` controls;
 - PipeWire SPA r8 with generic fixed-size float-array transport;
+- libcamera/IPA r31 with the three sensor-specific numeric colour profiles;
 - Advanced Snapshot commit `aa9fea6464c580c308cefecc6383f57c58910102`;
 - main APK SHA-256 `269f68cb9d2fc7061a7277f21f70c87641d2a20a7206a090bbbbbd279a09ce5b`;
 - language APK SHA-256 `8bc79a14ed890dd429188cb7b173cc9d13c61572c92faea4b4f24de66501e377`;
@@ -70,9 +71,9 @@ Applying the integration patch to the reviewed base produces:
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r10` (display brightness
   serialization plus bounded Venus firmware-error recovery; r8 remains the
   rollback package);
-- `libcamera-99990.7.2-r30` and `libcamera-ipa-99990.7.2-r30` (writable colour
-  matrix, white balance, manual-focus, stable-AF and conservative tone
-  generation; r24/r25/r26/r28/r29 remain retained
+- `libcamera-99990.7.2-r31` and `libcamera-ipa-99990.7.2-r31` (writable colour
+  matrix, white balance, manual-focus, stable-AF, conservative tone generation
+  and downstream sensor-specific colour profiles; r24/r25/r26/r28/r29/r30 remain retained
   diagnostic and rollback candidates);
 - `pipewire-spa-libcamera-1.6.8-r8` (autofocus state plus generic fixed-size
   float-array control transport; r7 remains retained for rollback);
@@ -105,11 +106,12 @@ integration patch. A clean isolated release build passes, but no r6 APK hash
 is claimed until an AArch64 package build and phone acceptance are completed.
 Keep the signed r3 packages as the rollback baseline.
 
-The r30 libcamera revision and PipeWire r8 are source-, package- and
+The r31 libcamera revision and PipeWire r8 are source-, package- and
 runtime-validated. Their standalone patches and the full integration diff
 apply cleanly; the installed AArch64 packages expose the normalized rear
 `LensPosition` range plus standard automatic/manual white balance and writable
-colour matrices on all three sensors. Keep the signed r24/r25/r26/r28/r29 and
+colour matrices on all three sensors, and r31 installs the documented numeric
+sensor profiles. Keep the signed r24/r25/r26/r28/r29/r30 and
 PipeWire r7 APKs for rollback.
 
 The complete opt-in userspace transition is described by
@@ -154,6 +156,8 @@ ISP processing. Review the complete candidate with:
 | `libcamera-ipa-99990.7.2-r29.apk` (installed white-balance generation) | `ab98208181a36165be34f2547c3239366bf6dd6e64eaf11b320ff02f08e25b0b` |
 | `libcamera-99990.7.2-r30.apk` (installed colour-matrix generation) | `02617ef50c66d0e6c19d78a8dafe18491ac6b5131f7912282ec90d18ea5dc39f` |
 | `libcamera-ipa-99990.7.2-r30.apk` (installed colour-matrix generation) | `d6b4ff5875fbd465c73c42323dc4876e92eea7abece04aa164476ee2ed30e1d2` |
+| `libcamera-99990.7.2-r31.apk` (installed sensor-colour generation) | `573b24e1249e2e2a91731dfd5fe57949e966e48ca2f3a2a4e5ff128c71dc4038` |
+| `libcamera-ipa-99990.7.2-r31.apk` (installed sensor-colour generation) | `f04b0ab0c147129484d6ae8c57bac6c4f49fa35513f581d2b2ab0214dffeafaf` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `pipewire-spa-libcamera-1.6.8-r8.apk` (installed float-array transport) | `ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |

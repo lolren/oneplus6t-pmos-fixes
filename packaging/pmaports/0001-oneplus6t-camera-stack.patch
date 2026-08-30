@@ -5991,7 +5991,7 @@ index 0000000000000000000000000000000000000000..0ec442a1e389e4de713e4e5d12dbf6eb
 +-- 
 +2.49.0
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..664038407cd9b346c68811571b92e888f22b197d 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95c710af21 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -5999,7 +5999,7 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..664038407cd9b346c68811571b92e888
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=30
++pkgrel=31
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
@@ -6061,26 +6061,77 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..664038407cd9b346c68811571b92e888
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+20a5c5d3ce3645fb16601c95fe60a7ac066f37f589ef0c4716d047b2a6a482abc75898c8d55ff8fbe70ae151c9bf895cd70670cfb9626711fcddcf049143fb18  imx371.yaml
-+633018a106a79ab67d82025c40b6c440e3ca506b60bb9479d6caa55f92aac37cd610088bf6c6d556125a95bc9dac07d9bdd2580fbef1dd190baaee74ba57a19d  imx376.yaml
-+b9e985bbe9d1f22fb16b6e3c67fbdf1c15048d3e3319dd13d80dbb6e39472c41f965af5a2c12488cdca5b07f27e2d7c42531c264e28f53b6633235a408a73e1d  imx519.yaml
++e8ee48b18edb75861658546d9e70ea6fdbc59243034b64c5bc8536eda80dd81e37a04dd04e0e2d9572d3ae2c5cf2dc6b3eca6232735728f1034073dd4f6a9dc7  imx371.yaml
++2d6819cce2a4585a12f79b53d41b9bbe24d1245e9bcee8255826e1ce9524707a9524b69c96e039f247657662fe10f0237efd2f6113fd1b6c49573ba63684db7f  imx376.yaml
++4cf513477e46cdcca38dc6d94832e42ee1bf56ae1a87e9a129713ea3f060727f52fd2724cee2ce57c700267f0403d609b78448212d5c394d20fdc799539d1175  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..e9f144ec0919303f72afcd80e7d2d3a1e33c52f0 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..bf7c43c74fe689c13371c7333f2cbba27b5e1ba1 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
-@@ -6,6 +6,19 @@ algorithms:
+@@ -6,6 +6,70 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
++        # OnePlus 6T IMX371 calibration profile.  These matrices are the
++        # colour transforms recovered from the phone's stock sensor tuning
++        # and are kept as ordinary libcamera data, not a vendor binary.
++        - ct: 2300
++          ccm: [ 1.87925, -0.0746165, -0.804633,
++                 -0.587836, 2.03054, -0.442705,
++                 -0.322184, -0.175213, 1.4974 ]
++        - ct: 2450
++          ccm: [ 1.65534, -0.801927, 0.146589,
++                 -0.208629, 1.34924, -0.140612,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 2750
++          ccm: [ 1.65534, -0.801927, 0.146589,
++                 -0.208629, 1.34924, -0.140612,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 2950
++          ccm: [ 1.65834, -0.801927, 0.143589,
++                 -0.213629, 1.34624, -0.132612,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 3250
++          ccm: [ 1.65834, -0.801927, 0.143589,
++                 -0.213629, 1.34624, -0.132612,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 4400
++          ccm: [ 1.65534, -0.801927, 0.146589,
++                 -0.1744, 1.1677, 0.0067,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 4600
++          ccm: [ 1.65534, -0.801927, 0.146589,
++                 -0.1744, 1.1677, 0.0067,
++                 0.08581, -0.84179, 1.75598 ]
++        - ct: 5000
++          ccm: [ 1.6063, -0.7378, 0.1315,
++                 -0.1744, 1.1677, 0.0067,
++                 0.0441, -0.7253, 1.6812 ]
++        - ct: 5350
++          ccm: [ 1.6063, -0.7378, 0.1315,
++                 -0.1744, 1.1677, 0.0067,
++                 0.0441, -0.7253, 1.6812 ]
++        - ct: 5500
++          ccm: [ 1.6063, -0.7378, 0.1315,
++                 -0.1844, 1.1677, 0.0167,
++                 0.0641, -0.6953, 1.6312 ]
++        - ct: 6000
++          ccm: [ 1.6063, -0.7378, 0.1315,
++                 -0.1844, 1.1677, 0.0167,
++                 0.0641, -0.6953, 1.6312 ]
 +        - ct: 6500
-+          ccm: [ 1, 0, 0,
-+                 0, 1, 0,
-+                 0, 0, 1 ]
++          ccm: [ 1.76332, -0.775904, 0.012579,
++                 -0.141068, 1.29809, -0.157023,
++                 0.109155, -0.861136, 1.75198 ]
++        - ct: 10000
++          ccm: [ 1.76332, -0.775904, 0.012579,
++                 -0.141068, 1.29809, -0.157023,
++                 0.109155, -0.861136, 1.75198 ]
    - Adjust:
 +      gamma: 2.0
 +      contrast: 1.1
@@ -6092,10 +6143,10 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..e9f144ec0919303f72afcd80e7d2d3a1
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..fe2ebd53f9f0ee94eddf99f3055d528687b8ce04 100644
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..ba34d09517558b46a409bdbd8a85a1c4f8c8fa31 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,44 @@ algorithms:
+@@ -7,36 +7,46 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -6130,9 +6181,11 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..fe2ebd53f9f0ee94eddf99f3055d5286
 -                -0.43049,  2.00702, -0.57652,
 -                -0.15696, -0.51345,  1.67041 ]
 +        - ct: 6500
-+          ccm: [ 1, 0, 0,
-+                 0, 1, 0,
-+                 0, 0, 1 ]
++          # OnePlus 6T IMX376 calibration recovered from the matching stock
++          # sensor tuning; it is plain libcamera data, not a vendor binary.
++          ccm: [ 1.7858, -0.7494, -0.0364,
++                 -0.1317, 1.209, -0.0773,
++                 0.04, -0.7876, 1.7476 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800
@@ -6170,19 +6223,42 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..fe2ebd53f9f0ee94eddf99f3055d5286
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..dc944b28ccaec56876f7b466be48720f299a0208 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..4c5dd2ef3cbba31ce972d995bd3fe8e2460451f7 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,45 @@ algorithms:
+@@ -6,6 +6,68 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
-+        - ct: 6500
-+          ccm: [ 1, 0, 0,
-+                 0, 1, 0,
-+                 0, 0, 1 ]
++        # OnePlus 6T IMX519 calibration profile.  These matrices are the
++        # colour transforms recovered from the phone's stock sensor tuning
++        # and are kept as ordinary libcamera data, not a vendor binary.
++        - ct: 2400
++          ccm: [ 1.4905, -0.545645, 0.0551411,
++                 -0.220963, 1.14068, 0.0802817,
++                 -0.0620148, -0.598863, 1.66088 ]
++        - ct: 3250
++          ccm: [ 1.4905, -0.545645, 0.0551411,
++                 -0.220963, 1.14068, 0.0802817,
++                 -0.0620148, -0.598863, 1.66088 ]
++        - ct: 4300
++          ccm: [ 1.56339, -0.74001, 0.176618,
++                 -0.140864, 1.12936, 0.011506,
++                 0.0938884, -0.83175, 1.73786 ]
++        - ct: 4600
++          ccm: [ 1.56339, -0.74001, 0.176618,
++                 -0.140864, 1.12936, 0.011506,
++                 0.0938884, -0.83175, 1.73786 ]
++        - ct: 5000
++          ccm: [ 1.89305, -0.942903, 0.049853,
++                 0.034627, 0.979567, -0.014195,
++                 0.225675, -1.00057, 1.77489 ]
++        - ct: 10000
++          ccm: [ 1.89305, -0.942903, 0.049853,
++                 0.034627, 0.979567, -0.014195,
++                 0.225675, -1.00057, 1.77489 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800

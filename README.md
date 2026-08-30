@@ -300,7 +300,7 @@ and through an open Camera3 HAL in Waydroid.
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | Gamma and sensor calibration | Advanced Snapshot exposes a standard `Gamma` tone control plus a phone-width per-sensor calibration dialog for repeatable exposure, white balance, 3×3 colour matrix, contrast, detail and focus settings; profiles are keyed by stable camera identity. |
 | Automatic/manual white balance | Keeps statistics-driven AWB as the default, transports standard red/blue `ColourGains` arrays through PipeWire and lets Advanced Snapshot persist bounded gains per physical sensor. |
-| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the app stores bounded chart-derived values without claiming factory calibration. |
+| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the r31 downstream IPA also ships sensor-specific stock-derived numeric matrices, while the app retains bounded user/chart overrides without claiming factory calibration. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls, keeps the tappable value chip in the toolbar instead of over the mode selector, and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
@@ -326,7 +326,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer r30/r32/r8 development line. The
+publishes the newer r31/r32/r8 development line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -345,12 +345,13 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current native line is libcamera/IPA r30, PipeWire SPA r8 and Advanced
+The current native line is libcamera/IPA r31, PipeWire SPA r8 and Advanced
 Snapshot r32. The app source is commit
 `aa9fea6464c580c308cefecc6383f57c58910102`; the exact AArch64 package pair is
 installed on the reference phone without reboot. The controls panel and
 calibration dialog now include automatic/manual white balance, per-sensor
-red/blue gains and a bounded 3×3 colour matrix. Identity and custom matrix
+red/blue gains and a bounded 3×3 colour matrix. The r31 IPA selects the
+documented sensor-specific numeric profiles by colour temperature; identity and custom matrix
 requests were accepted on IMX371, IMX376 and IMX519, and automatic mode
 restored each stream. The 1.0× chip is contained by the top toolbar and no
 longer covers the photo/video/QR selector.

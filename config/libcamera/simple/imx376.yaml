@@ -9,9 +9,11 @@ algorithms:
   - Ccm:
       ccms:
         - ct: 6500
-          ccm: [ 1, 0, 0,
-                 0, 1, 0,
-                 0, 0, 1 ]
+          # OnePlus 6T IMX376 calibration recovered from the matching stock
+          # sensor tuning; it is plain libcamera data, not a vendor binary.
+          ccm: [ 1.7858, -0.7494, -0.0364,
+                 -0.1317, 1.209, -0.0773,
+                 0.04, -0.7876, 1.7476 ]
   - Af:
       minPosition: 400
       maxPosition: 800

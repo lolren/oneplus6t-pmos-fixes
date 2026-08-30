@@ -51,7 +51,7 @@ grep -Eq "^index 0{7,40}\.\.$pipewire_blob$" "$MONOLITH" ||
 grep -q "^+$pipewire_sha512  0002-spa-libcamera-Transport-float-array-controls.patch$" \
 	"$MONOLITH" || fail 'PipeWire patch checksum is not in pmaports'
 
-grep -q '^+pkgrel=30$' "$MONOLITH" || fail 'libcamera recipe is not r30'
+grep -q '^+pkgrel=31$' "$MONOLITH" || fail 'libcamera recipe is not r31'
 grep -q '^+pkgrel=8$' "$MONOLITH" || fail 'PipeWire recipe is not r8'
 grep -q '^+pkgrel=32$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r32'
 grep -q '^+_commit="aa9fea6464c580c308cefecc6383f57c58910102"$' "$MONOLITH" ||

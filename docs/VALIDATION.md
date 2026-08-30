@@ -3,20 +3,23 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
-## 2026-08-30 native colour-matrix r30/r8 and app r32 checkpoint
+## 2026-08-30 native sensor-colour r31/r8 and app r32 checkpoint
 
 The twentieth native libcamera patch registers the standard nine-element
 `ColourCorrectionMatrix` control in the simple IPA. Manual matrices are
 accepted only while automatic white balance is disabled, retained across
 requests and reported in metadata. PipeWire r8 already transports the required
-fixed-size float array atomically. Advanced Snapshot commit
+fixed-size float array atomically. The downstream r31 IPA package adds the
+three OnePlus sensor-specific numeric colour profiles. Advanced Snapshot commit
 `aa9fea6464c580c308cefecc6383f57c58910102` adds live matrix controls, version
 3 per-sensor profiles, a phone-width calibration dialog and a toolbar-contained
 zoom chip.
 
 Clean verification completed with:
 
-- a pmbootstrap AArch64 build of libcamera/IPA r30;
+- a pmbootstrap AArch64 build of libcamera/IPA r31;
+- profile YAML validation plus byte-for-byte source/package profile hashes for
+  IMX371, IMX376 and IMX519;
 - two optimized Advanced Snapshot r32 builds plus 12 application, 10 HDR-helper
   and 9 Aperture tests;
 - signed APK validation, exact file/resource checks and zero ownership overlap
@@ -30,8 +33,8 @@ The installed artifacts are:
 
 | Package | SHA-256 |
 | --- | --- |
-| `libcamera-99990.7.2-r30.apk` | `02617ef50c66d0e6c19d78a8dafe18491ac6b5131f7912282ec90d18ea5dc39f` |
-| `libcamera-ipa-99990.7.2-r30.apk` | `d6b4ff5875fbd465c73c42323dc4876e92eea7abece04aa164476ee2ed30e1d2` |
+| `libcamera-99990.7.2-r31.apk` | `573b24e1249e2e2a91731dfd5fe57949e966e48ca2f3a2a4e5ff128c71dc4038` |
+| `libcamera-ipa-99990.7.2-r31.apk` | `f04b0ab0c147129484d6ae8c57bac6c4f49fa35513f581d2b2ab0214dffeafaf` |
 | `pipewire-spa-libcamera-1.6.8-r8.apk` | `ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18` |
 | `advanced-snapshot-0.1.0-r32.apk` | `269f68cb9d2fc7061a7277f21f70c87641d2a20a7206a090bbbbbd279a09ce5b` |
 | `advanced-snapshot-lang-0.1.0-r32.apk` | `8bc79a14ed890dd429188cb7b173cc9d13c61572c92faea4b4f24de66501e377` |
@@ -39,7 +42,21 @@ The installed artifacts are:
 The Advanced Snapshot GitHub archive SHA-512 is
 `4d308df29085404171264470b6a29171307af9055795bd69cff7aef95d0afe394a1d7790b23ef23b7d865d2cf865704be958c1549f91f3157d0b9f19021d5ba8`.
 The complete pmaports integration patch SHA-256 is
-`dd6a2fdbc737833935e87b6376c23bff9da7f4becd406db77dfd46c0fe8c325b`.
+`50d22a12973ff2d7d10f0c39b0b123dad244f2eee88e63c314918e7f4525c986`.
+
+The installed r31 profile SHA-512 values are:
+
+| Profile | SHA-512 |
+| --- | --- |
+| `imx371.yaml` | `e8ee48b18edb75861658546d9e70ea6fdbc59243034b64c5bc8536eda80dd81e37a04dd04e0e2d9572d3ae2c5cf2dc6b3eca6232735728f1034073dd4f6a9dc7` |
+| `imx376.yaml` | `2d6819cce2a4585a12f79b53d41b9bbe24d1245e9bcee8255826e1ce9524707a9524b69c96e039f247657662fe10f0237efd2f6113fd1b6c49573ba63684db7f` |
+| `imx519.yaml` | `4cf513477e46cdcca38dc6d94832e42ee1bf56ae1a87e9a129713ea3f060727f52fd2724cee2ce57c700267f0403d609b78448212d5c394d20fdc799539d1175` |
+
+The profile data is a downstream OnePlus interoperability default recovered as
+numeric transforms from the matching stock sensor tuning. It is reproducible
+and contains no vendor binary, but it is not a measured factory calibration;
+controlled chart, lens-shading and Android-vendor processing comparisons remain
+open.
 
 The phone updates were bounded application/userspace transactions with no
 removals, reboot or bootloader operation. Direct identity-matrix and return-to-

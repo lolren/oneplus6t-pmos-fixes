@@ -126,11 +126,15 @@ Android HAL compiles on the host and the ARM provider passed the diagnostic
 reopen/full-probe checks; ordinary third-party-app soak and a focused
 framework test remain required before an upstream proposal.
 
-Do not upstream identity matrices as calibrated sensor tuning. They exist only
-to expose the generic saturation control and are explicitly uncalibrated.
-Likewise, the OnePlus gamma/contrast/saturation values are downstream defaults,
-not a substitute for chart-derived CCM and lens-shading calibration. No values
-decoded from Android/vendor tuning blobs belong in an upstream patch.
+Do not upstream the OnePlus r31 sensor profiles as if they were measured,
+generic libcamera calibration. They are downstream numeric interoperability
+data recovered from the matching stock tuning and are deliberately kept in the
+OnePlus pmaports overlay. The generic patch series remains valid with identity
+as its safe control default; the downstream YAML adds the per-sensor matrices
+only for this phone. The values have no chart, illuminant or flat-field
+validation and do not include a vendor binary, lens shading or denoise stage.
+The OnePlus gamma/contrast/saturation values are likewise downstream defaults,
+not a substitute for a proper camera-calibration submission.
 
 Do not advertise `HdrMode`: sensor WDR registers are not a complete
 HDR pipeline without exposure fusion and tone mapping.
