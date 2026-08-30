@@ -37,6 +37,13 @@ mmcli -m 0 --location-get
 systemctl is-active geoclue.service
 ```
 
+ModemManager's `--output-keyvalue` representation is version-dependent. Some
+versions emit one aggregate `modem.location.enabled` value, while others emit
+`modem.location.enabled.length` and indexed `.value[n]` fields. The bridge
+accepts both forms. Its live mode also converts termination into normal
+cleanup, so temporary raw/NMEA enablement and refresh-rate changes are
+restored when an administrator stops the bridge or a bounded diagnostic ends.
+
 If the modem exposes GPS NMEA, enable it explicitly and watch for a fix:
 
 ```sh

@@ -107,6 +107,30 @@ third-party camera-app acceptance, factory colour calibration or Android
 vendor image-processing parity. The full multi-stream probe remains a
 separate test because it exercises more of the software ISP at once.
 
+## 2026-08-30 ModemManager indexed GPS and cleanup checkpoint
+
+The helper package was rebuilt at `0.1.0-r29`. The parser now accepts both the
+aggregate `modem.location.enabled` form and the indexed
+`modem.location.enabled.length`/`.value[n]` form emitted by the reference
+ModemManager. The live bridge also converts SIGTERM into its normal cleanup
+path, which is important for bounded remote diagnostics.
+
+The disposable Alpine package build ran the complete project test suite. Its
+no-architecture APK is:
+
+```text
+oneplus6t-pmos-fixes-0.1.0-r29.apk: 18d48eb99e2f1f6effb397fd2cd2f80871709799457568eb427fbe1580d5d87c
+```
+
+The package was installed over r28 without reboot. A 60-second applied bridge
+run enabled raw/NMEA and requested one-second polling, but this stationary run
+received no advancing valid GNSS fix, so it injected no Android location. On
+termination it restored the exact prior modem state (`3gpp-lac-ci` only and a
+3600-second refresh), removed the temporary fused mock provider, and left the
+Waydroid session/container running. The current native location result is
+therefore still `native_fix=not-confirmed`; the former Reading result must not
+be replaced with a guessed Stroud coordinate.
+
 ## 2026-08-30 native white-balance r29/r8 checkpoint
 
 The nineteenth native libcamera patch added standard `AwbEnable` and

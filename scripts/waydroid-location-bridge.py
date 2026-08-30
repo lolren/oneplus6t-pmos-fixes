@@ -17,6 +17,7 @@ import argparse
 import json
 import math
 import re
+import signal
 import shlex
 import shutil
 import subprocess
@@ -350,14 +351,33 @@ def _parse_modem_location_state(output: str) -> ModemLocationState:
         output,
         re.MULTILINE,
     )
+    enabled_values = re.findall(
+        r"^modem\.location\.enabled\.value\[\d+\]\s*:\s*(?P<enabled>.*?)\s*$",
+        output,
+        re.MULTILINE,
+    )
+    enabled_length = re.search(
+        r"^modem\.location\.enabled\.length\s*:\s*(?P<length>\d+)\s*$",
+        output,
+        re.MULTILINE,
+    )
     refresh_match = re.search(
         r"^modem\.location\.gps\.refresh-rate\s*:\s*(?P<rate>\d+)\s*$",
         output,
         re.MULTILINE,
     )
-    if enabled_match is None or refresh_match is None:
+    if (
+        enabled_match is None
+        and not enabled_values
+        and enabled_length is None
+    ) or refresh_match is None:
         raise RuntimeError("ModemManager did not report restorable GPS state")
-    enabled_text = enabled_match.group("enabled").strip().lower()
+    if enabled_values:
+        enabled_text = ",".join(enabled_values).strip().lower()
+    elif enabled_match is not None:
+        enabled_text = enabled_match.group("enabled").strip().lower()
+    else:
+        enabled_text = ""
     enabled = (
         frozenset()
         if enabled_text in ("", "--", "none")
@@ -762,11 +782,18 @@ def run(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_sigterm(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    signal.signal(signal.SIGTERM, _handle_sigterm)
     parser = build_parser()
     arguments = parser.parse_args(argv)
     try:
         return run(arguments)
+    except KeyboardInterrupt:
+        return 130
     except (FileNotFoundError, RuntimeError, ValueError) as error:
         parser.error(str(error))
     return 2

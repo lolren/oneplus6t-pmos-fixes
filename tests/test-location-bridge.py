@@ -176,6 +176,51 @@ class LocationBridgeTests(unittest.TestCase):
             ],
         )
 
+    def test_modemmanager_indexed_gps_state_is_restored(self):
+        status = "".join(
+            [
+                "modem.location.enabled.length : 1\n",
+                "modem.location.enabled.value[1] : 3gpp-lac-ci\n",
+                "modem.location.gps.refresh-rate : 3600\n",
+            ]
+        )
+        commands = []
+
+        def command_result(command, *, dry_run, timeout=10.0):
+            commands.append(command)
+            output = status if "--location-status" in command else ""
+            return subprocess.CompletedProcess(command, 0, output, "")
+
+        first = "modem.location.gps.utc : 123519.00\n"
+        second = "modem.location.gps.utc : 123520.00\n"
+        polls = [
+            subprocess.CompletedProcess([], 0, first, ""),
+            subprocess.CompletedProcess([], 0, second, ""),
+        ]
+        with mock.patch.object(MODULE, "_run", side_effect=command_result):
+            with mock.patch.object(MODULE.subprocess, "run", side_effect=polls):
+                with mock.patch.object(MODULE.time, "sleep"):
+                    lines = MODULE._modem_lines("7", True, False)
+                    self.assertEqual(next(lines), second)
+                    lines.close()
+
+        self.assertEqual(
+            commands,
+            [
+                ["mmcli", "-m", "7", "--location-status", "--output-keyvalue"],
+                [
+                    "mmcli",
+                    "-m",
+                    "7",
+                    "--location-enable-gps-raw",
+                    "--location-enable-gps-nmea",
+                ],
+                ["mmcli", "-m", "7", "--location-set-gps-refresh-rate=1"],
+                ["mmcli", "-m", "7", "--location-set-gps-refresh-rate=3600"],
+                ["mmcli", "-m", "7", "--location-disable-gps-raw", "--location-disable-gps-nmea"],
+            ],
+        )
+
     def test_modemmanager_restores_only_sources_enabled_by_bridge(self):
         status = "".join(
             [

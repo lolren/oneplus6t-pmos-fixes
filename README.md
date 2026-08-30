@@ -120,11 +120,12 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r27. It adds a temporary sleep inhibitor to the
-SSH-launched Waydroid camera probe so the phone's freeze-on-idle policy cannot
-pause a long diagnostic; it does not change normal suspend behavior. Build it
-from `packaging/` as documented in [packaging/README.md](packaging/README.md),
-or use the source checkout directly with `make install`.
+The current checkout recipe is r29. It adds a temporary sleep inhibitor to the
+SSH-launched Waydroid camera probe and makes the location bridge accept both
+ModemManager key-value layouts with signal-safe cleanup; neither changes normal
+suspend behavior. Build it from `packaging/` as documented in
+[packaging/README.md](packaging/README.md), or use the source checkout directly
+with `make install`.
 
 Runtime r25 was built twice from commit `fe01b51` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and

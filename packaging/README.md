@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r27`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r29`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -22,8 +22,8 @@ cd packaging
 abuild -d
 ```
 
-The verified r27 APK built from this checkout has SHA-256
-`1eb46c2154e4fd3b3659af988c6d69f0148d533b49327f18345947be37a5e755`.
+The verified r29 APK built from this checkout has SHA-256
+`18d48eb99e2f1f6effb397fd2cd2f80871709799457568eb427fbe1580d5d87c`.
 It is a local development artifact rather than a published release; install
 it on a matching booted phone only after verifying the checksum and use
 `apk add --allow-untrusted` when it is not in a configured repository.
