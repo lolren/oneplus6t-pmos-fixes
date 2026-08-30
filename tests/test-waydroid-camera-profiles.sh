@@ -35,6 +35,14 @@ WAYDROID_CAMERA_MOUNTINFO="$mountinfo" \
 	"$SYNC" --dry-run "$overlay" >"$TEST_DIR/dry-run.out"
 grep -q '^dry-run: would synchronize 2 profile files' "$TEST_DIR/dry-run.out"
 
+command_link=$TEST_DIR/pmos-sync-waydroid-camera-profiles
+ln -s "$SYNC" "$command_link"
+WAYDROID_CAMERA_MOUNTINFO="$mountinfo" \
+	WAYDROID_CAMERA_PROC_ROOT="$proc_root" \
+	WAYDROID_CAMERA_PROFILES_BACKUP_ROOT="$backup_root" \
+	"$command_link" --dry-run "$overlay" >"$TEST_DIR/link.out"
+grep -q '^dry-run: would synchronize 2 profile files' "$TEST_DIR/link.out"
+
 fake_bin=$TEST_DIR/bin
 mkdir -p "$fake_bin"
 cat >"$fake_bin/id" <<'EOF'

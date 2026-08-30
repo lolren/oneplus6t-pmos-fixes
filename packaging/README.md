@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r36`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r37`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
