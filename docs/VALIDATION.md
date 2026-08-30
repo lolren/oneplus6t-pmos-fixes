@@ -174,6 +174,51 @@ main-rear preview result (`privateSize=1280x960`, `privateFps=28.47`,
 container running. The probe’s temporary sleep-inhibitor attempt was handled
 without duplicating the camera launch.
 
+## 2026-08-30 Waydroid recording-profile mapping checkpoint
+
+The image-level recording files initially had the historical ID mapping
+`0=rear main`, `1=front`, `2=rear auxiliary`, while the live provider exposed
+`0=rear main`, `1=rear auxiliary`, `2=front`. A sparse replacement containing
+only profile IDs 0 and 2 was correctly rejected by the Android framework's
+`MediaProfiles` initialization: zygote aborted in
+`checkAndAddRequiredProfilesIfNecessary()` because that implementation indexes
+its required-profile table by numeric camera ID.
+
+The final r40 source keeps IDs contiguous with a single `highspeedcif` sentinel
+for ID 1. It advertises ordinary 480p/720p H.264/AAC profiles only for IDs 0
+and 2. The clean package built from commit `bbd7287` is:
+
+```text
+oneplus6t-pmos-fixes-0.1.0-r40.apk: c93fcbb0e3554320d2bf7d20d0af7802c4564448fcc8bcaae8d5fb908eb9b725
+```
+
+The package was installed over r39 without reboot. With the Waydroid session
+and container stopped, the health gate reported `rootfs_mounts=0`, zero
+`some/full` I/O PSI and `overlay_precondition=pass`. The synchronizer created
+a dated exact backup, changed only the two profile files and left both equal to
+the source hash:
+
+```text
+source/installed media_profiles.xml:      e7a6816f994009b2b97f583ee6026d5a7804316de88cb45edee10dcf451b9e13
+source/installed media_profiles_V1_0.xml: e7a6816f994009b2b97f583ee6026d5a7804316de88cb45edee10dcf451b9e13
+backup of both historical files:         7f0eb36f586893d9a2906dba08b2352f78a8a58f2c162acd8bf38d84aca8fc10
+```
+
+After restart, Android reached `sys.boot_completed=1` and kept
+`system_server` alive. The probe reported no ordinary 480p/720p profile for
+ID 1, valid ordinary profiles for IDs 0 and 2, all three preview cameras
+valid, and a front-camera ID-2 recording accepted end to end:
+
+```text
+CAMERA id=2 valid=true profile=encode-720p privateSize=1280x720 privateFps=20.11 captureFps=20.03 encodedValid=true encodedHasVideo=yes encodedHasAudio=yes encodedFrames=192
+PROBE_DONE profile=encode-720p valid=1 total=1
+PROBE_DONE profile=preview valid=3 total=3
+```
+
+The sparse candidate was rolled back before the parser-compatible candidate was
+applied. The final transaction required no phone reboot; ordinary auxiliary
+Venus encoding remains deliberately untested and blocked.
+
 ## 2026-08-30 native white-balance r29/r8 checkpoint
 
 The nineteenth native libcamera patch added standard `AwbEnable` and

@@ -129,6 +129,9 @@ explicit poll; none of these changes normal suspend behavior. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
 
+The clean r40 package built from commit `bbd7287` has SHA-256
+`c93fcbb0e3554320d2bf7d20d0af7802c4564448fcc8bcaae8d5fb908eb9b725`.
+
 Runtime r25 was built twice from commit `fe01b51` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and
 regular-file mode matches a clean staged install, and the exact APK passes an

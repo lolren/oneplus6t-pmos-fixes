@@ -33,6 +33,11 @@ The clean r36 APK built from commit `bed6615` has SHA-256
 It adds the guarded Waydroid camera-profile synchronizer and its fixture
 coverage; the package is still a local development artifact.
 
+The clean r40 APK built from commit `bbd7287` has SHA-256
+`c93fcbb0e3554320d2bf7d20d0af7802c4564448fcc8bcaae8d5fb908eb9b725`.
+It adds the parser-safe ID 1 sentinel, preserves ordinary recording profiles
+only for camera IDs 0 and 2, and was accepted on the reference phone.
+
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
 packages from Alpine's repositories:

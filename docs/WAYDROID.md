@@ -489,6 +489,16 @@ is intentionally explicit so a normal postmarketOS update cannot silently
 rewrite or partially apply a lower-layer overlay transaction; rerun it after
 an image/profile update and retain its printed backup for rollback.
 
+The ID 1 sentinel is required by the Android framework rather than by the
+camera provider. AOSP's `MediaProfiles` code builds its required-profile table
+using the numeric camera ID as an array-like index; a sparse profile set such
+as 0 and 2 reaches its `CHECK` for a missing ID 1. The checked-in
+`highspeedcif` entry keeps that table contiguous, while the probe confirms that
+ID 1 has no ordinary low/high/480p/720p profile. Do not turn the sentinel into
+an ordinary encoder profile unless auxiliary Venus teardown has been repaired.
+See the corresponding
+[AOSP MediaProfiles implementation](https://android.googlesource.com/platform/frameworks/av/+/014a9ed60d/media/libmedia/MediaProfiles.cpp#714).
+
 The installer reads `/proc/self/mountinfo` and `/proc/pressure/io` before both
 installation and rollback. If Waydroid's rootfs or one of its child mounts is
 still present, either PSI `avg10` value is non-zero, or pressure data is
