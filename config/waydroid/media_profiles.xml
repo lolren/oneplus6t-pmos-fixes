@@ -8,9 +8,9 @@
      synthetic camera profile.  Keeping this second, device-neutral file in
      the vendor overlay makes CameraX's EncoderProfiles query deterministic.
 
-     The installed libcamera order on fajita is 0 rear main, 1 front and 2
-     rear auxiliary. IDs 0 and 1 have guarded hardware-encoder acceptance.
-     ID 2 is intentionally omitted: two bounded recordings reached Venus but
+     The installed libcamera order on fajita is 0 rear main, 1 rear auxiliary
+     and 2 front. IDs 0 and 2 have guarded hardware-encoder acceptance.
+     ID 1 is intentionally omitted: two bounded recordings reached Venus but
      reproducibly entered a firmware-recovery IRQ storm after stop, even with
      Android's documented session-before-recorder teardown order. Preview,
      YUV and JPEG exposure are unaffected. Do not advertise auxiliary video
@@ -28,13 +28,13 @@
         </EncoderProfile>
     </CamcorderProfiles>
 
-    <CamcorderProfiles cameraId="1">
+    <CamcorderProfiles cameraId="2">
         <EncoderProfile quality="480p" fileFormat="mp4" duration="60">
-            <Video codec="h264" bitRate="3000000" width="640" height="480" frameRate="19" />
+            <Video codec="h264" bitRate="3000000" width="640" height="480" frameRate="24" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
         <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
-            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="19" />
+            <Video codec="h264" bitRate="6000000" width="1280" height="720" frameRate="24" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
         </EncoderProfile>
     </CamcorderProfiles>

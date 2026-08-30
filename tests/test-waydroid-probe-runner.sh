@@ -169,14 +169,14 @@ grep -q 'shell -- rm -f /data/user/0/dev.lolren.waydroidcameraprobe/files/encode
 	"$TEST_DIR/waydroid.log"
 
 if PATH="$TEST_DIR/bin:$PATH" WAYDROID_TEST_LOG="$TEST_DIR/waydroid.log" \
-	PMOS_WAYDROID_PROBE_CAMERA_ID=2 \
+	PMOS_WAYDROID_PROBE_CAMERA_ID=1 \
 	PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes \
 	"$RUNNER" "$apk" encode-720p \
 	>"$TEST_DIR/aux-encode.out" 2>"$TEST_DIR/aux-encode.err"; then
 	printf '%s\n' 'probe runner accepted unsafe auxiliary hardware encoding' >&2
 	exit 1
 fi
-grep -q 'camera 2 hardware encoding is disabled after a Venus teardown fault' \
+grep -q 'camera 1 hardware encoding is disabled after a Venus teardown fault' \
 	"$TEST_DIR/aux-encode.err"
 
 camera_result=$TEST_DIR/camera-result.txt

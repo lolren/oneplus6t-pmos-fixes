@@ -7,6 +7,11 @@ blobs or firmware.
 
 The reference phone runs Waydroid 1.6.3 with the pinned Android 13 ARM64
 Vanilla/MAINLINE image pair in [WAYDROID-VANILLA.md](WAYDROID-VANILLA.md).
+The current r53 provider enumeration is stable for this phone: Camera2 ID 0 is
+the main rear module, ID 1 is the auxiliary rear module and ID 2 is the fixed-
+focus front module. The older r50/r51 checkpoints below were written before
+that provider ordering was corrected; their ID-specific recording notes are
+historical and are not the current safety policy.
 The r52 camera bundle is complete on a clean image: it carries the required
 32-bit legacy provider service and implementation in addition to the accepted
 r51/r50 Camera3 stack. It exposes three Android cameras and advertises
@@ -38,12 +43,12 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | --- | --- |
 | Clean-image provider bundle | Includes the reviewed 32-bit legacy provider service, implementation libraries and VINTF declaration, so a fresh ARM64 Vanilla image does not depend on leftovers from an older Waydroid generation. |
 | Three-camera enumeration | Android applications can open the main rear, secondary rear and front sensors instead of seeing no camera provider. |
-| Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path. |
+| Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path: rear IDs 0/1 and front ID 2. |
 | minigbm plane parsing | The HAL reads Waydroid's real buffer offsets, strides and sizes, preventing corrupt mappings and one-plane assumptions. |
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
-| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for the guarded main/front IDs; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary video is omitted after a reproducible Venus teardown fault. |
+| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 2; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 1 is omitted after a reproducible Venus teardown fault. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
 | Venus hardware H.264 | Uses `/dev/video12` for encode. Codec2 r53 completes repeated rear H.264/AAC recordings and teardown; the current illuminated file still averages only 11.62 fps, so this is functional acceptance rather than performance parity. |
 | MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
@@ -110,8 +115,8 @@ camera UI by themselves; an Android camera application consumes them.
 - `config/waydroid/legacy-libcamera.xml` declares the provider's `legacy/0`
   HIDL instance to Android's framework compatibility matrix.
 - `config/waydroid/media_profiles.xml` declares conservative 480p/720p
-  H.264/AAC profiles for the accepted main/front IDs. It intentionally omits
-  the auxiliary ID until a non-Venus path or kernel/Codec2 fix is accepted.
+  H.264/AAC profiles for main rear ID 0 and front ID 2. It intentionally omits
+  auxiliary rear ID 1 until a non-Venus path or kernel/Codec2 fix is accepted.
 - `config/waydroid/mediaswcodec.policy` is the device-specific additive
   seccomp fragment required by Mesa's software encoder path.
 - `scripts/prepare-waydroid-camera-provider` extracts and verifies the four

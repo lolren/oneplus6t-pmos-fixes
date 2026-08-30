@@ -5,7 +5,7 @@ pmaports: seven SDM845 kernel patches, eighteen project libcamera patches, three
 files, one PipeWire control/state-transport patch, six Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r16 Advanced Snapshot
+device-specific identifier. The current patch carries the r24 Advanced Snapshot
 source recipe and its verified AArch64 package pair, the
 libcamera r28 manual-focus/tone generation; r24, r25 and r26 plus
 the previously signed app generations remain available as rollback baselines.
@@ -15,20 +15,26 @@ as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
-The reference phone has r28/r7/r3 userspace and the visible-Controls Advanced
-Snapshot r16 build installed without reboot; r24/r7/r3 and r0/r1 app packages
-remain rollback baselines.
+The reference phone has r28/r7/r3 userspace and the visible Image Controls
+Advanced Snapshot r24 build installed without reboot; the earlier r16 app,
+r7/r3 lower stack and r0/r1 app packages remain rollback baselines.
 
-The current r28/r16 evidence is:
+The current r28/r24 evidence is:
 
 - libcamera/IPA r28 with the normalized rear `LensPosition` contract;
-- Advanced Snapshot commit `2d9639bcb58d3b5b0689928e03946242def036cd`;
-- main APK SHA-256 `677c09016eb673ee1f6bc033435073871da551aaadfe7291f09ea7b81c57d10e`;
-- language APK SHA-256 `968f885fdd01ee6661bf63f0d58d969c290cf9a09865c733f841a1101a22c4af`;
+- Advanced Snapshot commit `1b7b6e681d310c79b96ee98f96e150540d5bf962`;
+- main APK SHA-256 `3e50832180b548add81bde75c133b4779787603940619c7025917e9e1af3b445`;
+- language APK SHA-256 `b465ffde5a61c522e13f1a7f348f7e7a6afa4bb63de2c73d798c79291a070341`;
 - native main/secondary AF validation with 183/239 post-reset metrics and
   zero lens requests; and
 - Waydroid manual-focus result deltas of 2.000 on both rear IDs plus
   terminal tap-focus results on both rear IDs.
+
+The app package adds the visible Image Controls panel, standard Gamma and a
+per-sensor calibration dialog. The dialog saves bounded exposure, tone/detail
+and optional manual-focus values under a stable sensor identity. It cannot
+invent Android's proprietary white-balance matrix, lens-shading or
+multi-frame ISP tuning; saved-photo scene acceptance remains separate.
 
 ## Reviewed base and build
 
@@ -65,20 +71,20 @@ Applying the integration patch to the reviewed base produces:
   diagnostic and rollback candidates);
 - `pipewire-spa-libcamera-1.6.8-r7`;
 - `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
-- `advanced-snapshot-0.1.0-r16` plus
-  `advanced-snapshot-lang-0.1.0-r16` (handheld-aligned Software HDR and
-  serialized camera teardown, rear manual-focus, tone-default and visible
-  Controls-button build; an exact AArch64 APK pair was built in the isolated
+- `advanced-snapshot-0.1.0-r24` plus
+  `advanced-snapshot-lang-0.1.0-r24` (handheld-aligned Software HDR and
+  serialized camera teardown, rear manual-focus, tone-default, Gamma and
+  per-sensor calibration build; an exact AArch64 APK pair was built in the isolated
   edge buildroot and installed on the reference phone without reboot); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
-The r16 application recipe is pinned to Advanced Snapshot commit
-`2d9639bcb58d3b5b0689928e03946242def036cd`. Its GitHub source archive SHA-512
+The r24 application recipe is pinned to Advanced Snapshot commit
+`1b7b6e681d310c79b96ee98f96e150540d5bf962`. Its GitHub source archive SHA-512
 is
-`02c30af24bd726b7aa5e09acf92804dbc6e24b10e939a1a08e875ddcfc2540d58a88747f04ee0ae46ba3a2a950fe9084cf8fd8079b9a4921c9a251fad2cc6375`.
+`06f2a4a69ee4678e00cca56a22f6bede574d9d3d67c5886afe837c727b55bea4a0d60d4c782ea08ecef366c8346417cd57075f6eba1599fbd4e675618fabe1a9`.
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
 compatibility fix. The exact AArch64 pair was built and installed with the
 local pmbootstrap signing key; repository-key release publication and phone
@@ -251,20 +257,20 @@ use the release archive for the documented installer flow.
 
 The reference phone's current development camera stack runs:
 
-- kernel package `7.1_rc1-r8`;
+- kernel package `7.1_rc1-r10`;
 - `libcamera` and `libcamera-ipa` `99990.7.2-r28`;
 - `pipewire-spa-libcamera` `1.6.8-r7`;
 - Snapshot and Snapshot language data `50.0-r3`; and
-- Advanced Snapshot and its language data `0.1.0_p20260829225220-r16`.
+- Advanced Snapshot and its language data `0.1.0-r24`.
 
-The r28/r16 packages above are the current coherent generation: r7 transports
+The r28/r24 packages above are the current coherent generation: r7 transports
 generation-correlated `AfState`, r28 adds the normalized rear `LensPosition`
-contract, and r16 waits for correlated results while exposing manual focus and
-Reset-to-continuous-AF in the UI. Both rear cameras returned a correlated
-`focused` result and survived the 60-second post-reset test; the fixed-focus
-front completed 120 frames and rejected focus as unsupported. Keep the exact
-r24/r7/r3 plus prior app pair as rollback and install or roll them back
-together.
+contract, and r24 waits for correlated results while exposing Gamma, per-sensor
+calibration, manual focus and Reset-to-continuous-AF in the UI. Both rear
+cameras returned a correlated `focused` result and survived the 60-second
+post-reset test; the fixed-focus front completed 120 frames and rejected focus
+as unsupported. Keep the exact lower-stack and app package files as rollback
+and install or roll them back together.
 
 The exact r24 libcamera packages are the preferred rollback for the r25
 autofocus-reference update. The exact r23 pair and older complete r20/r6/r2 set remain useful when rolling

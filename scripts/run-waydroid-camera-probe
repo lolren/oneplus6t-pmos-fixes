@@ -90,8 +90,8 @@ esac
 	die 'encode-720p requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes'
 if [ "$profile" = encode-720p ]; then
 	[ -n "$camera_id" ] || die 'encode-720p requires PMOS_WAYDROID_PROBE_CAMERA_ID'
-	[ "$camera_id" != 2 ] ||
-		die 'camera 2 hardware encoding is disabled after a Venus teardown fault'
+	[ "$camera_id" != 1 ] ||
+		die 'camera 1 hardware encoding is disabled after a Venus teardown fault'
 fi
 [ -z "$output" ] || [ ! -e "$output" ] || die "refusing to overwrite: $output"
 if [ -n "$media_output" ]; then

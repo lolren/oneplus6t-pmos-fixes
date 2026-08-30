@@ -167,7 +167,7 @@ waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile record-yuv-720p
 
-# Real 720p H.264/AAC recording (main rear ID 0 or front ID 1 only)
+# Real 720p H.264/AAC recording (main rear ID 0 or front ID 2 only)
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
@@ -179,7 +179,7 @@ waydroid shell -- am start -W -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile tap-focus
 
-# Verify the standard Camera2 manual-focus control on a rear camera
+# Verify the standard Camera2 manual-focus control on a rear camera (ID 0 or 1)
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -W -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
@@ -208,7 +208,7 @@ camera timestamps and the per-camera `CamcorderProfile` to negotiate cadence.
 It also follows Android's recording teardown order: stop and close the capture
 session before stopping `MediaRecorder`, so no new DMA-BUFs race Codec2
 `STREAMOFF`.
-Use `manual-focus` with camera ID 1 or 2 to verify that Android's standard
+Use `manual-focus` with rear camera ID 0 or 1 to verify that Android's standard
 focus-distance request reaches the rear actuator. The profile sends 0.0 D and
 the advertised maximum distance in separate repeating requests, waits for
 each request to settle, and requires a result-distance delta of at least 0.25
@@ -216,7 +216,7 @@ D. A fixed-focus camera is reported as `manualFocusSupported=false` rather than
 treated as a failure. This checks control transport and actuator movement; it
 does not claim that every scene has the same optical sharpness.
 
-Use `tap-focus` with camera ID 1 or 2 to verify the separate Camera2 tap-style
+Use `tap-focus` with rear camera ID 0 or 1 to verify the separate Camera2 tap-style
 path. It sends a center `CONTROL_AF_REGIONS` rectangle together with
 `CONTROL_AF_TRIGGER_START` and requires `FOCUSED_LOCKED` or
 `NOT_FOCUSED_LOCKED` before passing. This validates Android request routing and
@@ -239,7 +239,7 @@ The runner refuses to overwrite either output. Keep captures private unless
 every person and object in view is safe to publish. The explicit allow flag is
 intentional: encoded diagnostics exercise camera, Codec2 and kernel teardown
 together and must run only after the Waydroid health and safety-monitor gates.
-Camera ID 2 is hard-disabled for this profile: two bounded attempts with
+Camera ID 1 (the auxiliary rear module) is hard-disabled for this profile: two bounded attempts with
 different teardown ordering both caused a Venus recovery IRQ storm after stop.
 Its preview, YUV and JPEG profiles remain enabled; auxiliary video must use a
 non-Venus encoder until that kernel/Codec2 incompatibility is fixed.

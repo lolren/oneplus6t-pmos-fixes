@@ -3,6 +3,26 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-30 Advanced Snapshot r24 calibration checkpoint
+
+The separately maintained [Advanced Snapshot](https://github.com/lolren/advanced-snapshot)
+source commit `1b7b6e681d310c79b96ee98f96e150540d5bf962` was built as an
+AArch64 postmarketOS package pair. The main APK SHA-256 is
+`3e50832180b548add81bde75c133b4779787603940619c7025917e9e1af3b445`; the
+language APK SHA-256 is
+`b465ffde5a61c522e13f1a7f348f7e7a6afa4bb63de2c73d798c79291a070341`.
+The exact pair was installed on the connected OnePlus 6T without reboot.
+
+The live Image Controls panel now exposes Auto focus, rear manual focus,
+automatic/manual exposure, shutter, analogue gain, Exposure, Colour,
+Contrast, Detail, Gamma, Zoom, Hardware flash, Software HDR and Reset. The
+Camera Calibration dialog opened on the physical main-rear sensor and showed
+its stable libcamera identity. A profile was saved, observed in the
+`camera-calibration-profiles` GSettings key, and cleared again. Gamma control
+transport was exercised through the installed helper. These checks validate
+the application controls and persistence; they do not claim Android's
+proprietary colour matrix, lens-shading, denoise or computational ISP.
+
 ## 2026-08-26 daily-use setup host gate
 
 The new `configure-daily-use` wrapper sequences the existing cellular,

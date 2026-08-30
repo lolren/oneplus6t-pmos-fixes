@@ -293,11 +293,12 @@ and through an open Camera3 HAL in Waydroid.
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
 | Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
-| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; r7 transport and Advanced Snapshot r16 correlate the result and use amber/green/red state. |
+| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; r7 transport and Advanced Snapshot r24 correlate the result and use amber/green/red state. |
 | Manual rear focus | Exposes `LensPosition` 0.0–2.0 in Advanced Snapshot; the simple IPA maps it to the bounded 400–800 actuator span and the fixed-focus front disables it. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
+| Gamma and sensor calibration | Advanced Snapshot exposes a standard `Gamma` tone control plus a per-sensor calibration dialog for repeatable exposure, colour, contrast, detail and focus settings; profiles are keyed by stable camera identity. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
@@ -323,7 +324,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer r28/r16 development line. The
+publishes the newer r28/r24 development line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -342,21 +343,24 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current native line is libcamera/IPA r28 with Advanced Snapshot r16. The
-latest app source is commit `2d9639bcb58d3b5b0689928e03946242def036cd`, which
-adds a labelled **Controls** button beside the shutter and camera switch while
-retaining the hamburger-menu entry. Its AArch64 package is installed on the
-reference phone without reboot. Native and Waydroid rear focus controls pass
-their live metadata/actuator probes; saved-photo colour and visual UI checks
-remain scene-dependent and are not claimed as vendor Android parity.
+The current native line is libcamera/IPA r28 with Advanced Snapshot r24. The
+latest app source is commit `1b7b6e681d310c79b96ee98f96e150540d5bf962`, which
+adds the labelled **Image Controls** entry, Gamma and the per-sensor Camera
+Calibration dialog while retaining the hamburger-menu entry. Its corrected
+AArch64 package is installed on the reference phone without reboot. Native and
+Waydroid rear focus controls pass their live metadata/actuator probes;
+saved-photo colour and visual UI checks remain scene-dependent and are not
+claimed as vendor Android parity.
 
-The current native UI source exposes a visible **Controls** entry, tap reticle
-plus Exposure, Colour, Detail, Zoom, Reset and an opt-in rear **Hardware flash**
-switch when the helper is installed. The lower-layer focus instability is fixed:
-both rear cameras now use bounded progressive tap-focus and return to
-continuous monitoring without moving the lens. Advanced Snapshot additionally
-offers a manual rear-lens slider and explicitly returns to continuous AF on
-Reset. The UI is not yet an
+The current native UI source exposes a visible **Image Controls** entry, tap
+reticle plus Exposure, Colour, Contrast, Detail, Gamma, Zoom, Reset and an
+opt-in rear **Hardware flash** switch when the helper is installed. The Camera
+Calibration dialog can save those standard controls per physical sensor and
+optionally restore a deliberate manual focus position. The lower-layer focus
+instability is fixed: both rear cameras now use bounded progressive tap-focus
+and return to continuous monitoring without moving the lens. Advanced Snapshot
+additionally offers a manual rear-lens slider and explicitly returns to
+continuous AF on Reset. The UI is not yet an
 Android-level camera application; that work continues in the separately
 maintained Advanced Snapshot project. HDR, calibrated
 colour/lens shading, temporal denoise and Android vendor computational
@@ -532,8 +536,9 @@ On installed Snapshot r3:
 2. tap an object in either rear preview to request focus—the yellow square
    appears immediately, while the front camera correctly remains fixed-focus;
 3. open the main menu and choose **Image Controls**;
-4. adjust Exposure, Colour, Contrast, Detail or Zoom; and
-5. use **Reset** to restore the tuned defaults for the active sensor.
+4. adjust Exposure, Colour, Contrast, Detail, Gamma or Zoom; and
+5. use **Camera calibration** to save a repeatable profile for the active
+   sensor, or **Reset** to restore its tuned defaults.
 
 Open **Advanced Snapshot** for the truthful reticle: amber means scanning,
 green means libcamera reported `Focused`, and red means `Failed` or a transport
@@ -542,8 +547,8 @@ camera to hold 0 (far) through 2 (near); tapping the preview replaces that
 lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
 front camera has no focus gesture or manual slider.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r15
-candidate also exposes opt-in Software HDR when its helper is installed; it
+The sliders affect both preview and saved output. The Advanced Snapshot r24
+build also exposes opt-in Software HDR when its helper is installed; it
 uses three bracketed JPEG captures, confidence-gated global-translation
 alignment and a linear-light merge. This is not the same as Android-vendor HDR:
 local/non-rigid subject motion, rotation, parallax, lens shading, calibrated
@@ -610,7 +615,7 @@ The current requirement-by-requirement audit is maintained in
 - host-side APN selection, time-sync, audio routing, display candidate,
   camera stack, Waydroid overlays, location bridge, NFC/power reports and
   update guard are implemented and tested;
-- signed AArch64 camera r28 and Advanced Snapshot r16 development packages,
+- signed AArch64 camera r28 and Advanced Snapshot r24 development packages,
   plus the complete Waydroid r52 clean-Vanilla bundle, are published; the
   installed r53-static10-focus camera overlay, kernel r10 and byte-reproducible Codec2 r53 complete repeated
   main/front recording. The

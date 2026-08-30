@@ -6,8 +6,8 @@ focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
 The current reference phone runs kernel r10, libcamera/IPA r28,
-`pipewire-spa-libcamera` r7, Snapshot r3 and Advanced Snapshot r16. The r28
-lower layer and r16 app were built for AArch64 and installed without a reboot.
+`pipewire-spa-libcamera` r7, Snapshot r3 and Advanced Snapshot r24. The r28
+lower layer and r24 app were built for AArch64 and installed without a reboot.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded.
 The exact r24/r25/r26 packages and earlier r0/r1 app generations remain
@@ -190,16 +190,23 @@ through a phone-specific actuator command:
    metering, one focus rectangle and `AfTriggerStart`.
 
 Snapshot r3 draws a complete yellow focus square immediately so touch feedback
-is never hidden behind PipeWire discovery. Advanced Snapshot r16 handles the
+is never hidden behind PipeWire discovery. Advanced Snapshot r24 handles the
 tap on the Camera ancestor in capture phase, maps it through the negotiated
 crop/orientation, and keeps one-shot autofocus at the selected position after
-the metadata-confirmed result. Its camera bar now has a labelled **Controls**
-button beside the shutter and camera switch; the hamburger menu retains
-**Image Controls** as a fallback. **Reset** explicitly returns to continuous
+the metadata-confirmed result. Its preview now has a labelled **Controls**
+overlay button; the hamburger menu retains **Image Controls** as a fallback.
+**Reset** explicitly returns to continuous
 autofocus; there is no delayed reset that can blur a subsequent still. Camera
 changes and stale async callbacks clear the marker safely. The fixed-focus
 front camera has no AF controls and is rejected without claiming focus
 success.
+
+The Image Controls panel also exposes Gamma and the Camera Calibration dialog.
+The dialog stores the standard exposure, tone/detail and optional manual-focus
+values under a stable physical-sensor identity, so the IMX371, IMX376 and
+IMX519 profiles remain separate. It is a repeatable userspace control profile,
+not a replacement for Android's proprietary colour matrix, lens shading or
+multi-frame ISP tuning.
 
 Advanced Snapshot's stricter result path is packaged separately. PipeWire r7
 publishes an accepted-trigger generation and correlates it with real
@@ -271,6 +278,7 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Manual rear focus | Yes | Yes | No hardware | `LensPosition` 0..2 maps to DAC 400..800; live metadata sweep passed |
 | Contrast | Yes | Yes | Yes | `0..2` |
 | Gamma | Yes | Yes | Yes | `0.1..10` |
+| Sensor calibration profile | Yes | Yes | Yes | Stable per-sensor profile for standard exposure/tone/detail controls; manual focus is rear-only |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
 | Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; current app |
@@ -336,7 +344,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
 The current reference build produced `libcamera`/`libcamera-ipa` r28,
-`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r16 and the SDM845
+`pipewire-spa-libcamera` r7, Snapshot r3, Advanced Snapshot r24 and the SDM845
 kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only; no reboot is implicit.
 
@@ -345,9 +353,9 @@ These commands build packages only; no reboot is implicit.
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
 
-### Current r28/r16 runtime entry
+### Current r28/r24 runtime entry
 
-- Native PipeWire validation passed on the installed r28/r16 stack. Main and
+- Native PipeWire validation passed on the installed r28/r24 stack. Main and
   secondary returned `focused`, completed the scan-free Reset transition and
   recorded 183 and 239 continuous-focus metrics respectively during the
   60-second stability windows; both recorded zero restarts and zero
@@ -449,7 +457,7 @@ The historical r24 validation below is retained for rollback provenance.
 The retained r23 libcamera APKs remain the immediate r24 rollback. The r8 plus
 r20/r6/r2 package set remains the complete older baseline. The current phone
 validation described above uses kernel r10 with r28/r7/r3 userspace and
-Advanced Snapshot r16. Keep the exact r24/r1 or r24/r3 package set as a
+Advanced Snapshot r24. Keep the exact r24/r1 or r24/r3 package set as a
 rollback before changing the lower layer or application independently.
 
 ## Installation boundary
@@ -457,7 +465,7 @@ rollback before changing the lower layer or application independently.
 Do not unload camera modules on a running phone. A kernel package replaces
 modules under the current release path, so after any approved kernel upgrade
 do not open the camera or load modules before the approved reboot. The current
-r28/r16 camera generation is userspace-only and does not require a kernel
+r28/r24 camera generation is userspace-only and does not require a kernel
 upgrade or reboot.
 
 To reproduce the completed installation safely:
