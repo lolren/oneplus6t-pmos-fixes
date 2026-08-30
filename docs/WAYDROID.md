@@ -49,6 +49,7 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
 | Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 2; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 1 is omitted after a reproducible Venus teardown fault. |
+| Recording-profile synchronizer | Copies the checked-in, safe camera-ID mapping into both Android recording-profile filenames after a stopped-rootfs preflight. It backs up the exact previous files and supports a bounded rollback, fixing image-level files that still label ID 1 as the front camera. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
 | Venus hardware H.264 | Uses `/dev/video12` for encode. Codec2 r53 completes repeated rear H.264/AAC recordings and teardown; the current illuminated file still averages only 11.62 fps, so this is functional acceptance rather than performance parity. |
 | MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
@@ -131,6 +132,15 @@ camera UI by themselves; an Android camera application consumes them.
   refuses to access the overlay if a `/var/lib/waydroid/rootfs` mount remains;
   this prevents a stale lowerdir mount from turning a copy into an
   uninterruptible I/O wait.
+- `scripts/sync-waydroid-camera-profiles` repairs only
+  `vendor/etc/media_profiles.xml` and `vendor/etc/media_profiles_V1_0.xml`
+  in the host overlay. It validates that the checked-in source advertises
+  only recording-capable IDs 0 and 2, refuses symlink/directory targets,
+  requires an unmounted rootfs and zero storage-I/O PSI pressure, records a
+  dated exact backup, and supports rollback. This is needed when an otherwise
+  correct provider is paired with a stale image-level profile file: the live
+  provider order is 0 rear main, 1 auxiliary rear, 2 front, while the old
+  profile file can incorrectly describe 1 as front and omit 2.
 - `patches/android-v4l2-codec2/` carries the Qualcomm Venus queue-memory,
   single-plane layout/lifetime and metadata-only temporary-stride series
   against the exact Android 13 V4L2 Codec2 revision.
@@ -444,6 +454,35 @@ waydroid session start
 This operation does not alter a partition, boot slot, kernel or firmware and
 does not require a phone reboot. The installer does not start or stop services;
 that is kept explicit so it cannot unexpectedly interrupt a camera session.
+
+### Repair stale recording-profile mappings
+
+The profile synchronizer is a separate, smaller transaction for an image that
+already has the camera provider installed. First stop the Waydroid session and
+container, then run the same health preflight used above and require
+`rootfs_mounts=0` and `overlay_precondition=pass`:
+
+```sh
+pmos-sync-waydroid-camera-profiles --dry-run
+sudo pmos-sync-waydroid-camera-profiles
+```
+
+The apply command copies the repository's mapping to both profile filenames,
+prints the backup directory and writes an SHA-256 manifest. It does not reboot
+the phone, alter a partition or touch the camera provider. Start the container
+and session again, then run the Camera2 `encode-720p` probe on IDs 0 and 2.
+To undo the exact change, use the printed backup path while Waydroid is
+stopped:
+
+```sh
+sudo pmos-sync-waydroid-camera-profiles \
+  --rollback /var/lib/waydroid/backups/camera-profiles-YYYYMMDDTHHMMSSZ-PID
+```
+
+Never edit either overlay file while Waydroid's rootfs is mounted. The helper
+is intentionally explicit so a normal postmarketOS update cannot silently
+rewrite or partially apply a lower-layer overlay transaction; rerun it after
+an image/profile update and retain its printed backup for rollback.
 
 The installer reads `/proc/self/mountinfo` and `/proc/pressure/io` before both
 installation and rollback. If Waydroid's rootfs or one of its child mounts is

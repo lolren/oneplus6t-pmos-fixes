@@ -1,0 +1,258 @@
+#!/bin/sh
+set -eu
+
+program=${0##*/}
+project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+config_dir=${WAYDROID_CAMERA_CONFIG_DIR:-$project_dir/config/waydroid}
+default_overlay=/var/lib/waydroid/overlay
+backup_root=${WAYDROID_CAMERA_PROFILES_BACKUP_ROOT:-/var/lib/waydroid/backups}
+waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
+mountinfo_file=${WAYDROID_CAMERA_MOUNTINFO:-/proc/self/mountinfo}
+proc_root=${WAYDROID_CAMERA_PROC_ROOT:-/proc}
+dry_run=0
+
+usage() {
+	cat >&2 <<EOF
+usage:
+  $program [--dry-run] [OVERLAY_DIR]
+  $program --rollback BACKUP_DIR [OVERLAY_DIR]
+
+Synchronize the two Waydroid media-profile files with the checked-in camera
+mapping. The default overlay is $default_overlay. Apply and rollback require
+the Waydroid rootfs to be unmounted and storage I/O pressure to be clear.
+EOF
+}
+
+fail_if_broad_path() {
+	case "$1" in
+	''|/|/var|/var/lib|/var/lib/waydroid)
+		printf 'Refusing unsafe path: %s\n' "$1" >&2
+		exit 1
+		;;
+	esac
+}
+
+require_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		printf '%s\n' 'This operation must run as root.' >&2
+		exit 1
+	fi
+}
+
+validate_overlay() {
+	overlay_dir=$1
+	fail_if_broad_path "$overlay_dir"
+	[ -d "$overlay_dir" ] || {
+		printf 'Overlay directory does not exist: %s\n' "$overlay_dir" >&2
+		exit 1
+	}
+	if [ -r "$mountinfo_file" ] && awk -v root="$waydroid_rootfs" '
+		$5 == root || index($5, root "/") == 1 { found = 1; exit }
+		END { exit found ? 0 : 1 }
+	' "$mountinfo_file"; then
+		printf 'Refusing to access the overlay while Waydroid rootfs is mounted: %s\n' \
+			"$waydroid_rootfs" >&2
+		exit 1
+	fi
+	[ -r "$proc_root/pressure/io" ] || {
+		printf 'Refusing overlay access: I/O pressure data is unavailable: %s\n' \
+			"$proc_root/pressure/io" >&2
+		exit 1
+	}
+	io_some_avg10=$(awk '$1 == "some" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) { sub(/^avg10=/, "", $i); print $i; exit }
+	}' "$proc_root/pressure/io")
+	io_full_avg10=$(awk '$1 == "full" {
+		for (i = 2; i <= NF; i++)
+			if ($i ~ /^avg10=/) { sub(/^avg10=/, "", $i); print $i; exit }
+	}' "$proc_root/pressure/io")
+	[ -n "$io_some_avg10" ] && [ -n "$io_full_avg10" ] || {
+		printf '%s\n' 'Refusing overlay access: incomplete I/O pressure data' >&2
+		exit 1
+	}
+	if ! awk -v some="$io_some_avg10" -v full="$io_full_avg10" \
+		'BEGIN { exit !((some + 0 == 0) && (full + 0 == 0)) }'; then
+		printf 'Refusing overlay access: I/O pressure is active (some=%s full=%s)\n' \
+			"$io_some_avg10" "$io_full_avg10" >&2
+		exit 1
+	fi
+}
+
+profile_targets() {
+	printf '%s\n' \
+		vendor/etc/media_profiles.xml \
+		vendor/etc/media_profiles_V1_0.xml
+}
+
+validate_source() {
+	source_path=$config_dir/media_profiles.xml
+	[ -f "$source_path" ] || {
+		printf 'Camera profile source does not exist: %s\n' "$source_path" >&2
+		exit 1
+	}
+	[ ! -L "$source_path" ] || {
+		printf 'Camera profile source must not be a symlink: %s\n' "$source_path" >&2
+		exit 1
+	}
+	grep -q '<CamcorderProfiles cameraId="0">' "$source_path" || {
+		printf '%s\n' 'Camera profile source is missing camera ID 0.' >&2
+		exit 1
+	}
+	grep -q '<CamcorderProfiles cameraId="2">' "$source_path" || {
+		printf '%s\n' 'Camera profile source is missing camera ID 2.' >&2
+		exit 1
+	}
+	if grep -q '<CamcorderProfiles cameraId="1">' "$source_path"; then
+		printf '%s\n' 'Refusing a source that advertises unsafe auxiliary camera ID 1.' >&2
+		exit 1
+	fi
+}
+
+validate_target() {
+	target_path=$1
+	if [ -L "$target_path" ] || [ -d "$target_path" ]; then
+		printf 'Refusing to replace non-regular target: %s\n' "$target_path" >&2
+		exit 1
+	fi
+}
+
+copy_profile() {
+	copy_source=$1
+	copy_destination=$2
+	validate_target "$copy_destination"
+	install -D -m 0644 "$copy_source" "$copy_destination"
+}
+
+create_backup() {
+	overlay_dir=$1
+	backup_dir=$2
+	mkdir -p "$backup_dir/files"
+	: > "$backup_dir/presence.tsv"
+	while IFS= read -r target; do
+		backup_source=$overlay_dir/$target
+		if [ -e "$backup_source" ] || [ -L "$backup_source" ]; then
+			if [ -L "$backup_source" ] || [ ! -f "$backup_source" ]; then
+				printf 'Refusing to back up non-regular target: %s\n' "$backup_source" >&2
+				exit 1
+			fi
+			mkdir -p "$backup_dir/files/$(dirname "$target")"
+			cp -p "$backup_source" "$backup_dir/files/$target"
+			printf 'present\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		else
+			printf 'absent\t%s\n' "$target" >> "$backup_dir/presence.tsv"
+		fi
+	done <<EOF
+$(profile_targets)
+EOF
+	sha256sum "$config_dir/media_profiles.xml" > "$backup_dir/source.sha256"
+}
+
+write_manifest() {
+	overlay_dir=$1
+	backup_dir=$2
+	(
+		cd "$overlay_dir"
+		while IFS= read -r target; do
+			sha256sum "$target"
+		done <<EOF
+$(profile_targets)
+EOF
+	) > "$backup_dir/installed.sha256"
+}
+
+do_install() {
+	overlay_dir=$1
+	validate_source
+	validate_overlay "$overlay_dir"
+	profile_source=$config_dir/media_profiles.xml
+	if [ "$dry_run" -eq 1 ]; then
+		printf 'dry-run: would synchronize %s profile files from %s\n' \
+			"$(profile_targets | wc -l | tr -d ' ')" "$profile_source"
+		printf 'dry-run: source sha256: '
+		sha256sum "$profile_source"
+		return
+	fi
+	require_root
+	fail_if_broad_path "$backup_root"
+	backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+	backup_dir=$backup_root/camera-profiles-$backup_stamp-$$
+	[ ! -e "$backup_dir" ] || {
+		printf 'Refusing to overwrite backup: %s\n' "$backup_dir" >&2
+		exit 1
+	}
+	create_backup "$overlay_dir" "$backup_dir"
+	printf 'backup: %s\n' "$backup_dir"
+	while IFS= read -r target; do
+		copy_profile "$profile_source" "$overlay_dir/$target"
+	done <<EOF
+$(profile_targets)
+EOF
+	write_manifest "$overlay_dir" "$backup_dir"
+	cat "$backup_dir/installed.sha256"
+}
+
+do_rollback() {
+	backup_dir=$1
+	overlay_dir=$2
+	require_root
+	validate_overlay "$overlay_dir"
+	[ -f "$backup_dir/presence.tsv" ] || {
+		printf 'Invalid camera-profile backup: %s\n' "$backup_dir" >&2
+		exit 1
+	}
+	while IFS="$(printf '\t')" read -r state target; do
+		case "$target" in
+		vendor/etc/media_profiles.xml|vendor/etc/media_profiles_V1_0.xml)
+			;;
+		*)
+			printf 'Invalid backup target: %s\n' "$target" >&2
+			exit 1
+			;;
+		esac
+		case "$state" in
+		present)
+			[ -f "$backup_dir/files/$target" ] || {
+				printf 'Backup file is missing: %s\n' "$backup_dir/files/$target" >&2
+				exit 1
+			}
+			copy_profile "$backup_dir/files/$target" "$overlay_dir/$target"
+			;;
+		absent)
+			validate_target "$overlay_dir/$target"
+			rm -f "$overlay_dir/$target"
+			;;
+		*)
+			printf 'Invalid backup record: %s %s\n' "$state" "$target" >&2
+			exit 1
+			;;
+		esac
+	done < "$backup_dir/presence.tsv"
+	printf 'rolled back: %s\n' "$backup_dir"
+}
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+	usage
+	exit 2
+fi
+
+if [ "$1" = '--dry-run' ]; then
+	dry_run=1
+	shift
+fi
+
+if [ "$#" -gt 0 ] && [ "$1" = '--rollback' ]; then
+	[ "$dry_run" -eq 0 ] && [ "$#" -ge 2 ] && [ "$#" -le 3 ] || {
+		usage
+		exit 2
+	}
+	do_rollback "$2" "${3:-$default_overlay}"
+	exit 0
+fi
+
+[ "$#" -le 1 ] || {
+	usage
+	exit 2
+}
+overlay_dir=${1:-$default_overlay}
+do_install "$overlay_dir"

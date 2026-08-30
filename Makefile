@@ -29,6 +29,7 @@ SCRIPTS = \
 	scripts/check-display \
 	scripts/manage-display-kernel \
 	scripts/check-waydroid-health \
+	scripts/sync-waydroid-camera-profiles \
 	scripts/check-waydroid-gapps \
 	scripts/check-waydroid-vanilla \
 	scripts/camera-flash \
@@ -128,6 +129,7 @@ test:
 	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
 	sh tests/test-waydroid-installer.sh
+	sh tests/test-waydroid-camera-profiles.sh
 	sh tests/test-waydroid-audio-probe.sh
 	sh tests/test-snapshot-patches.sh
 	sh tests/test-native-white-balance-patches.sh
@@ -270,6 +272,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-camera-flash"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-health" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-health"
+	ln -sfn "$(LIBEXECDIR)/scripts/sync-waydroid-camera-profiles" \
+		"$(DESTDIR)$(SBINDIR)/pmos-sync-waydroid-camera-profiles"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-gapps" \
 		"$(DESTDIR)$(SBINDIR)/pmos-check-waydroid-gapps"
 	ln -sfn "$(LIBEXECDIR)/scripts/check-waydroid-vanilla" \
