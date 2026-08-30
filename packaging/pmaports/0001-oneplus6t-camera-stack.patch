@@ -582,7 +582,7 @@ index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..fd146ce28deb562739a575752ad3974f
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000..a5014622a65d27290343fe84f7dd9c4c43885a5a
+index 0000000..66ff0dd3829a5b0da2b88c21ed468ebb85b52031
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -590,8 +590,8 @@ index 0000000..a5014622a65d27290343fe84f7dd9c4c43885a5a
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=24
-+_commit="1b7b6e681d310c79b96ee98f96e150540d5bf962"
++pkgrel=30
++_commit="275999b20efa0de20c7f639b4341af42d0959fa2"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -652,7 +652,7 @@ index 0000000..a5014622a65d27290343fe84f7dd9c4c43885a5a
 +}
 +
 +sha512sums="
-+06f2a4a69ee4678e00cca56a22f6bede574d9d3d67c5886afe837c727b55bea4a0d60d4c782ea08ecef366c8346417cd57075f6eba1599fbd4e675618fabe1a9  advanced-snapshot-0.1.0.tar.gz
++3b337df795eb59ebe5aa9bfb52a28fcc2168bcf287cf4f406a8f7bd74c69e1d3934e7021cf9d5a16e6387507381fdcc25c403ee027df1d05083661e1f3e07bfe  advanced-snapshot-0.1.0.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
@@ -5674,8 +5674,202 @@ index 0000000..5c29639d5b4f29f2e039380408db41729ed77054
 +
 +-- 
 +2.49.0
+diff --git a/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
+new file mode 100644
+index 0000000..6621efd70669bb31abfee773635ade9b5497d923
+--- /dev/null
++++ b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
+@@ -0,0 +1,188 @@
++From 057a24f2da0c1aa7ee8f76b2c3c7fd096e0ca18f Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 30 Aug 2026 08:32:37 +0100
++Subject: [PATCH] ipa: simple: Expose automatic and manual white balance
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/ipa/simple/algorithms/awb.cpp | 78 +++++++++++++++++++++++++++----
++ src/ipa/simple/algorithms/awb.h   |  5 ++
++ src/ipa/simple/ipa_context.h      |  2 +
++ 3 files changed, 77 insertions(+), 8 deletions(-)
++
++diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
++index 05155c8..f2b6a6d 100644
++--- a/src/ipa/simple/algorithms/awb.cpp
+++++ b/src/ipa/simple/algorithms/awb.cpp
++@@ -7,6 +7,7 @@
++ 
++ #include "awb.h"
++ 
+++#include <algorithm>
++ #include <numeric>
++ #include <stdint.h>
++ 
++@@ -23,21 +24,79 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
++ 
++ namespace ipa::soft::algorithms {
++ 
+++namespace {
+++
+++constexpr float kMinColourGain = 0.0f;
+++constexpr float kMaxColourGain = 4.0f;
+++constexpr unsigned int kDefaultColourTemperature = 5000;
+++
+++} /* namespace */
+++
+++int Awb::init(IPAContext &context,
+++	      [[maybe_unused]] const ValueNode &tuningData)
+++{
+++	context.ctrlMap[&controls::AwbEnable] = ControlInfo(false, true, true);
+++	context.ctrlMap[&controls::ColourGains] =
+++		ControlInfo(kMinColourGain, kMaxColourGain,
+++			    Span<const float, 2>{ { 1.0f, 1.0f } });
+++
+++	return 0;
+++}
+++
++ int Awb::configure(IPAContext &context,
++ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
++ {
++-	auto &gains = context.activeState.awb.gains;
++-	gains = { { 1.0, 1.0, 1.0 } };
+++	auto &awb = context.activeState.awb;
+++	awb.gains = { { 1.0, 1.0, 1.0 } };
+++	awb.temperatureK = kDefaultColourTemperature;
+++	awb.autoEnabled = true;
++ 
++ 	return 0;
++ }
++ 
+++void Awb::queueRequest(IPAContext &context,
+++		       [[maybe_unused]] const uint32_t frame,
+++		       IPAFrameContext &frameContext,
+++		       const ControlList &controls)
+++{
+++	auto &awb = context.activeState.awb;
+++
+++	const auto &awbEnable = controls.get(controls::AwbEnable);
+++	if (awbEnable && *awbEnable != awb.autoEnabled) {
+++		awb.autoEnabled = *awbEnable;
+++		LOG(IPASoftAwb, Debug)
+++			<< (awb.autoEnabled ? "Enabling" : "Disabling") << " AWB";
+++	}
+++
+++	frameContext.awbAutoEnabled = awb.autoEnabled;
+++	if (awb.autoEnabled)
+++		return;
+++
+++	const auto &colourGains = controls.get(controls::ColourGains);
+++	if (!colourGains)
+++		return;
+++
+++	awb.gains.r() = std::clamp((*colourGains)[0],
+++				   kMinColourGain, kMaxColourGain);
+++	awb.gains.g() = 1.0f;
+++	awb.gains.b() = std::clamp((*colourGains)[1],
+++				   kMinColourGain, kMaxColourGain);
+++
+++	if (awb.gains.r() > 0.0f && awb.gains.b() > 0.0f) {
+++		RGB<double> rgbGains{ { 1.0 / awb.gains.r(), 1.0,
+++					1.0 / awb.gains.b() } };
+++		awb.temperatureK = estimateCCT(rgbGains);
+++	}
+++
+++	LOG(IPASoftAwb, Debug) << "Setting manual colour gains to " << awb.gains;
+++}
+++
++ void Awb::prepare(IPAContext &context,
++ 		  [[maybe_unused]] const uint32_t frame,
++ 		  IPAFrameContext &frameContext,
++ 		  DebayerParams *params)
++ {
++-	auto &gains = context.activeState.awb.gains;
+++	const auto &gains = context.activeState.awb.gains;
++ 
++ 	frameContext.gains = gains;
++ 	params->gains = gains;
++@@ -51,11 +110,14 @@ void Awb::process(IPAContext &context,
++ {
++ 	const SwIspStats::Histogram &histogram = stats->yHistogram;
++ 	const uint8_t blackLevel = context.activeState.blc.level;
+++	auto &awb = context.activeState.awb;
++ 
+++	metadata.set(controls::AwbEnable, frameContext.awbAutoEnabled);
++ 	metadata.set(controls::ColourGains, { frameContext.gains.r(),
++ 					      frameContext.gains.b() });
+++	metadata.set(controls::ColourTemperature, awb.temperatureK);
++ 
++-	if (!stats->valid)
+++	if (!frameContext.awbAutoEnabled || !awb.autoEnabled || !stats->valid)
++ 		return;
++ 
++ 	/*
++@@ -77,7 +139,7 @@ void Awb::process(IPAContext &context,
++ 	 * Calculate red and blue gains for AWB.
++ 	 * Clamp max gain at 4.0, this also avoids 0 division.
++ 	 */
++-	auto &gains = context.activeState.awb.gains;
+++	auto &gains = awb.gains;
++ 	gains = { {
++ 		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
++ 		1.0,
++@@ -85,12 +147,12 @@ void Awb::process(IPAContext &context,
++ 	} };
++ 
++ 	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
++-	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
++-	metadata.set(controls::ColourTemperature, context.activeState.awb.temperatureK);
+++	awb.temperatureK = estimateCCT(rgbGains);
+++	metadata.set(controls::ColourTemperature, awb.temperatureK);
++ 
++ 	LOG(IPASoftAwb, Debug)
++ 		<< "gain R/B: " << gains << "; temperature: "
++-		<< context.activeState.awb.temperatureK;
+++		<< awb.temperatureK;
++ }
++ 
++ REGISTER_IPA_ALGORITHM(Awb, "Awb")
++diff --git a/src/ipa/simple/algorithms/awb.h b/src/ipa/simple/algorithms/awb.h
++index ad993f3..2ef8849 100644
++--- a/src/ipa/simple/algorithms/awb.h
+++++ b/src/ipa/simple/algorithms/awb.h
++@@ -19,7 +19,12 @@ public:
++ 	Awb() = default;
++ 	~Awb() = default;
++ 
+++	int init(IPAContext &context, const ValueNode &tuningData) override;
++ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+++	void queueRequest(IPAContext &context,
+++			  const uint32_t frame,
+++			  IPAFrameContext &frameContext,
+++			  const ControlList &controls) override;
++ 	void prepare(IPAContext &context,
++ 		     const uint32_t frame,
++ 		     IPAFrameContext &frameContext,
++diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
++index 0c29ef0..017901e 100644
++--- a/src/ipa/simple/ipa_context.h
+++++ b/src/ipa/simple/ipa_context.h
++@@ -65,6 +65,7 @@ struct IPAActiveState {
++ 	struct {
++ 		RGB<float> gains;
++ 		unsigned int temperatureK;
+++		bool autoEnabled;
++ 	} awb;
++ 
++ 	struct {
++@@ -99,6 +100,7 @@ struct IPAFrameContext : public FrameContext {
++ 	} agc;
++ 
++ 	RGB<float> gains;
+++	bool awbAutoEnabled;
++ 
++ 	float gamma;
++ 	std::optional<float> contrast;
++-- 
++2.49.0
++
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..16efa1d228d2275854c9fee27f6226e81c820294 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..4779f0870d587d91387bc54201a3fa4eed485f59 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -5683,11 +5877,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..16efa1d228d2275854c9fee27f6226e8
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=28
++pkgrel=29
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,24 @@ _tuning_files="
+@@ -59,6 +59,25 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5709,10 +5903,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..16efa1d228d2275854c9fee27f6226e8
 +	0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 +	0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 +	0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
++	0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +193,31 @@ sha512sums="
+@@ -175,13 +194,32 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5733,7 +5928,8 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..16efa1d228d2275854c9fee27f6226e8
 +cd6a28e3c0d8e0e2ee6da560c0d435752bc3ab48b19354e5f1aa2993d38fe52d9b845dc706e7351d6bc58dc17f0c81ca7514852413fe0b30d83e9fe77553329b  0017-ipa-simple-Add-frame-duration-control.patch
 +fe165f6c165c4aebc587abe5c704a4a201e444ecaf60bc6d07fe2f1e99c7b88dea3dddee47552f21abfc0a6046f56588f519b0b0862f47485d68b9b600fb9042  0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 +bfc381b8e1cb1201e0552ddc6f76c41d33d5fb358e00922a4afc79d0cf41ac183094e83d0b974042e2e92728fab03f40c13d8d5de4cf05b4b382db0146968046  0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
-+cd764a9bcb567be117badd04d87c3c11c9b3105ae136bcf5e21b48849afd3bf354f5e8feafba1c2568681e9a47bb21b48482350334205f056095aebd624ff420  0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
++c5f34c8856a34d8c985e08a8fa2d778ba2fe8a59cfb6a331dd3d946999ea358e8989cc388a183aaa95d6bc6f85d9ac93e88c9ff22da2f1c5149a5bdcd7c6112d  0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
++abb838dd82f87fda3d32f24e0322f62f8619ce6b8200223dc9da570e287bc503e23aecf9fbbd55fb2940224f1791c1b8d513df1f815e967953aadc64b80798c1  0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -6309,17 +6505,116 @@ index 0000000..4f7b1521147d5c11b52e6903ca0264066568c089
 +-- 
 +2.49.0
 +
+diff --git a/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch b/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch
+new file mode 100644
+index 0000000..910b714af9dbadda0f73895e0ef9271819f84ae5
+--- /dev/null
++++ b/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch
+@@ -0,0 +1,93 @@
++From a5d28c6f6f14bbeb5f0660fa8d48c57f1237874d Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 30 Aug 2026 08:34:25 +0100
++Subject: [PATCH] spa: libcamera: Transport float-array controls
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ spa/plugins/libcamera/libcamera-source.cpp | 53 ++++++++++++++++------
++ 1 file changed, 38 insertions(+), 15 deletions(-)
++
++diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
++index e0ae8c5..e1a931b 100644
++--- a/spa/plugins/libcamera/libcamera-source.cpp
+++++ b/spa/plugins/libcamera/libcamera-source.cpp
++@@ -848,8 +848,26 @@ uint32_t prop_id_to_control(uint32_t prop_id)
++ ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
++ {
++ 	if (cid.isArray()) {
++-		if (cid.type() != libcamera::ControlTypeRectangle ||
++-		    !spa_pod_is_struct(value))
+++		if (!spa_pod_is_struct(value))
+++			return {};
+++
+++		if (cid.type() == libcamera::ControlTypeFloat) {
+++			std::vector<float> fields;
+++			const struct spa_pod *item;
+++			SPA_POD_STRUCT_FOREACH(value, item) {
+++				float field;
+++				if (spa_pod_get_float(item, &field) < 0)
+++					return {};
+++				fields.push_back(field);
+++			}
+++
+++			if (fields.empty())
+++				return {};
+++
+++			return ControlValue(Span<const float>(fields));
+++		}
+++
+++		if (cid.type() != libcamera::ControlTypeRectangle)
++ 			return {};
++ 
++ 		std::vector<int32_t> fields;
++@@ -932,20 +950,24 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
++ bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
++ {
++ 	if (cv.isArray()) {
++-		if (cv.type() != libcamera::ControlTypeRectangle)
++-			return false;
++-
++ 		spa_pod_frame f;
++ 		spa_pod_builder_push_struct(&b, &f);
++-		for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
++-			if (rectangle.width > std::numeric_limits<int32_t>::max() ||
++-			    rectangle.height > std::numeric_limits<int32_t>::max())
++-				return false;
++-
++-			spa_pod_builder_int(&b, rectangle.x);
++-			spa_pod_builder_int(&b, rectangle.y);
++-			spa_pod_builder_int(&b, rectangle.width);
++-			spa_pod_builder_int(&b, rectangle.height);
+++		if (cv.type() == libcamera::ControlTypeFloat) {
+++			for (float value : cv.get<Span<const float>>())
+++				spa_pod_builder_float(&b, value);
+++		} else if (cv.type() == libcamera::ControlTypeRectangle) {
+++			for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
+++				if (rectangle.width > std::numeric_limits<int32_t>::max() ||
+++				    rectangle.height > std::numeric_limits<int32_t>::max())
+++					return false;
+++
+++				spa_pod_builder_int(&b, rectangle.x);
+++				spa_pod_builder_int(&b, rectangle.y);
+++				spa_pod_builder_int(&b, rectangle.width);
+++				spa_pod_builder_int(&b, rectangle.height);
+++			}
+++		} else {
+++			return false;
++ 		}
++ 		spa_pod_builder_pop(&b, &f);
++ 		return true;
++@@ -992,7 +1014,8 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
++ spa_pod *control_details_to_pod(spa_pod_builder& b,
++ 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
++ {
++-	if (cid.isArray() && cid.type() != libcamera::ControlTypeRectangle)
+++	if (cid.isArray() && cid.type() != libcamera::ControlTypeFloat &&
+++	    cid.type() != libcamera::ControlTypeRectangle)
++ 		return nullptr;
++ 
++ 	auto id = control_to_prop_id(cid.id());
++-- 
++2.49.0
++
 diff --git a/temp/pipewire/APKBUILD b/temp/pipewire/APKBUILD
 new file mode 100644
-index 0000000..0e21d52b3e6b15e88d6eff8836497bdbd06bd08d
+index 0000000..478f63a79f182b8edb1d5642a6b60c405cd731d0
 --- /dev/null
 +++ b/temp/pipewire/APKBUILD
-@@ -0,0 +1,339 @@
+@@ -0,0 +1,341 @@
 +# Contributor: Rasmus Thomsen <oss@cogitri.dev>
 +maintainer="team/alpine-desktop <bribbers@disroot.org>"
 +pkgname=pipewire
 +pkgver=1.6.8
-+pkgrel=7
++pkgrel=8
 +pkgdesc="Multimedia processing graphs"
 +url="https://pipewire.org/"
 +arch="all"
@@ -6405,6 +6700,7 @@ index 0000000..0e21d52b3e6b15e88d6eff8836497bdbd06bd08d
 +
 +	systemd-units-wo-libsystemd.patch
 +	0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
++	0002-spa-libcamera-Transport-float-array-controls.patch
 +	"
 +
 +case "$CARCH" in
@@ -6653,6 +6949,7 @@ index 0000000..0e21d52b3e6b15e88d6eff8836497bdbd06bd08d
 +dd7e74534275386ccf23c5c3dc3184948bd2115ed1944ea1e52695ceeef9d764949839d8875d0e4187aa2edef01cec662a56c75b01ec06a0bc45098f4825f9cb  pipewire-pulse.initd
 +181f07b6da72b486a1e9754854320e7c9ab839409b23c397bfd50d2b706625d247b9ed94913862f790712e7bba49bf34601f7f109c82a852225a00b9f00a1c98  systemd-units-wo-libsystemd.patch
 +698969b493c84f19c28d4f071ec08fce153ad849008fbf181eb2b055921e9b5081f3211002ed21abf5d1647f26dad975ae4ed2a790c798b938c90ab68f5fedd6  0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
++ef273d00a11f8cfc96a5a9933c45d9c53c857f6dfb180e5d4974dd34935e472f70c4948a405429d45445bf13750846f22fca2e25e2c711c081276f3d42f214fa  0002-spa-libcamera-Transport-float-array-controls.patch
 +"
 diff --git a/temp/pipewire/pipewire-launcher.sh b/temp/pipewire/pipewire-launcher.sh
 new file mode 100644

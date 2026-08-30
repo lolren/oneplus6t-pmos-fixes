@@ -3,6 +3,45 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-30 native white-balance r29/r8 checkpoint
+
+The nineteenth native libcamera patch added standard `AwbEnable` and
+two-float `ColourGains` handling to the simple IPA. The second PipeWire patch
+added generic fixed-size float-array transport. Both patches apply cleanly to
+libcamera 0.7.2 and PipeWire 1.6.8 respectively.
+
+Clean verification completed with:
+
+- libcamera native GCC build and Meson tests: 46 passed, one expected failure,
+  30 skipped and zero unexpected failures;
+- PipeWire's patched `libspa-libcamera.so` compiled against libcamera 0.7.2;
+- clean pmbootstrap AArch64 builds of libcamera/IPA r29 and PipeWire r8; and
+- a pmaports integration-patch apply check against commit
+  `875bddba6538818f2c3c9849e184f40688ad5140`.
+
+The signed installed artifacts are:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r29.apk` | `eec79f739f4b6d702f02a4f0b977c9d67a22a0280b46bdc0a813abf782f2389d` |
+| `libcamera-ipa-99990.7.2-r29.apk` | `ab98208181a36165be34f2547c3239366bf6dd6e64eaf11b320ff02f08e25b0b` |
+| `pipewire-spa-libcamera-1.6.8-r8.apk` | `ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18` |
+| `advanced-snapshot-0.1.0-r30.apk` | `93205595cbd6c168c5179d8f57d7b2b036d8606ccca12d3101ae46ed7ccecb51` |
+| `advanced-snapshot-lang-0.1.0-r30.apk` | `b98c7646f84ffc78f5b1c155f5a72cf7b7cc1ede5fb358fc74d365cb9122212e` |
+
+The exact three-package lower-stack simulation proposed only r28-to-r29
+libcamera/IPA and r7-to-r8 PipeWire SPA changes. After installation, PipeWire
+and WirePlumber remained active. Advanced Snapshot launched at 1280x720/30
+and switched among IMX519, IMX376 and IMX371. Each active sensor accepted
+deliberately extreme red/blue gains with the expected visible colour shift,
+then accepted `AwbEnable=true` and returned to automatic regulation. All three
+sensors were left in automatic mode.
+
+This proves the control path and package coherence. It does not prove a
+factory colour-correction matrix, lens shading, denoise or Android image
+parity. The integration patch SHA-256 is
+`d7e6fda207e4fc9e5fc7534077b8fc96da86965cb700c5d621b8cac7add55473`.
+
 ## 2026-08-30 Advanced Snapshot r24 calibration checkpoint
 
 The separately maintained [Advanced Snapshot](https://github.com/lolren/advanced-snapshot)

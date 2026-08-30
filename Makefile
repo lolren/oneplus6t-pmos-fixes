@@ -88,6 +88,7 @@ test:
 		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
 		tests/test-waydroid-audio-probe.sh \
 		tests/test-snapshot-patches.sh \
+		tests/test-native-white-balance-patches.sh \
 		tests/test-waydroid-v4l2-codec-installer.sh \
 		tests/test-waydroid-v4l2-codec-build.sh \
 		tests/test-waydroid-provider-preparer.sh \
@@ -127,6 +128,7 @@ test:
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-audio-probe.sh
 	sh tests/test-snapshot-patches.sh
+	sh tests/test-native-white-balance-patches.sh
 	sh tests/test-waydroid-v4l2-codec-installer.sh
 	sh tests/test-waydroid-v4l2-codec-build.sh
 	sh tests/test-waydroid-provider-preparer.sh

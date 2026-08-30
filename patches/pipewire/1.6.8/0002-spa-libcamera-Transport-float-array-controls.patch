@@ -1,0 +1,93 @@
+From a5d28c6f6f14bbeb5f0660fa8d48c57f1237874d Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 30 Aug 2026 08:34:25 +0100
+Subject: [PATCH] spa: libcamera: Transport float-array controls
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ spa/plugins/libcamera/libcamera-source.cpp | 53 ++++++++++++++++------
+ 1 file changed, 38 insertions(+), 15 deletions(-)
+
+diff --git a/spa/plugins/libcamera/libcamera-source.cpp b/spa/plugins/libcamera/libcamera-source.cpp
+index e0ae8c5..e1a931b 100644
+--- a/spa/plugins/libcamera/libcamera-source.cpp
++++ b/spa/plugins/libcamera/libcamera-source.cpp
+@@ -848,8 +848,26 @@ uint32_t prop_id_to_control(uint32_t prop_id)
+ ControlValue control_value_from_pod(const libcamera::ControlId& cid, const spa_pod *value, const void *body)
+ {
+ 	if (cid.isArray()) {
+-		if (cid.type() != libcamera::ControlTypeRectangle ||
+-		    !spa_pod_is_struct(value))
++		if (!spa_pod_is_struct(value))
++			return {};
++
++		if (cid.type() == libcamera::ControlTypeFloat) {
++			std::vector<float> fields;
++			const struct spa_pod *item;
++			SPA_POD_STRUCT_FOREACH(value, item) {
++				float field;
++				if (spa_pod_get_float(item, &field) < 0)
++					return {};
++				fields.push_back(field);
++			}
++
++			if (fields.empty())
++				return {};
++
++			return ControlValue(Span<const float>(fields));
++		}
++
++		if (cid.type() != libcamera::ControlTypeRectangle)
+ 			return {};
+ 
+ 		std::vector<int32_t> fields;
+@@ -932,20 +950,24 @@ int control_list_update_from_prop(libcamera::ControlList& list, const spa_pod_pr
+ bool control_value_to_pod(spa_pod_builder& b, const libcamera::ControlValue& cv)
+ {
+ 	if (cv.isArray()) {
+-		if (cv.type() != libcamera::ControlTypeRectangle)
+-			return false;
+-
+ 		spa_pod_frame f;
+ 		spa_pod_builder_push_struct(&b, &f);
+-		for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
+-			if (rectangle.width > std::numeric_limits<int32_t>::max() ||
+-			    rectangle.height > std::numeric_limits<int32_t>::max())
+-				return false;
+-
+-			spa_pod_builder_int(&b, rectangle.x);
+-			spa_pod_builder_int(&b, rectangle.y);
+-			spa_pod_builder_int(&b, rectangle.width);
+-			spa_pod_builder_int(&b, rectangle.height);
++		if (cv.type() == libcamera::ControlTypeFloat) {
++			for (float value : cv.get<Span<const float>>())
++				spa_pod_builder_float(&b, value);
++		} else if (cv.type() == libcamera::ControlTypeRectangle) {
++			for (const Rectangle &rectangle : cv.get<Span<const Rectangle>>()) {
++				if (rectangle.width > std::numeric_limits<int32_t>::max() ||
++				    rectangle.height > std::numeric_limits<int32_t>::max())
++					return false;
++
++				spa_pod_builder_int(&b, rectangle.x);
++				spa_pod_builder_int(&b, rectangle.y);
++				spa_pod_builder_int(&b, rectangle.width);
++				spa_pod_builder_int(&b, rectangle.height);
++			}
++		} else {
++			return false;
+ 		}
+ 		spa_pod_builder_pop(&b, &f);
+ 		return true;
+@@ -992,7 +1014,8 @@ std::array<T, 3> control_info_to_range(const libcamera::ControlInfo& cinfo)
+ spa_pod *control_details_to_pod(spa_pod_builder& b,
+ 				const libcamera::ControlId& cid, const libcamera::ControlInfo& cinfo)
+ {
+-	if (cid.isArray() && cid.type() != libcamera::ControlTypeRectangle)
++	if (cid.isArray() && cid.type() != libcamera::ControlTypeFloat &&
++	    cid.type() != libcamera::ControlTypeRectangle)
+ 		return nullptr;
+ 
+ 	auto id = control_to_prop_id(cid.id());
+-- 
+2.49.0
+

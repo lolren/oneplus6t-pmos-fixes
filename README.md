@@ -299,6 +299,7 @@ and through an open Camera3 HAL in Waydroid.
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | Gamma and sensor calibration | Advanced Snapshot exposes a standard `Gamma` tone control plus a per-sensor calibration dialog for repeatable exposure, colour, contrast, detail and focus settings; profiles are keyed by stable camera identity. |
+| Automatic/manual white balance | Keeps statistics-driven AWB as the default, transports standard red/blue `ColourGains` arrays through PipeWire and lets Advanced Snapshot persist bounded gains per physical sensor. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
@@ -324,7 +325,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer r28/r24 development line. The
+publishes the newer r29/r30/r8 development line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -343,19 +344,23 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current native line is libcamera/IPA r28 with Advanced Snapshot r24. The
-latest app source is commit `1b7b6e681d310c79b96ee98f96e150540d5bf962`, which
-adds the labelled **Image Controls** entry, Gamma and the per-sensor Camera
-Calibration dialog while retaining the hamburger-menu entry. Its corrected
-AArch64 package is installed on the reference phone without reboot. Native and
-Waydroid rear focus controls pass their live metadata/actuator probes;
-saved-photo colour and visual UI checks remain scene-dependent and are not
-claimed as vendor Android parity.
+The current native line is libcamera/IPA r29, PipeWire SPA r8 and Advanced
+Snapshot r30. The app source is commit
+`275999b20efa0de20c7f639b4341af42d0959fa2`; the exact AArch64 package pair is
+installed on the reference phone without reboot. The controls panel and
+calibration dialog now include automatic/manual white balance and per-sensor
+red/blue gains. Extreme gain requests visibly changed IMX371, IMX376 and
+IMX519 in the expected direction, and automatic mode restored each stream.
+Native and Waydroid rear focus controls also pass their live
+metadata/actuator probes. A factory CCM, lens shading and Android vendor
+processing remain separate image-quality gates.
 
 The current native UI source exposes a visible **Image Controls** entry, tap
-reticle plus Exposure, Colour, Contrast, Detail, Gamma, Zoom, Reset and an
+reticle plus Exposure, White Balance, Colour, Contrast, Detail, Gamma, Zoom,
+Reset and an
 opt-in rear **Hardware flash** switch when the helper is installed. The Camera
-Calibration dialog can save those standard controls per physical sensor and
+Calibration dialog can save those standard controls, including AWB mode and
+red/blue gains, per physical sensor and
 optionally restore a deliberate manual focus position. The lower-layer focus
 instability is fixed: both rear cameras now use bounded progressive tap-focus
 and return to continuous monitoring without moving the lens. Advanced Snapshot

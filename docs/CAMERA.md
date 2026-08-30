@@ -5,12 +5,13 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The current reference phone runs kernel r10, libcamera/IPA r28,
-`pipewire-spa-libcamera` r7, Snapshot r3 and Advanced Snapshot r24. The r28
-lower layer and r24 app were built for AArch64 and installed without a reboot.
+The current reference phone runs kernel r10, libcamera/IPA r29,
+`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r30. The r29/r8
+lower layer and r30 app were built for AArch64 and installed without a reboot.
 Both rear modules now expose bounded manual `LensPosition` control as well as
-contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded.
-The exact r24/r25/r26 packages and earlier r0/r1 app generations remain
+contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
+focus controls. All three sensors expose standard automatic/manual white
+balance. The exact r24/r25/r26/r28 and PipeWire r7 packages plus earlier app generations remain
 rollback and diagnostic evidence. Installing r10 through `apk` ran the normal
 postmarketOS trigger that updated the active boot image; no bootloader, slot
 metadata or firmware was changed, and that reboot was a separate action.
@@ -269,16 +270,17 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r28/current app |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r29/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
-| Automatic white balance | Yes | Yes | Yes | Existing simple AWB |
+| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r29/r8/r30 round trip live-tested |
+| Manual white balance | Yes | Yes | Yes | Standard two-element `ColourGains`; red/blue 0.1–4.0 UI and per-sensor persistence |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
 | Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
 | Manual rear focus | Yes | Yes | No hardware | `LensPosition` 0..2 maps to DAC 400..800; live metadata sweep passed |
 | Contrast | Yes | Yes | Yes | `0..2` |
 | Gamma | Yes | Yes | Yes | `0.1..10` |
-| Sensor calibration profile | Yes | Yes | Yes | Stable per-sensor profile for standard exposure/tone/detail controls; manual focus is rear-only |
+| Sensor calibration profile | Yes | Yes | Yes | Stable per-sensor profile for exposure, AWB/gains and tone/detail controls; manual focus is rear-only |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
 | Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; current app |
