@@ -42,19 +42,19 @@ grep -q 'ControlTypeFloat' "$PIPEWIRE_PATCH" ||
 grep -q 'spa_pod_builder_float' "$PIPEWIRE_PATCH" ||
 	fail 'PipeWire patch does not serialize float-array elements'
 
-grep -q "^index 0000000..$libcamera_blob$" "$MONOLITH" ||
+grep -Eq "^index 0{7,40}\.\.$libcamera_blob$" "$MONOLITH" ||
 	fail 'libcamera patch blob is not embedded in pmaports'
 grep -q "^+$libcamera_sha512  0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch$" \
 	"$MONOLITH" || fail 'libcamera patch checksum is not in pmaports'
-grep -q "^index 0000000..$pipewire_blob$" "$MONOLITH" ||
+grep -Eq "^index 0{7,40}\.\.$pipewire_blob$" "$MONOLITH" ||
 	fail 'PipeWire patch blob is not embedded in pmaports'
 grep -q "^+$pipewire_sha512  0002-spa-libcamera-Transport-float-array-controls.patch$" \
 	"$MONOLITH" || fail 'PipeWire patch checksum is not in pmaports'
 
-grep -q '^+pkgrel=29$' "$MONOLITH" || fail 'libcamera recipe is not r29'
+grep -q '^+pkgrel=30$' "$MONOLITH" || fail 'libcamera recipe is not r30'
 grep -q '^+pkgrel=8$' "$MONOLITH" || fail 'PipeWire recipe is not r8'
-grep -q '^+pkgrel=30$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r30'
-grep -q '^+_commit="275999b20efa0de20c7f639b4341af42d0959fa2"$' "$MONOLITH" ||
+grep -q '^+pkgrel=32$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r32'
+grep -q '^+_commit="aa9fea6464c580c308cefecc6383f57c58910102"$' "$MONOLITH" ||
 	fail 'Advanced Snapshot source pin is not the tested white-balance commit'
 
 printf '%s\n' 'Native white-balance patch and pmaports integrity tests passed'

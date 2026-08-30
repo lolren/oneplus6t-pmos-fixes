@@ -1,0 +1,116 @@
+From 04fdb9d6e84a53b7179f323dce946f2aa0bde2f4 Mon Sep 17 00:00:00 2001
+From: Lolren <loren.bufanu@gmail.com>
+Date: Sun, 30 Aug 2026 10:05:24 +0100
+Subject: [PATCH 20/20] ipa: simple: expose manual colour correction matrix
+
+Signed-off-by: Lolren <loren.bufanu@gmail.com>
+---
+ src/ipa/simple/algorithms/ccm.cpp | 48 ++++++++++++++++++++++++++++++-
+ src/ipa/simple/algorithms/ccm.h   |  8 ++++++
+ 2 files changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/src/ipa/simple/algorithms/ccm.cpp b/src/ipa/simple/algorithms/ccm.cpp
+index ace9c35..3228e19 100644
+--- a/src/ipa/simple/algorithms/ccm.cpp
++++ b/src/ipa/simple/algorithms/ccm.cpp
+@@ -18,6 +18,8 @@
+ namespace {
+ 
+ constexpr unsigned int kTemperatureThreshold = 100;
++constexpr libcamera::Matrix<float, 3, 3> kIdentity3x3 =
++	libcamera::Matrix<float, 3, 3>::identity();
+ 
+ }
+ 
+@@ -27,8 +29,12 @@ namespace ipa::soft::algorithms {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftCcm)
+ 
+-int Ccm::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++int Ccm::init(IPAContext &context, const ValueNode &tuningData)
+ {
++	context.ctrlMap[&controls::ColourCorrectionMatrix] = ControlInfo(
++		ControlValue(-8.0f), ControlValue(8.0f),
++		ControlValue(kIdentity3x3.data()));
++
+ 	int ret = ccm_.readYaml(tuningData["ccms"], "ct", "ccm");
+ 	if (ret < 0) {
+ 		LOG(IPASoftCcm, Error)
+@@ -41,9 +47,49 @@ int Ccm::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
+ 	return 0;
+ }
+ 
++int Ccm::configure([[maybe_unused]] IPAContext &context,
++		   [[maybe_unused]] const IPAConfigInfo &configInfo)
++{
++	currentCcm_.reset();
++	manualCcm_ = kIdentity3x3;
++	manualOverride_ = false;
++
++	return 0;
++}
++
++void Ccm::queueRequest(IPAContext &context,
++		       [[maybe_unused]] const uint32_t frame,
++		       IPAFrameContext &frameContext,
++		       const ControlList &controls)
++{
++	/* The standard CCM control is only valid while AWB is disabled. */
++	if (frameContext.awbAutoEnabled) {
++		manualOverride_ = false;
++		return;
++	}
++
++	const auto &ccmMatrix = controls.get(controls::ColourCorrectionMatrix);
++	if (ccmMatrix) {
++		manualCcm_ = Matrix<float, 3, 3>(*ccmMatrix);
++		manualOverride_ = true;
++		LOG(IPASoftCcm, Debug)
++			<< "Setting manual CCM to " << manualCcm_;
++	}
++
++	frameContext.ccm = manualOverride_
++				   ? manualCcm_
++				   : ccm_.getInterpolated(context.activeState.awb.temperatureK);
++}
++
+ void Ccm::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 		  IPAFrameContext &frameContext, [[maybe_unused]] DebayerParams *params)
+ {
++	if (!frameContext.awbAutoEnabled) {
++		context.activeState.combinedMatrix =
++			frameContext.ccm * context.activeState.combinedMatrix;
++		return;
++	}
++
+ 	const unsigned int ct = context.activeState.awb.temperatureK;
+ 
+ 	/* Change CCM only on bigger temperature changes. */
+diff --git a/src/ipa/simple/algorithms/ccm.h b/src/ipa/simple/algorithms/ccm.h
+index b20a7da..c53b01d 100644
+--- a/src/ipa/simple/algorithms/ccm.h
++++ b/src/ipa/simple/algorithms/ccm.h
+@@ -26,6 +26,12 @@ public:
+ 	~Ccm() = default;
+ 
+ 	int init(IPAContext &context, const ValueNode &tuningData) override;
++	int configure(IPAContext &context,
++		      const IPAConfigInfo &configInfo) override;
++	void queueRequest(IPAContext &context,
++			  const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
+ 	void prepare(IPAContext &context,
+ 		     const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+@@ -39,6 +45,8 @@ private:
+ 	unsigned int lastCt_;
+ 	Interpolator<Matrix<float, 3, 3>> ccm_;
+ 	std::optional<Matrix<float, 3, 3>> currentCcm_;
++	Matrix<float, 3, 3> manualCcm_ = Matrix<float, 3, 3>::identity();
++	bool manualOverride_ = false;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+-- 
+2.49.0

@@ -44,7 +44,7 @@ do
 		fail "$patch_name blob hash is not the embedded hash"
 	test "$(sha512sum "$patch" | awk '{print $1}')" = "$sha512" ||
 		fail "$patch_name SHA-512 changed without updating the recipe"
-	grep -q "^index 0000000..$blob_hash$" "$MONOLITH" ||
+	grep -Eq "^index 0{7,40}\.\.$blob_hash$" "$MONOLITH" ||
 		fail "$patch_name is not embedded as the expected blob"
 	grep -q "^+$sha512  $patch_name$" "$MONOLITH" ||
 		fail "$patch_name checksum is not embedded in pmaports"

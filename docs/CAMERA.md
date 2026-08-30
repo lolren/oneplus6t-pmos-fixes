@@ -5,13 +5,14 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The current reference phone runs kernel r10, libcamera/IPA r29,
-`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r30. The r29/r8
-lower layer and r30 app were built for AArch64 and installed without a reboot.
+The current reference phone runs kernel r10, libcamera/IPA r30,
+`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r32. The r30/r8
+lower layer and r32 app were built for AArch64 and installed without a reboot.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
 focus controls. All three sensors expose standard automatic/manual white
-balance. The exact r24/r25/r26/r28 and PipeWire r7 packages plus earlier app generations remain
+balance plus a standard writable colour matrix. The exact r24/r25/r26/r28/r29
+and PipeWire r7 packages plus earlier app generations remain
 rollback and diagnostic evidence. Installing r10 through `apk` ran the normal
 postmarketOS trigger that updated the active boot image; no bootloader, slot
 metadata or firmware was changed, and that reboot was a separate action.
@@ -203,11 +204,11 @@ front camera has no AF controls and is rejected without claiming focus
 success.
 
 The Image Controls panel also exposes Gamma and the Camera Calibration dialog.
-The dialog stores the standard exposure, tone/detail and optional manual-focus
-values under a stable physical-sensor identity, so the IMX371, IMX376 and
-IMX519 profiles remain separate. It is a repeatable userspace control profile,
-not a replacement for Android's proprietary colour matrix, lens shading or
-multi-frame ISP tuning.
+The dialog stores standard exposure, white-balance gains, an optional 3×3
+colour matrix, tone/detail and optional manual-focus values under a stable
+physical-sensor identity, so the IMX371, IMX376 and IMX519 profiles remain
+separate. It is a repeatable userspace control profile, not a source of
+Android's factory matrix coefficients, lens shading or multi-frame ISP tuning.
 
 Advanced Snapshot's stricter result path is packaged separately. PipeWire r7
 publishes an accepted-trigger generation and correlates it with real
@@ -270,25 +271,26 @@ the sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r29/current app |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r30/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
-| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r29/r8/r30 round trip live-tested |
+| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r30/r8/r32 round trip live-tested |
 | Manual white balance | Yes | Yes | Yes | Standard two-element `ColourGains`; red/blue 0.1–4.0 UI and per-sensor persistence |
+| Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; bounded identity/custom requests live-tested while AWB is manual |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
 | Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
 | Manual rear focus | Yes | Yes | No hardware | `LensPosition` 0..2 maps to DAC 400..800; live metadata sweep passed |
 | Contrast | Yes | Yes | Yes | `0..2` |
 | Gamma | Yes | Yes | Yes | `0.1..10` |
-| Sensor calibration profile | Yes | Yes | Yes | Stable per-sensor profile for exposure, AWB/gains and tone/detail controls; manual focus is rear-only |
+| Sensor calibration profile | Yes | Yes | Yes | Stable per-sensor profile for exposure, AWB/gains, optional matrix and tone/detail controls; manual focus is rear-only |
 | Saturation | Yes | Yes | Yes | `0..2`; 0 and 2 endpoints tested |
 | Sharpness | Yes | Yes | Yes | `0..2`; 0, default 1 and 2 tested |
-| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; current app |
+| Digital zoom | Yes | Yes | Yes | Camerabin 1x..4x preview and capture; synchronized chip stays in the toolbar above the mode selector |
 | Full-frame still mode | 2048x1536 | 2048x1536 | 2048x1536 | Snapshot caps selection and live negotiation tested |
-| HDR | No | No | No | No valid merge/tone-map implementation |
+| Software HDR | Yes | Yes | Yes | Opt-in three-JPEG exposure fusion in Advanced Snapshot; not sensor WDR or the Android vendor pipeline |
 | Hardware flash pulse | Optional | Optional | No | `pmos-camera-flash` helper; writable rear `*:flash` channels required; live LED/capture acceptance pending |
 | Manual shutter and analogue gain | Yes | Yes | Yes | Standard `ExposureTime`/`AnalogueGain` controls; lower-layer source/package path live-tested |
-| Manual AWB | No | No | No | Not implemented by the simple IPA |
+| Vendor AWB presets | No | No | No | The open path provides automatic mode and explicit red/blue gains, not proprietary scene presets |
 | Calibrated CCM/LSC | No | No | No | Requires chart and flat-field calibration |
 | Temporal denoise | No | No | No | No equivalent algorithm in this pipeline |
 
@@ -314,10 +316,10 @@ Kernel patches targeting `sdm845-mainline/linux` tag
 4. IMX376 16x gain range; and
 5. IMX519 30 fps preview defaults.
 
-The eighteen-patch libcamera 0.7.2 series is in
+The twenty-patch libcamera 0.7.2 series is in
 `patches/libcamera/v0.7.2/`. Sensor tuning files are in
 `config/libcamera/simple/`. The PipeWire 1.6.8 transport patch and Snapshot
-50.0 three-patch application series have their own versioned directories under
+50.0 six-patch application series have their own versioned directories under
 `patches/`. The single pmaports integration diff in `packaging/pmaports/` adds
 all patches, tuning, checksums, package revision bumps and the pinned Advanced
 Snapshot aport. The Android-only Camera3 patches, build helper and provider

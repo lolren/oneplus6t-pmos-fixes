@@ -1,6 +1,6 @@
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
 new file mode 100644
-index 0000000..da53bd8209f42b223098bd4b813c6f7866c32a35
+index 0000000000000000000000000000000000000000..da53bd8209f42b223098bd4b813c6f7866c32a35
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0001-media-i2c-imx371-add-2304x1728-binned-mode.patch
 @@ -0,0 +1,213 @@
@@ -219,7 +219,7 @@ index 0000000..da53bd8209f42b223098bd4b813c6f7866c32a35
 +2.49.0
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
 new file mode 100644
-index 0000000..3712f5da4b4da863898170b273dd4d7bacc5c747
+index 0000000000000000000000000000000000000000..3712f5da4b4da863898170b273dd4d7bacc5c747
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0002-arm64-dts-qcom-sdm845-oneplus-add-IMX371-binned-link.patch
 @@ -0,0 +1,27 @@
@@ -252,7 +252,7 @@ index 0000000..3712f5da4b4da863898170b273dd4d7bacc5c747
 +2.49.0
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
 new file mode 100644
-index 0000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
+index 0000000000000000000000000000000000000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0003-media-i2c-imx371-correct-analogue-gain-range.patch
 @@ -0,0 +1,27 @@
@@ -285,7 +285,7 @@ index 0000000..fbaf3268affd0205ffcf3e528d50a00998eabf12
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
 new file mode 100644
-index 0000000..9cc55fdbf44c0f6437c9f44623aa9e7921fa40c1
+index 0000000000000000000000000000000000000000..9cc55fdbf44c0f6437c9f44623aa9e7921fa40c1
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0004-media-i2c-imx376-correct-analogue-gain-range.patch
 @@ -0,0 +1,30 @@
@@ -321,7 +321,7 @@ index 0000000..9cc55fdbf44c0f6437c9f44623aa9e7921fa40c1
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
 new file mode 100644
-index 0000000..d45679a9acf83c5952017e4de56f139dbce0ee9f
+index 0000000000000000000000000000000000000000..d45679a9acf83c5952017e4de56f139dbce0ee9f
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0005-media-i2c-imx519-default-preview-modes-to-30-fps.patch
 @@ -0,0 +1,53 @@
@@ -380,7 +380,7 @@ index 0000000..d45679a9acf83c5952017e4de56f139dbce0ee9f
 +
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch b/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
 new file mode 100644
-index 0000000..370f6fc11e893bebe92ea6c4f32ca9133bbee236
+index 0000000000000000000000000000000000000000..370f6fc11e893bebe92ea6c4f32ca9133bbee236
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0006-drm-panel-samsung-s6e3fc2x01-serialize-brightness.patch
 @@ -0,0 +1,74 @@
@@ -460,7 +460,7 @@ index 0000000..370f6fc11e893bebe92ea6c4f32ca9133bbee236
 +2.49.0
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/0007-media-qcom-venus-bound-firmware-recovery-IRQ-work.patch b/device/community/linux-postmarketos-qcom-sdm845/0007-media-qcom-venus-bound-firmware-recovery-IRQ-work.patch
 new file mode 100644
-index 0000000..95d204ef6994222d077bdd5a9c1358d673b5e966
+index 0000000000000000000000000000000000000000..95d204ef6994222d077bdd5a9c1358d673b5e966
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/0007-media-qcom-venus-bound-firmware-recovery-IRQ-work.patch
 @@ -0,0 +1,77 @@
@@ -582,7 +582,7 @@ index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..fd146ce28deb562739a575752ad3974f
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000..66ff0dd3829a5b0da2b88c21ed468ebb85b52031
+index 0000000000000000000000000000000000000000..2b11e7af12e323e66920f9c37946f3ee89bba718
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -590,8 +590,8 @@ index 0000000..66ff0dd3829a5b0da2b88c21ed468ebb85b52031
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=30
-+_commit="275999b20efa0de20c7f639b4341af42d0959fa2"
++pkgrel=32
++_commit="aa9fea6464c580c308cefecc6383f57c58910102"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -652,12 +652,12 @@ index 0000000..66ff0dd3829a5b0da2b88c21ed468ebb85b52031
 +}
 +
 +sha512sums="
-+3b337df795eb59ebe5aa9bfb52a28fcc2168bcf287cf4f406a8f7bd74c69e1d3934e7021cf9d5a16e6387507381fdcc25c403ee027df1d05083661e1f3e07bfe  advanced-snapshot-0.1.0.tar.gz
++4d308df29085404171264470b6a29171307af9055795bd69cff7aef95d0afe394a1d7790b23ef23b7d865d2cf865704be958c1549f91f3157d0b9f19021d5ba8  advanced-snapshot-0.1.0.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
 new file mode 100644
-index 0000000..bfffaf880e1d1e9f924d7856020559205648dbc2
+index 0000000000000000000000000000000000000000..bfffaf880e1d1e9f924d7856020559205648dbc2
 --- /dev/null
 +++ b/temp/advanced-snapshot/cargo-auditable.patch
 @@ -0,0 +1,12 @@
@@ -675,7 +675,7 @@ index 0000000..bfffaf880e1d1e9f924d7856020559205648dbc2
 ++    'auditable',
 diff --git a/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 new file mode 100644
-index 0000000..ffbd5a9ccdd3924584d8d55a16185aaba9b62554
+index 0000000000000000000000000000000000000000..ffbd5a9ccdd3924584d8d55a16185aaba9b62554
 --- /dev/null
 +++ b/temp/libcamera/0003-libipa-camera_sensor_helper-Add-Sony-IMX371-helper.patch
 @@ -0,0 +1,41 @@
@@ -722,7 +722,7 @@ index 0000000..ffbd5a9ccdd3924584d8d55a16185aaba9b62554
 +
 diff --git a/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
 new file mode 100644
-index 0000000..85127939677c83597e7dfb563d7f3c814cc67f8b
+index 0000000000000000000000000000000000000000..85127939677c83597e7dfb563d7f3c814cc67f8b
 --- /dev/null
 +++ b/temp/libcamera/0004-ipa-libipa-Add-Sony-IMX376-helper.patch
 @@ -0,0 +1,42 @@
@@ -770,7 +770,7 @@ index 0000000..85127939677c83597e7dfb563d7f3c814cc67f8b
 +
 diff --git a/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
 new file mode 100644
-index 0000000..0ca52b765fcdf1792c30a09f6edabab38dbcd848
+index 0000000000000000000000000000000000000000..0ca52b765fcdf1792c30a09f6edabab38dbcd848
 --- /dev/null
 +++ b/temp/libcamera/0005-ipa-libipa-Add-Sony-IMX519-helper.patch
 @@ -0,0 +1,40 @@
@@ -816,7 +816,7 @@ index 0000000..0ca52b765fcdf1792c30a09f6edabab38dbcd848
 +
 diff --git a/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
 new file mode 100644
-index 0000000..8fd15b86b7e0208fadd16b1d3fe770733a46e872
+index 0000000000000000000000000000000000000000..8fd15b86b7e0208fadd16b1d3fe770733a46e872
 --- /dev/null
 +++ b/temp/libcamera/0006-libcamera-sensor-Add-IMX371-and-IMX376-properties.patch
 @@ -0,0 +1,50 @@
@@ -872,7 +872,7 @@ index 0000000..8fd15b86b7e0208fadd16b1d3fe770733a46e872
 +
 diff --git a/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
 new file mode 100644
-index 0000000..5bf300075d47a3d79c266aff9b9495fc7f260420
+index 0000000000000000000000000000000000000000..5bf300075d47a3d79c266aff9b9495fc7f260420
 --- /dev/null
 +++ b/temp/libcamera/0007-ipa-simple-Make-the-AGC-exposure-target-configurable.patch
 @@ -0,0 +1,105 @@
@@ -983,7 +983,7 @@ index 0000000..5bf300075d47a3d79c266aff9b9495fc7f260420
 +
 diff --git a/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
 new file mode 100644
-index 0000000..635f8a376e444069c2fcd5c30ebb9ba203d2ab58
+index 0000000000000000000000000000000000000000..635f8a376e444069c2fcd5c30ebb9ba203d2ab58
 --- /dev/null
 +++ b/temp/libcamera/0008-ipa-simple-Add-a-central-contrast-focus-statistic.patch
 @@ -0,0 +1,383 @@
@@ -1372,7 +1372,7 @@ index 0000000..635f8a376e444069c2fcd5c30ebb9ba203d2ab58
 +
 diff --git a/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
 new file mode 100644
-index 0000000..3f47da3c341d7c7830c2e0299798a75c4f3083ec
+index 0000000000000000000000000000000000000000..3f47da3c341d7c7830c2e0299798a75c4f3083ec
 --- /dev/null
 +++ b/temp/libcamera/0009-ipa-simple-Add-contrast-detect-autofocus.patch
 @@ -0,0 +1,753 @@
@@ -2131,7 +2131,7 @@ index 0000000..3f47da3c341d7c7830c2e0299798a75c4f3083ec
 +
 diff --git a/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 new file mode 100644
-index 0000000..06e25c0d491c40f5e72c0fd33b32097df459b553
+index 0000000000000000000000000000000000000000..06e25c0d491c40f5e72c0fd33b32097df459b553
 --- /dev/null
 +++ b/temp/libcamera/0010-libcamera-software_isp-Align-EGL-statistics-with-output-crop.patch
 @@ -0,0 +1,39 @@
@@ -2176,7 +2176,7 @@ index 0000000..06e25c0d491c40f5e72c0fd33b32097df459b553
 +
 diff --git a/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 new file mode 100644
-index 0000000..f25b8746b07c57a232fb0d4c83e88cceaae95a6c
+index 0000000000000000000000000000000000000000..f25b8746b07c57a232fb0d4c83e88cceaae95a6c
 --- /dev/null
 +++ b/temp/libcamera/0011-libcamera-software_isp-Filter-EGL-scaling-in-a-secon.patch
 @@ -0,0 +1,370 @@
@@ -2552,7 +2552,7 @@ index 0000000..f25b8746b07c57a232fb0d4c83e88cceaae95a6c
 +
 diff --git a/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 new file mode 100644
-index 0000000..3cd7ff5542a18e4ea9a0eb595ce519d3c304e680
+index 0000000000000000000000000000000000000000..3cd7ff5542a18e4ea9a0eb595ce519d3c304e680
 --- /dev/null
 +++ b/temp/libcamera/0012-ipa-simple-Protect-highlights-during-auto-exposure.patch
 @@ -0,0 +1,329 @@
@@ -2887,7 +2887,7 @@ index 0000000..3cd7ff5542a18e4ea9a0eb595ce519d3c304e680
 +
 diff --git a/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 new file mode 100644
-index 0000000..95967c1dd15168276e660c4e4a688eb31bc736c5
+index 0000000000000000000000000000000000000000..95967c1dd15168276e660c4e4a688eb31bc736c5
 --- /dev/null
 +++ b/temp/libcamera/0013-ipa-simple-Make-image-adjustment-defaults-tunable.patch
 @@ -0,0 +1,112 @@
@@ -3005,7 +3005,7 @@ index 0000000..95967c1dd15168276e660c4e4a688eb31bc736c5
 +
 diff --git a/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
 new file mode 100644
-index 0000000..29fdf18b2321cc6084b9718e246aec7cea164e9c
+index 0000000000000000000000000000000000000000..29fdf18b2321cc6084b9718e246aec7cea164e9c
 --- /dev/null
 +++ b/temp/libcamera/0014-ipa-simple-Add-autofocus-metering-windows.patch
 @@ -0,0 +1,443 @@
@@ -3454,7 +3454,7 @@ index 0000000..29fdf18b2321cc6084b9718e246aec7cea164e9c
 +
 diff --git a/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 new file mode 100644
-index 0000000..032a61dd30c62df6ab1547021939649156b5b3b0
+index 0000000000000000000000000000000000000000..032a61dd30c62df6ab1547021939649156b5b3b0
 --- /dev/null
 +++ b/temp/libcamera/0015-ipa-simple-Add-software-ISP-sharpness-control.patch
 @@ -0,0 +1,385 @@
@@ -3845,7 +3845,7 @@ index 0000000..032a61dd30c62df6ab1547021939649156b5b3b0
 +
 diff --git a/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch b/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch
 new file mode 100644
-index 0000000..2b563263c7c0769f2fb2a5f741ea5d08f1d84014
+index 0000000000000000000000000000000000000000..2b563263c7c0769f2fb2a5f741ea5d08f1d84014
 --- /dev/null
 +++ b/temp/libcamera/0016-ipa-simple-Add-exposure-compensation-control.patch
 @@ -0,0 +1,134 @@
@@ -3985,7 +3985,7 @@ index 0000000..2b563263c7c0769f2fb2a5f741ea5d08f1d84014
 +
 diff --git a/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch b/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch
 new file mode 100644
-index 0000000..ce693842828c1086760b8b0e33048b8b363b5c6d
+index 0000000000000000000000000000000000000000..ce693842828c1086760b8b0e33048b8b363b5c6d
 --- /dev/null
 +++ b/temp/libcamera/0017-ipa-simple-Add-frame-duration-control.patch
 @@ -0,0 +1,479 @@
@@ -4470,7 +4470,7 @@ index 0000000..ce693842828c1086760b8b0e33048b8b363b5c6d
 +
 diff --git a/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch b/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 new file mode 100644
-index 0000000..c7e8bb81c193ec6952de9c06551d56c11410db7b
+index 0000000000000000000000000000000000000000..c7e8bb81c193ec6952de9c06551d56c11410db7b
 --- /dev/null
 +++ b/temp/libcamera/0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 @@ -0,0 +1,574 @@
@@ -5050,7 +5050,7 @@ index 0000000..c7e8bb81c193ec6952de9c06551d56c11410db7b
 +2.49.0
 diff --git a/temp/libcamera/0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch b/temp/libcamera/0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 new file mode 100644
-index 0000000..a9f9dbacf53b69bf3deae27c9b89b19732a889ef
+index 0000000000000000000000000000000000000000..a9f9dbacf53b69bf3deae27c9b89b19732a889ef
 --- /dev/null
 +++ b/temp/libcamera/0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 @@ -0,0 +1,451 @@
@@ -5507,7 +5507,7 @@ index 0000000..a9f9dbacf53b69bf3deae27c9b89b19732a889ef
 +af4141ed03b1c0647ef55eb1c61ed113933adc82d5651bc39930387bae0c72e717d1bbc24121c775c9b8baa60c5271f6d94029e4e756bbfe3b1ecdf3a94f6172  /home/lolren/Desktop/oneplus6t-pmos-fixes/patches/libcamera/v0.7.2/0017-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 diff --git a/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch b/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
 new file mode 100644
-index 0000000..5c29639d5b4f29f2e039380408db41729ed77054
+index 0000000000000000000000000000000000000000..5c29639d5b4f29f2e039380408db41729ed77054
 --- /dev/null
 +++ b/temp/libcamera/0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
 @@ -0,0 +1,163 @@
@@ -5676,7 +5676,7 @@ index 0000000..5c29639d5b4f29f2e039380408db41729ed77054
 +2.49.0
 diff --git a/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
 new file mode 100644
-index 0000000..6621efd70669bb31abfee773635ade9b5497d923
+index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b5497d923
 --- /dev/null
 +++ b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
 @@ -0,0 +1,188 @@
@@ -5868,8 +5868,130 @@ index 0000000..6621efd70669bb31abfee773635ade9b5497d923
 +-- 
 +2.49.0
 +
+diff --git a/temp/libcamera/0022-ipa-simple-expose-manual-colour-correction-matrix.patch b/temp/libcamera/0022-ipa-simple-expose-manual-colour-correction-matrix.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ec442a1e389e4de713e4e5d12dbf6eb606a4b8f
+--- /dev/null
++++ b/temp/libcamera/0022-ipa-simple-expose-manual-colour-correction-matrix.patch
+@@ -0,0 +1,116 @@
++From 04fdb9d6e84a53b7179f323dce946f2aa0bde2f4 Mon Sep 17 00:00:00 2001
++From: Lolren <loren.bufanu@gmail.com>
++Date: Sun, 30 Aug 2026 10:05:24 +0100
++Subject: [PATCH 20/20] ipa: simple: expose manual colour correction matrix
++
++Signed-off-by: Lolren <loren.bufanu@gmail.com>
++---
++ src/ipa/simple/algorithms/ccm.cpp | 48 ++++++++++++++++++++++++++++++-
++ src/ipa/simple/algorithms/ccm.h   |  8 ++++++
++ 2 files changed, 55 insertions(+), 1 deletion(-)
++
++diff --git a/src/ipa/simple/algorithms/ccm.cpp b/src/ipa/simple/algorithms/ccm.cpp
++index ace9c35..3228e19 100644
++--- a/src/ipa/simple/algorithms/ccm.cpp
+++++ b/src/ipa/simple/algorithms/ccm.cpp
++@@ -18,6 +18,8 @@
++ namespace {
++ 
++ constexpr unsigned int kTemperatureThreshold = 100;
+++constexpr libcamera::Matrix<float, 3, 3> kIdentity3x3 =
+++	libcamera::Matrix<float, 3, 3>::identity();
++ 
++ }
++ 
++@@ -27,8 +29,12 @@ namespace ipa::soft::algorithms {
++ 
++ LOG_DEFINE_CATEGORY(IPASoftCcm)
++ 
++-int Ccm::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
+++int Ccm::init(IPAContext &context, const ValueNode &tuningData)
++ {
+++	context.ctrlMap[&controls::ColourCorrectionMatrix] = ControlInfo(
+++		ControlValue(-8.0f), ControlValue(8.0f),
+++		ControlValue(kIdentity3x3.data()));
+++
++ 	int ret = ccm_.readYaml(tuningData["ccms"], "ct", "ccm");
++ 	if (ret < 0) {
++ 		LOG(IPASoftCcm, Error)
++@@ -41,9 +47,49 @@ int Ccm::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++ 	return 0;
++ }
++ 
+++int Ccm::configure([[maybe_unused]] IPAContext &context,
+++		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+++{
+++	currentCcm_.reset();
+++	manualCcm_ = kIdentity3x3;
+++	manualOverride_ = false;
+++
+++	return 0;
+++}
+++
+++void Ccm::queueRequest(IPAContext &context,
+++		       [[maybe_unused]] const uint32_t frame,
+++		       IPAFrameContext &frameContext,
+++		       const ControlList &controls)
+++{
+++	/* The standard CCM control is only valid while AWB is disabled. */
+++	if (frameContext.awbAutoEnabled) {
+++		manualOverride_ = false;
+++		return;
+++	}
+++
+++	const auto &ccmMatrix = controls.get(controls::ColourCorrectionMatrix);
+++	if (ccmMatrix) {
+++		manualCcm_ = Matrix<float, 3, 3>(*ccmMatrix);
+++		manualOverride_ = true;
+++		LOG(IPASoftCcm, Debug)
+++			<< "Setting manual CCM to " << manualCcm_;
+++	}
+++
+++	frameContext.ccm = manualOverride_
+++				   ? manualCcm_
+++				   : ccm_.getInterpolated(context.activeState.awb.temperatureK);
+++}
+++
++ void Ccm::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++ 		  IPAFrameContext &frameContext, [[maybe_unused]] DebayerParams *params)
++ {
+++	if (!frameContext.awbAutoEnabled) {
+++		context.activeState.combinedMatrix =
+++			frameContext.ccm * context.activeState.combinedMatrix;
+++		return;
+++	}
+++
++ 	const unsigned int ct = context.activeState.awb.temperatureK;
++ 
++ 	/* Change CCM only on bigger temperature changes. */
++diff --git a/src/ipa/simple/algorithms/ccm.h b/src/ipa/simple/algorithms/ccm.h
++index b20a7da..c53b01d 100644
++--- a/src/ipa/simple/algorithms/ccm.h
+++++ b/src/ipa/simple/algorithms/ccm.h
++@@ -26,6 +26,12 @@ public:
++ 	~Ccm() = default;
++ 
++ 	int init(IPAContext &context, const ValueNode &tuningData) override;
+++	int configure(IPAContext &context,
+++		      const IPAConfigInfo &configInfo) override;
+++	void queueRequest(IPAContext &context,
+++			  const uint32_t frame,
+++			  IPAFrameContext &frameContext,
+++			  const ControlList &controls) override;
++ 	void prepare(IPAContext &context,
++ 		     const uint32_t frame,
++ 		     IPAFrameContext &frameContext,
++@@ -39,6 +45,8 @@ private:
++ 	unsigned int lastCt_;
++ 	Interpolator<Matrix<float, 3, 3>> ccm_;
++ 	std::optional<Matrix<float, 3, 3>> currentCcm_;
+++	Matrix<float, 3, 3> manualCcm_ = Matrix<float, 3, 3>::identity();
+++	bool manualOverride_ = false;
++ };
++ 
++ } /* namespace ipa::soft::algorithms */
++-- 
++2.49.0
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..4779f0870d587d91387bc54201a3fa4eed485f59 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..664038407cd9b346c68811571b92e888f22b197d 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -5877,11 +5999,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4779f0870d587d91387bc54201a3fa4e
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=29
++pkgrel=30
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,25 @@ _tuning_files="
+@@ -59,6 +59,26 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5904,10 +6026,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4779f0870d587d91387bc54201a3fa4e
 +	0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 +	0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
 +	0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
++	0022-ipa-simple-expose-manual-colour-correction-matrix.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +194,32 @@ sha512sums="
+@@ -175,13 +195,33 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -5930,6 +6053,7 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..4779f0870d587d91387bc54201a3fa4e
 +bfc381b8e1cb1201e0552ddc6f76c41d33d5fb358e00922a4afc79d0cf41ac183094e83d0b974042e2e92728fab03f40c13d8d5de4cf05b4b382db0146968046  0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 +c5f34c8856a34d8c985e08a8fa2d778ba2fe8a59cfb6a331dd3d946999ea358e8989cc388a183aaa95d6bc6f85d9ac93e88c9ff22da2f1c5149a5bdcd7c6112d  0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
 +abb838dd82f87fda3d32f24e0322f62f8619ce6b8200223dc9da570e287bc503e23aecf9fbbd55fb2940224f1791c1b8d513df1f815e967953aadc64b80798c1  0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
++43bb6a94fea96df34b1c97a137d731390d9463b63a49d042196c434666661b1a45eed8ce27b6edb405814e1c8005ad822b976205f5d4fa0088e455ce99c0c5b3  0022-ipa-simple-expose-manual-colour-correction-matrix.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -6097,7 +6221,7 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..dc944b28ccaec56876f7b466be48720f
  ...
 diff --git a/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
 new file mode 100644
-index 0000000..4f7b1521147d5c11b52e6903ca0264066568c089
+index 0000000000000000000000000000000000000000..4f7b1521147d5c11b52e6903ca0264066568c089
 --- /dev/null
 +++ b/temp/pipewire/0001-spa-libcamera-Transport-autofocus-controls-and-state.patch
 @@ -0,0 +1,404 @@
@@ -6507,7 +6631,7 @@ index 0000000..4f7b1521147d5c11b52e6903ca0264066568c089
 +
 diff --git a/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch b/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch
 new file mode 100644
-index 0000000..910b714af9dbadda0f73895e0ef9271819f84ae5
+index 0000000000000000000000000000000000000000..910b714af9dbadda0f73895e0ef9271819f84ae5
 --- /dev/null
 +++ b/temp/pipewire/0002-spa-libcamera-Transport-float-array-controls.patch
 @@ -0,0 +1,93 @@
@@ -6606,7 +6730,7 @@ index 0000000..910b714af9dbadda0f73895e0ef9271819f84ae5
 +
 diff --git a/temp/pipewire/APKBUILD b/temp/pipewire/APKBUILD
 new file mode 100644
-index 0000000..478f63a79f182b8edb1d5642a6b60c405cd731d0
+index 0000000000000000000000000000000000000000..478f63a79f182b8edb1d5642a6b60c405cd731d0
 --- /dev/null
 +++ b/temp/pipewire/APKBUILD
 @@ -0,0 +1,341 @@
@@ -6953,7 +7077,7 @@ index 0000000..478f63a79f182b8edb1d5642a6b60c405cd731d0
 +"
 diff --git a/temp/pipewire/pipewire-launcher.sh b/temp/pipewire/pipewire-launcher.sh
 new file mode 100644
-index 0000000..95d66a702aae8e7d8bb8e37d99dc4cf9b9623cfc
+index 0000000000000000000000000000000000000000..95d66a702aae8e7d8bb8e37d99dc4cf9b9623cfc
 --- /dev/null
 +++ b/temp/pipewire/pipewire-launcher.sh
 @@ -0,0 +1,31 @@
@@ -6990,7 +7114,7 @@ index 0000000..95d66a702aae8e7d8bb8e37d99dc4cf9b9623cfc
 +[ -f "/usr/share/pipewire/pipewire-pulse.conf" ] && exec /usr/bin/pipewire-pulse &
 diff --git a/temp/pipewire/pipewire-pulse.initd b/temp/pipewire/pipewire-pulse.initd
 new file mode 100644
-index 0000000..162e6074de56cd123728acd921962e42887a46ba
+index 0000000000000000000000000000000000000000..162e6074de56cd123728acd921962e42887a46ba
 --- /dev/null
 +++ b/temp/pipewire/pipewire-pulse.initd
 @@ -0,0 +1,16 @@
@@ -7012,7 +7136,7 @@ index 0000000..162e6074de56cd123728acd921962e42887a46ba
 +}
 diff --git a/temp/pipewire/pipewire.desktop b/temp/pipewire/pipewire.desktop
 new file mode 100644
-index 0000000..d80505003409a797418a782c0f9f50c829c44251
+index 0000000000000000000000000000000000000000..d80505003409a797418a782c0f9f50c829c44251
 --- /dev/null
 +++ b/temp/pipewire/pipewire.desktop
 @@ -0,0 +1,10 @@
@@ -7028,7 +7152,7 @@ index 0000000..d80505003409a797418a782c0f9f50c829c44251
 +X-systemd-skip=true
 diff --git a/temp/pipewire/pipewire.initd b/temp/pipewire/pipewire.initd
 new file mode 100644
-index 0000000..1c458078fbcc004bd6c3a6accfede0d7a580f3b4
+index 0000000000000000000000000000000000000000..1c458078fbcc004bd6c3a6accfede0d7a580f3b4
 --- /dev/null
 +++ b/temp/pipewire/pipewire.initd
 @@ -0,0 +1,17 @@
@@ -7051,7 +7175,7 @@ index 0000000..1c458078fbcc004bd6c3a6accfede0d7a580f3b4
 +}
 diff --git a/temp/pipewire/pipewire.post-install b/temp/pipewire/pipewire.post-install
 new file mode 100644
-index 0000000..4dacf08451a0e5c87ba5951f83a78f2621786312
+index 0000000000000000000000000000000000000000..4dacf08451a0e5c87ba5951f83a78f2621786312
 --- /dev/null
 +++ b/temp/pipewire/pipewire.post-install
 @@ -0,0 +1,11 @@
@@ -7068,7 +7192,7 @@ index 0000000..4dacf08451a0e5c87ba5951f83a78f2621786312
 +exit 0
 diff --git a/temp/pipewire/pipewire.post-upgrade b/temp/pipewire/pipewire.post-upgrade
 new file mode 100644
-index 0000000..4ddfd3bcd80965c769f6559ced10cd8699d0c558
+index 0000000000000000000000000000000000000000..4ddfd3bcd80965c769f6559ced10cd8699d0c558
 --- /dev/null
 +++ b/temp/pipewire/pipewire.post-upgrade
 @@ -0,0 +1,31 @@
@@ -7105,7 +7229,7 @@ index 0000000..4ddfd3bcd80965c769f6559ced10cd8699d0c558
 +
 diff --git a/temp/pipewire/systemd-units-wo-libsystemd.patch b/temp/pipewire/systemd-units-wo-libsystemd.patch
 new file mode 100644
-index 0000000..f12ebc035e5a7c1f95dd7262d9201cc68e3cbe8f
+index 0000000000000000000000000000000000000000..f12ebc035e5a7c1f95dd7262d9201cc68e3cbe8f
 --- /dev/null
 +++ b/temp/pipewire/systemd-units-wo-libsystemd.patch
 @@ -0,0 +1,78 @@
@@ -7189,7 +7313,7 @@ index 0000000..f12ebc035e5a7c1f95dd7262d9201cc68e3cbe8f
 +
 diff --git a/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 new file mode 100644
-index 0000000..618aa32c12dd0fca852cf07321b8c79ca20c56b4
+index 0000000000000000000000000000000000000000..618aa32c12dd0fca852cf07321b8c79ca20c56b4
 --- /dev/null
 +++ b/temp/snapshot/0001-aperture-Capture-stills-at-a-full-frame-resolution.patch
 @@ -0,0 +1,156 @@
@@ -7351,7 +7475,7 @@ index 0000000..618aa32c12dd0fca852cf07321b8c79ca20c56b4
 +
 diff --git a/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
 new file mode 100644
-index 0000000..b4aa45f5749bfcb269cbf74110c9953e6e6011e3
+index 0000000000000000000000000000000000000000..b4aa45f5749bfcb269cbf74110c9953e6e6011e3
 --- /dev/null
 +++ b/temp/snapshot/0002-snapshot-Add-sensor-region-tap-to-focus.patch
 @@ -0,0 +1,857 @@
@@ -8214,7 +8338,7 @@ index 0000000..b4aa45f5749bfcb269cbf74110c9953e6e6011e3
 +
 diff --git a/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch b/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch
 new file mode 100644
-index 0000000..575596486d147ba2000258ed1b74a6d060c366a5
+index 0000000000000000000000000000000000000000..575596486d147ba2000258ed1b74a6d060c366a5
 --- /dev/null
 +++ b/temp/snapshot/0003-snapshot-add-visible-focus-and-image-controls.patch
 @@ -0,0 +1,696 @@
@@ -8916,7 +9040,7 @@ index 0000000..575596486d147ba2000258ed1b74a6d060c366a5
 +
 diff --git a/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch b/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch
 new file mode 100644
-index 0000000..d085cbd09bda9ae0f46fea399c755d8866e9d589
+index 0000000000000000000000000000000000000000..d085cbd09bda9ae0f46fea399c755d8866e9d589
 --- /dev/null
 +++ b/temp/snapshot/0004-snapshot-serialize-viewfinder-stream-lifecycle.patch
 @@ -0,0 +1,140 @@
@@ -9062,7 +9186,7 @@ index 0000000..d085cbd09bda9ae0f46fea399c755d8866e9d589
 +     fn cancel_current_operation(&self) {
 diff --git a/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch b/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch
 new file mode 100644
-index 0000000..e388bcdd2c576634b651c8a6dff80e48e08f49e5
+index 0000000000000000000000000000000000000000..e388bcdd2c576634b651c8a6dff80e48e08f49e5
 --- /dev/null
 +++ b/temp/snapshot/0005-snapshot-await-camerabin-teardown.patch
 @@ -0,0 +1,316 @@
@@ -9384,7 +9508,7 @@ index 0000000..e388bcdd2c576634b651c8a6dff80e48e08f49e5
 +
 diff --git a/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch b/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch
 new file mode 100644
-index 0000000..3bdc4cfbc1c2d60981238f6c4c16c68f35b86d38
+index 0000000000000000000000000000000000000000..3bdc4cfbc1c2d60981238f6c4c16c68f35b86d38
 --- /dev/null
 +++ b/temp/snapshot/0006-snapshot-gstreamer-state-tuple.patch
 @@ -0,0 +1,35 @@
@@ -9425,7 +9549,7 @@ index 0000000..3bdc4cfbc1c2d60981238f6c4c16c68f35b86d38
 +2.49.0
 diff --git a/temp/snapshot/APKBUILD b/temp/snapshot/APKBUILD
 new file mode 100644
-index 0000000..cce9da68c3e9f69b1aeb8c26af8b901a2eb5d6db
+index 0000000000000000000000000000000000000000..cce9da68c3e9f69b1aeb8c26af8b901a2eb5d6db
 --- /dev/null
 +++ b/temp/snapshot/APKBUILD
 @@ -0,0 +1,79 @@
@@ -9510,7 +9634,7 @@ index 0000000..cce9da68c3e9f69b1aeb8c26af8b901a2eb5d6db
 +"
 diff --git a/temp/snapshot/cargo-auditable.patch b/temp/snapshot/cargo-auditable.patch
 new file mode 100644
-index 0000000..740f5479e6bff86ec75ef8b6c3eb8e6e67e20501
+index 0000000000000000000000000000000000000000..740f5479e6bff86ec75ef8b6c3eb8e6e67e20501
 --- /dev/null
 +++ b/temp/snapshot/cargo-auditable.patch
 @@ -0,0 +1,37 @@
