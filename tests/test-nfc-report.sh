@@ -32,9 +32,25 @@ PMOS_NFC_SYSFS_ROOT="$TEST_DIR/sys" \
 	PMOS_NFC_LIST=/missing/nfc-list \
 	PMOS_NFC_POLL=/missing/nfc-poll \
 	PMOS_NFC_TOOL="$ROOT/tests/fixtures/nfctool" \
+	PMOS_NFC_POLL_PRIVILEGED=yes \
 	"$REPORT" --poll >"$poll_output"
 grep -Fqx 'nfctool=available' "$poll_output"
+grep -Fqx 'nfctool_device=nfc0' "$poll_output"
 grep -Fqx 'poll_backend=nfctool' "$poll_output"
+grep -Fqx 'poll_device=nfc0' "$poll_output"
 grep -Fqx 'target: UID 04:11:22:33:44:55:66' "$poll_output"
+
+unprivileged_output=$TEST_DIR/unprivileged.txt
+PMOS_NFC_SYSFS_ROOT="$TEST_DIR/sys" \
+	PMOS_NFC_DEV_ROOT="$TEST_DIR/dev" \
+	PMOS_NFC_RFKILL="$ROOT/tests/fixtures/nfc-rfkill" \
+	PMOS_NFC_SYSTEMCTL=/missing/systemctl \
+	PMOS_NFC_LIST=/missing/nfc-list \
+	PMOS_NFC_POLL=/missing/nfc-poll \
+	PMOS_NFC_TOOL="$ROOT/tests/fixtures/nfctool" \
+	PMOS_NFC_POLL_PRIVILEGED=no \
+	"$REPORT" --poll >"$unprivileged_output"
+grep -Fqx 'poll=requires-root' "$unprivileged_output"
+grep -Fqx 'poll_note=run this check with sudo to change NFC adapter state' "$unprivileged_output"
 
 printf '%s\n' 'nfc report tests passed'

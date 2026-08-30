@@ -120,10 +120,11 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r29. It adds a temporary sleep inhibitor to the
-SSH-launched Waydroid camera probe and makes the location bridge accept both
-ModemManager key-value layouts with signal-safe cleanup; neither changes normal
-suspend behavior. Build it from `packaging/` as documented in
+The current checkout recipe is r32. It adds a temporary sleep inhibitor to the
+SSH-launched Waydroid camera probe, makes the location bridge accept both
+ModemManager key-value layouts with signal-safe cleanup, and makes the NFC
+checker select and restore the kernel-NCI adapter during an explicit poll;
+neither changes normal suspend behavior. Build it from `packaging/` as documented in
 [packaging/README.md](packaging/README.md), or use the source checkout directly
 with `make install`.
 
@@ -595,9 +596,10 @@ bridge and its optional disabled system service are documented in
 NMEA and formatted decimal fields from fresh-UTC-gated `mmcli --location-get`
 polls, or gpsd JSON;
 the bridge is explicitly a mock-provider integration rather than a vendor GNSS
-HAL. A fresh Stroud-area native fix, Android fused-provider injection, service
-lifecycle and rollback now pass on the phone; map-application acceptance and a
-native Android GNSS HAL remain open.
+HAL. The reversible Android fused-provider bridge, service lifecycle and
+rollback are validated, but the current phone report has no GNSS coordinates;
+a fresh outdoor native fix, map-application acceptance and a native Android
+GNSS HAL remain open.
 `pmos-check-location` provides the read-only native ModemManager/GeoClue report
 needed before using the bridge.
 
@@ -606,9 +608,11 @@ needed before using the bridge.
 The read-only NFC readiness report checks the controller/rfkill exposure,
 device nodes and installed tag-reader tools without enabling polling. When
 `neard`/`nfctool` is installed it uses the kernel-NCI path; `nfc-list` remains
-an external-reader fallback. Run `pmos-check-nfc --poll` only for an explicit
-tag test. NFC tag reading and payment support remain unaccepted until the
-recovered phone can detect a real tag. See [docs/NFC.md](docs/NFC.md).
+an external-reader fallback. The recovered phone has `neard.service` enabled,
+and `nfctool -l` exposes its `nfc0` adapter. Run `sudo pmos-check-nfc --poll`
+only for an explicit tag test; the checker restores the adapter after polling.
+NFC tag reading and payment support remain unaccepted until a real tag is
+detected. See [docs/NFC.md](docs/NFC.md).
 
 ### Battery and suspend
 

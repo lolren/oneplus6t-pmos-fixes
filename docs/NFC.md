@@ -30,8 +30,9 @@ sudo apk add neard neard-systemd
 sudo systemctl enable --now neard.service
 ```
 
-The checker uses `nfctool -l` for non-invasive adapter discovery and
-`nfctool -p` for an explicit poll. `nfc-list -v` remains a fallback for
+The checker uses `nfctool -l` for non-invasive adapter discovery, selects the
+reported adapter (for example `nfc0`), and runs `nfctool -d nfc0 -p` for an
+explicit poll. `nfc-list -v` remains a fallback for
 libnfc-compatible external readers; it is not assumed to drive the phone's
 kernel NCI adapter. The Linux NFC subsystem exposes controller management and
 polling through generic netlink, which is the interface used by `nfctool`.
@@ -45,20 +46,27 @@ Only after the report shows a controller and an unblocked radio, and after a
 tag is placed beside the phone, explicitly request a userspace poll:
 
 ```sh
-pmos-check-nfc --poll
+sudo pmos-check-nfc --poll
 ```
 
-This runs `nfc-list -v` when available. It may activate the reader and is not
-part of the default health check. A successful acceptance requires detecting a
-real tag and recording its UID/available NDEF data, then repeating the test
-after restarting the relevant userspace service. No payment functionality is
-implied.
+This runs `nfctool -d nfc0 -p` when the phone's kernel-NCI adapter is present,
+or `nfc-list -v` for a compatible external reader. It may activate the reader
+and requires root because polling changes adapter state. The checker restores
+the adapter to its previous powered-down state when the explicit poll exits or
+is interrupted. It is not part of the default health check. A successful
+acceptance requires detecting a real tag and recording its UID/available NDEF
+data, then repeating the test after restarting the relevant userspace service.
+No payment functionality is implied.
 
 ## Reproducibility
 
 The report accepts `PMOS_NFC_SYSFS_ROOT`, `PMOS_NFC_DEV_ROOT`,
-`PMOS_NFC_RFKILL`, `PMOS_NFC_SYSTEMCTL`, `PMOS_NFC_LIST` and `PMOS_NFC_POLL`
-overrides. The fixture-driven `tests/test-nfc-report.sh` uses those overrides
-to test controller discovery and the no-poll default without NFC hardware.
+`PMOS_NFC_RFKILL`, `PMOS_NFC_SYSTEMCTL`, `PMOS_NFC_LIST`, `PMOS_NFC_POLL`,
+`PMOS_NFC_TOOL`, `PMOS_NFC_DEVICE` and `PMOS_NFC_POLL_PRIVILEGED` overrides. The
+fixture-driven `tests/test-nfc-report.sh` verifies that a discovered `nfc0` is
+passed to the poll command, an unprivileged poll is refused clearly, and the
+no-poll default remains hardware-free.
 
-Physical acceptance is still pending recovery of the reference phone.
+On the recovered reference phone, `neard.service` is enabled and active and
+`nfctool -l` exposes `nfc0` with the expected NCI protocols. A real tag still
+needs to be placed beside the phone for final UID/NDEF acceptance.

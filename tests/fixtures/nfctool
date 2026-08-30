@@ -5,8 +5,20 @@ case "${1:-}" in
 	-l)
 		printf '%s\n' 'nfc0: NXP PN553'
 		;;
-	-p)
-		printf '%s\n' 'target: UID 04:11:22:33:44:55:66'
+	-d)
+		[ "${2:-}" = nfc0 ]
+		case "${3:-}" in
+		-p)
+			printf '%s\n' 'target: UID 04:11:22:33:44:55:66'
+			;;
+		*)
+			exit 2
+			;;
+		esac
+		;;
+	-0)
+		[ "${2:-}" = -d ]
+		[ "${3:-}" = nfc0 ]
 		;;
 	*)
 		exit 2

@@ -9,8 +9,28 @@ systemctl_cmd=${PMOS_NFC_SYSTEMCTL:-systemctl}
 nfc_list_cmd=${PMOS_NFC_LIST:-nfc-list}
 nfc_poll_cmd=${PMOS_NFC_POLL:-nfc-poll}
 nfc_tool_cmd=${PMOS_NFC_TOOL:-nfctool}
+nfc_device=${PMOS_NFC_DEVICE:-}
+poll_privileged=${PMOS_NFC_POLL_PRIVILEGED:-}
 output=${PMOS_NFC_OUTPUT:-}
 poll=no
+poll_cleanup=no
+
+cleanup_poll() {
+	if [ "$poll_cleanup" = yes ] && [ -n "$nfc_device" ]; then
+		# nfctool expects the action before the selected device for -0.
+		"$nfc_tool_cmd" -0 -d "$nfc_device" >/dev/null 2>&1 || true
+	fi
+}
+
+trap cleanup_poll EXIT
+
+if [ -z "$poll_privileged" ]; then
+	if [ "$(id -u 2>/dev/null || printf '1')" = 0 ]; then
+		poll_privileged=yes
+	else
+		poll_privileged=no
+	fi
+fi
 
 usage() {
 	cat <<EOF
@@ -111,9 +131,20 @@ else
 	printf 'nfc-poll=unavailable\n'
 fi
 if command -v "$nfc_tool_cmd" >/dev/null 2>&1; then
+	nfctool_listing=$("$nfc_tool_cmd" -l 2>&1 || true)
+	if [ -z "$nfc_device" ]; then
+		nfc_device=$(printf '%s\n' "$nfctool_listing" |
+			sed -n 's/^[[:space:]]*\(nfc[0-9][0-9]*\):.*/\1/p' |
+			sed -n '1p')
+	fi
 	printf 'nfctool=available\n'
+	if [ -n "$nfc_device" ]; then
+		printf 'nfctool_device=%s\n' "$nfc_device"
+	else
+		printf 'nfctool_device=none\n'
+	fi
 	printf 'nfctool_devices_begin\n'
-	"$nfc_tool_cmd" -l 2>&1 || true
+	printf '%s\n' "$nfctool_listing"
 	printf 'nfctool_devices_end\n'
 else
 	printf 'nfctool=unavailable\n'
@@ -130,9 +161,18 @@ fi
 printf '\n[poll]\n'
 if [ "$poll" = yes ]; then
 	if command -v "$nfc_tool_cmd" >/dev/null 2>&1; then
-		printf 'poll=started\n'
-		printf 'poll_backend=nfctool\n'
-		"$nfc_tool_cmd" -p 2>&1 || true
+		if [ "$poll_privileged" != yes ]; then
+			printf 'poll=requires-root\n'
+			printf '%s\n' 'poll_note=run this check with sudo to change NFC adapter state'
+		elif [ -n "$nfc_device" ]; then
+			printf 'poll=started\n'
+			printf 'poll_backend=nfctool\n'
+			printf 'poll_device=%s\n' "$nfc_device"
+			poll_cleanup=yes
+			"$nfc_tool_cmd" -d "$nfc_device" -p 2>&1 || true
+		else
+			printf 'poll=unavailable (nfctool found no NFC device)\n'
+		fi
 	elif command -v "$nfc_list_cmd" >/dev/null 2>&1; then
 		printf 'poll=started\n'
 		printf 'poll_backend=nfc-list\n'

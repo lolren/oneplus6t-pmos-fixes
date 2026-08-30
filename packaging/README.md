@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r29`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r32`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -22,8 +22,8 @@ cd packaging
 abuild -d
 ```
 
-The verified r29 APK built from this checkout has SHA-256
-`18d48eb99e2f1f6effb397fd2cd2f80871709799457568eb427fbe1580d5d87c`.
+The verified r32 APK built from this checkout has SHA-256
+`e517520dd767e3e632125e856c2631ccdd289a200bf642ce46d0e0059dbaa039`.
 It is a local development artifact rather than a published release; install
 it on a matching booted phone only after verifying the checksum and use
 `apk add --allow-untrusted` when it is not in a configured repository.
@@ -150,10 +150,12 @@ It is not enabled by the package, follows the Waydroid container lifecycle so
 it does not pull the container into every boot, and does not provide a vendor
 GNSS HAL.
 
-NFC userspace remains optional because `neard` is currently an Alpine testing
-package. If it is available in the target channel, install `neard` and
-`neard-systemd`, enable `neard.service`, and use `pmos-check-nfc --poll` for an
-explicit kernel-NCI tag test.
+NFC userspace remains an optional package dependency because `neard` is an
+Alpine testing package. On the recovered reference phone, `neard` and
+`neard-systemd` are installed and `neard.service` is enabled. Use
+`sudo pmos-check-nfc --poll` for an explicit kernel-NCI tag test; the checker
+selects the discovered adapter and restores it to its previous powered state
+on exit. A real tag is still required for physical acceptance.
 
 The package also installs `pmos-run-device-acceptance`, which combines the
 individual reports into a private evidence directory. Its camera, Messages,

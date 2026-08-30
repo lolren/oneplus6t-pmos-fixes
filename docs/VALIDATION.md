@@ -131,6 +131,27 @@ Waydroid session/container running. The current native location result is
 therefore still `native_fix=not-confirmed`; the former Reading result must not
 be replaced with a guessed Stroud coordinate.
 
+## 2026-08-30 NFC adapter and bounded-poll checkpoint
+
+The helper package was rebuilt at `0.1.0-r32`. Its NFC report now discovers
+the adapter name from `nfctool -l`, passes that name to an explicit poll, refuses
+an unprivileged state-changing poll with a clear message, and restores the
+adapter with `nfctool -0 -d nfcX` when the poll exits or is interrupted.
+
+The disposable Alpine package build ran the complete project test suite. Its
+no-architecture APK is:
+
+```text
+oneplus6t-pmos-fixes-0.1.0-r32.apk: e517520dd767e3e632125e856c2631ccdd289a200bf642ce46d0e0059dbaa039
+```
+
+It was installed over r31 without reboot. The recovered phone has
+`neard.service` enabled and active. A read-only report showed `nfc0` with
+Felica, MIFARE, Jewel, ISO-DEP and NFC-DEP support. A bounded privileged
+no-tag poll selected `nfc0`, started initiator polling, timed out safely, and
+left the final adapter state `Powered: No`. No tag UID/NDEF data was available,
+so physical tag acceptance remains open.
+
 ## 2026-08-30 native white-balance r29/r8 checkpoint
 
 The nineteenth native libcamera patch added standard `AwbEnable` and
