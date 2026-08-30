@@ -16,7 +16,7 @@ if command -v readlink >/dev/null 2>&1; then
 fi
 project_dir=$(CDPATH= cd -- "$(dirname -- "$script_path")/.." && pwd)
 config_dir=${WAYDROID_CAMERA_CONFIG_DIR:-$project_dir/config/waydroid}
-default_overlay=/var/lib/waydroid/overlay
+default_overlay=${WAYDROID_CAMERA_OVERLAY_DIR:-/var/lib/waydroid/overlay}
 backup_root=${WAYDROID_CAMERA_PROFILES_BACKUP_ROOT:-/var/lib/waydroid/backups}
 waydroid_rootfs=${WAYDROID_ROOTFS_DIR:-/var/lib/waydroid/rootfs}
 mountinfo_file=${WAYDROID_CAMERA_MOUNTINFO:-/proc/self/mountinfo}
@@ -243,7 +243,7 @@ do_rollback() {
 	printf 'rolled back: %s\n' "$backup_dir"
 }
 
-if [ "$#" -lt 1 ] || [ "$#" -gt 3 ]; then
+if [ "$#" -gt 3 ]; then
 	usage
 	exit 2
 fi
