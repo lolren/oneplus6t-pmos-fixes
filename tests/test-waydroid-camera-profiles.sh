@@ -62,6 +62,22 @@ command -p id "$@"
 EOF
 chmod 0755 "$fake_bin/id"
 
+default_test_overlay=$TEST_DIR/default-overlay
+mkdir -p "$default_test_overlay/vendor/etc"
+printf '%s\n' default-old >"$default_test_overlay/vendor/etc/media_profiles.xml"
+printf '%s\n' default-old-v1 >"$default_test_overlay/vendor/etc/media_profiles_V1_0.xml"
+PATH="$fake_bin:$PATH" \
+	WAYDROID_CAMERA_OVERLAY_DIR="$default_test_overlay" \
+	WAYDROID_CAMERA_MOUNTINFO="$mountinfo" \
+	WAYDROID_CAMERA_PROC_ROOT="$proc_root" \
+	WAYDROID_CAMERA_PROFILES_BACKUP_ROOT="$backup_root" \
+	"$SYNC" >"$TEST_DIR/default-install.out"
+grep -q '^backup: ' "$TEST_DIR/default-install.out"
+cmp "$ROOT/config/waydroid/media_profiles.xml" \
+	"$default_test_overlay/vendor/etc/media_profiles.xml"
+cmp "$ROOT/config/waydroid/media_profiles.xml" \
+	"$default_test_overlay/vendor/etc/media_profiles_V1_0.xml"
+
 PATH="$fake_bin:$PATH" \
 	WAYDROID_CAMERA_MOUNTINFO="$mountinfo" \
 	WAYDROID_CAMERA_PROC_ROOT="$proc_root" \

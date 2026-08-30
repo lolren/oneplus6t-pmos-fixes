@@ -120,7 +120,7 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r38. It adds a guarded synchronizer for the two
+The current checkout recipe is r39. It adds a guarded synchronizer for the two
 Waydroid recording-profile files, alongside the r35 temporary sleep inhibitor
 and root-only shell diagnostic for the SSH-launched camera probe. The location
 bridge accepts both ModemManager key-value layouts with signal-safe cleanup,
