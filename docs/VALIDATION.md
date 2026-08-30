@@ -152,6 +152,28 @@ no-tag poll selected `nfc0`, started initiator polling, timed out safely, and
 left the final adapter state `Powered: No`. No tag UID/NDEF data was available,
 so physical tag acceptance remains open.
 
+## 2026-08-30 Waydroid probe boundary checkpoint
+
+The helper package was rebuilt at `0.1.0-r35`. The Camera2 runner now parses
+help before attempting an idle inhibitor, treats an SSH session that cannot
+create the inhibitor as a bounded warning, and reports when the reference
+Waydroid host requires root for `waydroid shell` instead of misreporting a
+missing probe package.
+
+The disposable Alpine package build ran the complete project test suite. Its
+no-architecture APK is:
+
+```text
+oneplus6t-pmos-fixes-0.1.0-r35.apk: 704b3fdf9a5be7f7dc63f809953e30f4520ec28427ba27618889f264f12cd0d9
+```
+
+It was installed over r34 without reboot. The unprivileged command returned
+the explicit root-boundary diagnostic. A root invocation produced exactly one
+main-rear preview result (`privateSize=1280x960`, `privateFps=28.47`,
+`captureFps=28.46`, `afStates=[3, 4]`) and left the Waydroid session and
+container running. The probe’s temporary sleep-inhibitor attempt was handled
+without duplicating the camera launch.
+
 ## 2026-08-30 native white-balance r29/r8 checkpoint
 
 The nineteenth native libcamera patch added standard `AwbEnable` and

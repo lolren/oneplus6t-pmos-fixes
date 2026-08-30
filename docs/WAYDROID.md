@@ -143,9 +143,14 @@ camera UI by themselves; an Android camera application consumes them.
   validation/performance profiles and waits for a saved `PROBE_DONE` result;
   repeated A/B runs can verify and reuse the installed package instead of
   updating it between samples. Because the supported idle power policy freezes
-  the container, the runner now holds a temporary `systemd-inhibit` lock for
-  the duration of each invocation and thaws it before an SSH-launched probe by
-  default; the normal battery policy is unchanged after the command exits.
+  the container, the runner tries to hold a temporary `systemd-inhibit` lock
+  for the duration of each invocation and thaws it before an SSH-launched
+  probe by default. If an SSH session can enumerate inhibitors but is not
+  authorized to create one, the runner reports that and continues without the
+  lock; the normal battery policy is unchanged after the command exits.
+  On the reference image `waydroid shell` is root-only, so invoke the runner
+  as `sudo pmos-run-waydroid-camera-probe ...`; the helper reports this
+  requirement directly when called unprivileged.
   Set `PMOS_WAYDROID_PROBE_UNFREEZE=no` when the session is already known to be
   active. `PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT` bounds these control commands.
 - `tests/waydroid-camera-probe/` builds the validation APK.

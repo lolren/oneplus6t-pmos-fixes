@@ -7,6 +7,7 @@ PROBE_SOURCE=$ROOT/tests/waydroid-camera-probe/src/dev/lolren/waydroidcameraprob
 
 grep -q 'systemd-inhibit' "$RUNNER"
 grep -q 'PMOS_WAYDROID_PROBE_INHIBITED' "$RUNNER"
+grep -q 'Waydroid shell requires root on this image' "$RUNNER"
 grep -q -- '--what=idle:sleep' "$RUNNER"
 grep -q -- '--mode=block' "$RUNNER"
 
@@ -52,6 +53,19 @@ mkdir -p "$TEST_DIR/bin"
 apk=$TEST_DIR/probe.apk
 printf '%s\n' 'fixture apk' >"$apk"
 
+cat >"$TEST_DIR/bin/systemd-inhibit" <<'EOF'
+#!/bin/sh
+set -eu
+
+if [ "${1:-}" = --list ]; then
+	exit 0
+fi
+printf '%s\n' 'inhibitor unexpectedly invoked for help' >"$WAYDROID_INHIBITOR_TEST_LOG"
+exit 77
+EOF
+chmod 0755 "$TEST_DIR/bin/systemd-inhibit"
+export WAYDROID_INHIBITOR_TEST_LOG="$TEST_DIR/inhibitor.log"
+
 # Keep the normal fixture runs independent of the host's own logind setup.
 export PMOS_WAYDROID_PROBE_INHIBITED=yes
 
@@ -73,10 +87,11 @@ esac
 EOF
 chmod 0755 "$TEST_DIR/bin/waydroid"
 
-help_output=$("$RUNNER" --help)
+help_output=$(PATH="$TEST_DIR/bin:$PATH" env -u PMOS_WAYDROID_PROBE_INHIBITED "$RUNNER" --help)
 grep -q '^usage: run-waydroid-camera-probe APK' <<EOF
 $help_output
 EOF
+[ ! -e "$WAYDROID_INHIBITOR_TEST_LOG" ]
 
 result=$TEST_DIR/result.txt
 PATH="$TEST_DIR/bin:$PATH" \
@@ -93,6 +108,18 @@ grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.REC
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
 grep -q '^container unfreeze$' "$TEST_DIR/waydroid.log"
+
+fallback_result=$TEST_DIR/result-fallback.txt
+PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid-fallback.log" \
+	WAYDROID_INHIBITOR_TEST_LOG="$TEST_DIR/inhibitor-fallback.log" \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	env -u PMOS_WAYDROID_PROBE_INHIBITED \
+		"$RUNNER" "$apk" preview "$fallback_result" \
+		>"$TEST_DIR/fallback-stdout" 2>"$TEST_DIR/fallback-stderr"
+grep -q 'sleep inhibitor unavailable; continuing without it' \
+	"$TEST_DIR/fallback-stderr"
+grep -q 'PROBE_DONE profile=preview valid=1 total=1' "$fallback_result"
 
 skip_log=$TEST_DIR/waydroid-skip.log
 skip_result=$TEST_DIR/result-skip.txt

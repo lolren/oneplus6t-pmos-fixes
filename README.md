@@ -120,10 +120,11 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r32. It adds a temporary sleep inhibitor to the
+The current checkout recipe is r35. It adds a temporary sleep inhibitor to the
 SSH-launched Waydroid camera probe, makes the location bridge accept both
 ModemManager key-value layouts with signal-safe cleanup, and makes the NFC
 checker select and restore the kernel-NCI adapter during an explicit poll;
+the probe also reports the root-only Waydroid shell boundary clearly;
 neither changes normal suspend behavior. Build it from `packaging/` as documented in
 [packaging/README.md](packaging/README.md), or use the source checkout directly
 with `make install`.

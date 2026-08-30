@@ -3,22 +3,6 @@ set -eu
 
 program=${0##*/}
 
-# A full Camera2 run can take several minutes on the OnePlus 6T software ISP.
-# When it is launched over SSH, the phone may otherwise enter suspend and
-# Waydroid's configured suspend_action=freeze leaves the next shell call
-# blocked. Hold a temporary inhibitor for this invocation only; the normal
-# graphical session and battery policy are unchanged after the probe exits.
-if [ "${PMOS_WAYDROID_PROBE_INHIBITED:-no}" != yes ] &&
-	command -v systemd-inhibit >/dev/null 2>&1 &&
-	systemd-inhibit --list >/dev/null 2>&1; then
-	export PMOS_WAYDROID_PROBE_INHIBITED=yes
-	exec systemd-inhibit \
-		--what=idle:sleep \
-		--mode=block \
-		--why='OnePlus 6T Waydroid camera probe is running' \
-		"$0" "$@"
-fi
-
 timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
 control_timeout=${PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT:-45}
 camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
@@ -33,7 +17,8 @@ usage() {
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
 		'An output file is optional and must not already exist.' \
-		'The runner temporarily blocks idle/sleep while the probe is active.' \
+		'The runner tries to block idle/sleep while the probe is active.' \
+		'If the session denies that lock, it continues with an explicit warning.' \
 		'Set PMOS_WAYDROID_PROBE_MEDIA_OUTPUT with encode-720p and one camera ID' \
 		'to copy the app-private H.264/AAC MP4 to the host.' \
 		'encode-720p is phone-gated and also requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes.'
@@ -121,7 +106,49 @@ if [ -n "$media_output" ]; then
 	[ "$media_output" != "$output" ] || die 'result and media output paths must differ'
 fi
 
+# A full Camera2 run can take several minutes on the OnePlus 6T software ISP.
+# When it is launched over SSH, the phone may otherwise enter suspend and
+# Waydroid's configured suspend_action=freeze leaves the next shell call
+# blocked. Hold a temporary inhibitor for this invocation only when the
+# session permits it; the normal graphical session and battery policy are
+# unchanged after the probe exits. Some SSH sessions can enumerate inhibitors
+# but cannot create one, so detect that case and continue rather than failing
+# before the actual probe starts.
+if [ -n "${PMOS_WAYDROID_PROBE_INHIBIT_MARKER:-}" ]; then
+	printf '%s\n' started >"$PMOS_WAYDROID_PROBE_INHIBIT_MARKER"
+fi
+if [ "${PMOS_WAYDROID_PROBE_INHIBITED:-no}" != yes ] &&
+	command -v systemd-inhibit >/dev/null 2>&1 &&
+	systemd-inhibit --list >/dev/null 2>&1; then
+	if inhibit_marker=$(mktemp "${TMPDIR:-/tmp}/oneplus6t-waydroid-probe-inhibit.XXXXXX"); then
+		export PMOS_WAYDROID_PROBE_INHIBITED=yes
+		export PMOS_WAYDROID_PROBE_INHIBIT_MARKER=$inhibit_marker
+		set +e
+		systemd-inhibit \
+			--what=idle:sleep \
+			--mode=block \
+			--why='OnePlus 6T Waydroid camera probe is running' \
+			"$0" "$@"
+		inhibit_rc=$?
+		set -e
+		child_started=no
+		[ -s "$inhibit_marker" ] && child_started=yes
+		rm -f -- "$inhibit_marker"
+		unset PMOS_WAYDROID_PROBE_INHIBIT_MARKER
+		if [ "$child_started" = yes ]; then
+			exit "$inhibit_rc"
+		fi
+		printf '%s\n' \
+			"$program: sleep inhibitor unavailable; continuing without it" >&2
+	fi
+fi
+
 command -v waydroid >/dev/null 2>&1 || die 'waydroid command not found'
+
+if [ "$(id -u 2>/dev/null || printf '1')" != 0 ]; then
+	waydroid_shell_check=$(waydroid shell -- true 2>&1) ||
+		die "Waydroid shell requires root on this image; rerun with sudo ($waydroid_shell_check)"
+fi
 
 if [ "$unfreeze" = yes ]; then
 	# The supported battery policy freezes an idle Android container. A probe

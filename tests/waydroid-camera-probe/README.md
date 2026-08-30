@@ -190,7 +190,7 @@ After installing this repository, the same operation can be run and saved
 with one host command:
 
 ```sh
-pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
+sudo pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk preview \
   /tmp/oneplus6t-camera-preview.txt
 ```
 
@@ -230,7 +230,7 @@ media-output variable:
 PMOS_WAYDROID_PROBE_CAMERA_ID=0 \
 PMOS_WAYDROID_PROBE_MEDIA_OUTPUT=/tmp/oneplus6t-camera-0.mp4 \
 PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes \
-  pmos-run-waydroid-camera-probe \
+  sudo pmos-run-waydroid-camera-probe \
   build/waydroid-camera-probe.apk encode-720p \
   /tmp/oneplus6t-camera-0-encode.txt
 ```
@@ -259,7 +259,7 @@ example:
 
 ```sh
 PMOS_WAYDROID_PROBE_CAMERA_ID=1 \
-  pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk full \
+  sudo pmos-run-waydroid-camera-probe build/waydroid-camera-probe.apk full \
   /tmp/oneplus6t-camera-1-full.txt
 ```
 
