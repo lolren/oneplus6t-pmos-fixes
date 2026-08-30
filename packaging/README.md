@@ -12,6 +12,22 @@ cd packaging
 abuild -r
 ```
 
+The current checkout recipe is `0.1.0-r27`. A pure Alpine builder must also
+install `python3` because the package check phase runs the Python bridge tests;
+the `-d` flag skips only runtime dependency resolution, not those checks:
+
+```sh
+apk add alpine-sdk git python3
+cd packaging
+abuild -d
+```
+
+The verified r27 APK built from this checkout has SHA-256
+`1eb46c2154e4fd3b3659af988c6d69f0148d533b49327f18345947be37a5e755`.
+It is a local development artifact rather than a published release; install
+it on a matching booted phone only after verifying the checksum and use
+`apk add --allow-untrusted` when it is not in a configured repository.
+
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
 packages from Alpine's repositories:

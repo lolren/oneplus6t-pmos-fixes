@@ -103,7 +103,7 @@ It supports both systemd and OpenRC, persists `sshd`, verifies the listener and
 does not alter firewall rules. The recovery procedure and direct fallback
 commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
-The current signed `noarch` runtime package is published as the
+The last published signed `noarch` runtime package is the
 [runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
@@ -119,6 +119,12 @@ sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r25.apk
 phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
+
+The current checkout recipe is r27. It adds a temporary sleep inhibitor to the
+SSH-launched Waydroid camera probe so the phone's freeze-on-idle policy cannot
+pause a long diagnostic; it does not change normal suspend behavior. Build it
+from `packaging/` as documented in [packaging/README.md](packaging/README.md),
+or use the source checkout directly with `make install`.
 
 Runtime r25 was built twice from commit `fe01b51` with a fixed source date;
 the signed APKs were byte-identical. Every packaged file, command link and

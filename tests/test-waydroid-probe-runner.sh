@@ -5,6 +5,11 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 RUNNER=$ROOT/scripts/run-waydroid-camera-probe
 PROBE_SOURCE=$ROOT/tests/waydroid-camera-probe/src/dev/lolren/waydroidcameraprobe/CameraProbeActivity.java
 
+grep -q 'systemd-inhibit' "$RUNNER"
+grep -q 'PMOS_WAYDROID_PROBE_INHIBITED' "$RUNNER"
+grep -q -- '--what=idle:sleep' "$RUNNER"
+grep -q -- '--mode=block' "$RUNNER"
+
 grep -q 'map.getOutputSizes(SurfaceTexture.class)' "$PROBE_SOURCE"
 grep -q 'privateSizes = map.getOutputSizes(ImageFormat.YUV_420_888)' \
 	"$PROBE_SOURCE"
@@ -46,6 +51,9 @@ grep -q 'surfaceSamplePending.compareAndSet(false, true)' "$PROBE_SOURCE"
 mkdir -p "$TEST_DIR/bin"
 apk=$TEST_DIR/probe.apk
 printf '%s\n' 'fixture apk' >"$apk"
+
+# Keep the normal fixture runs independent of the host's own logind setup.
+export PMOS_WAYDROID_PROBE_INHIBITED=yes
 
 cat >"$TEST_DIR/bin/waydroid" <<'EOF'
 #!/bin/sh

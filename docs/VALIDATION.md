@@ -73,6 +73,40 @@ This proves writable standard control transport and a usable mobile UI. It
 does not provide measured factory matrix values, lens-shading correction,
 proprietary denoise or Android-vendor image parity.
 
+## 2026-08-30 protected Waydroid Camera2 probe checkpoint
+
+The helper package was rebuilt at `0.1.0-r27` after the long three-camera
+probe reached the phone's configured idle freeze policy while it was launched
+over SSH. The runner now takes a temporary `systemd-inhibit` lock for
+`idle:sleep` during the probe and still performs its bounded container thaw;
+the inhibitor is released automatically when the probe exits. This changes no
+normal suspend or battery setting.
+
+The disposable Alpine `abuild -d` build ran the complete project test suite.
+The resulting no-architecture APK is:
+
+```text
+oneplus6t-pmos-fixes-0.1.0-r27.apk: 1eb46c2154e4fd3b3659af988c6d69f0148d533b49327f18345947be37a5e755
+```
+
+It was installed over r26 without a reboot. With the already installed
+diagnostic APK reused (`PMOS_WAYDROID_PROBE_SKIP_INSTALL=yes`), each protected
+preview run returned `PROBE_DONE` and the container stayed `RUNNING`:
+
+| Camera2 ID | Role | Preview frames | Measured preview rate | AF result |
+| --- | --- | ---: | ---: | --- |
+| 0 | main rear | 209 | 27.33 fps | `[3,4]`, center region |
+| 1 | auxiliary rear | 145 | 11.45 fps | `[3,4]`, center region |
+| 2 | fixed-focus front | 31 | 20.96 fps | `[0]`, no region |
+
+The rear `tap-focus` profile also completed on IDs 0 and 1. The rear
+`manual-focus` profile reported `manualFocusSupported=true`, a maximum
+distance of `2.000`, and a result range of `[0.000,2.000]` on both IDs.
+These are Camera2 transport and actuator tests; they do not claim ordinary
+third-party camera-app acceptance, factory colour calibration or Android
+vendor image-processing parity. The full multi-stream probe remains a
+separate test because it exercises more of the software ISP at once.
+
 ## 2026-08-30 native white-balance r29/r8 checkpoint
 
 The nineteenth native libcamera patch added standard `AwbEnable` and

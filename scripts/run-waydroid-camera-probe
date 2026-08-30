@@ -2,6 +2,23 @@
 set -eu
 
 program=${0##*/}
+
+# A full Camera2 run can take several minutes on the OnePlus 6T software ISP.
+# When it is launched over SSH, the phone may otherwise enter suspend and
+# Waydroid's configured suspend_action=freeze leaves the next shell call
+# blocked. Hold a temporary inhibitor for this invocation only; the normal
+# graphical session and battery policy are unchanged after the probe exits.
+if [ "${PMOS_WAYDROID_PROBE_INHIBITED:-no}" != yes ] &&
+	command -v systemd-inhibit >/dev/null 2>&1 &&
+	systemd-inhibit --list >/dev/null 2>&1; then
+	export PMOS_WAYDROID_PROBE_INHIBITED=yes
+	exec systemd-inhibit \
+		--what=idle:sleep \
+		--mode=block \
+		--why='OnePlus 6T Waydroid camera probe is running' \
+		"$0" "$@"
+fi
+
 timeout_override=${PMOS_WAYDROID_PROBE_TIMEOUT:-}
 control_timeout=${PMOS_WAYDROID_PROBE_CONTROL_TIMEOUT:-45}
 camera_id=${PMOS_WAYDROID_PROBE_CAMERA_ID:-}
@@ -16,6 +33,7 @@ usage() {
 		'' \
 		'Installs and runs the diagnostic Camera2 probe in Waydroid.' \
 		'An output file is optional and must not already exist.' \
+		'The runner temporarily blocks idle/sleep while the probe is active.' \
 		'Set PMOS_WAYDROID_PROBE_MEDIA_OUTPUT with encode-720p and one camera ID' \
 		'to copy the app-private H.264/AAC MP4 to the host.' \
 		'encode-720p is phone-gated and also requires PMOS_WAYDROID_PROBE_ALLOW_ENCODER=yes.'
