@@ -28,6 +28,11 @@ It is a local development artifact rather than a published release; install
 it on a matching booted phone only after verifying the checksum and use
 `apk add --allow-untrusted` when it is not in a configured repository.
 
+The clean r36 APK built from commit `bed6615` has SHA-256
+`048cc37fb0b97300ad12712e27738e62bda59a310ba3172d0664a54e681a5c4d`.
+It adds the guarded Waydroid camera-profile synchronizer and its fixture
+coverage; the package is still a local development artifact.
+
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
 packages from Alpine's repositories:
