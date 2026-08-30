@@ -10,11 +10,15 @@
 
      The installed libcamera order on fajita is 0 rear main, 1 rear auxiliary
      and 2 front. IDs 0 and 2 have guarded hardware-encoder acceptance.
-     ID 1 is intentionally omitted: two bounded recordings reached Venus but
-     reproducibly entered a firmware-recovery IRQ storm after stop, even with
-     Android's documented session-before-recorder teardown order. Preview,
-     YUV and JPEG exposure are unaffected. Do not advertise auxiliary video
-     again until a non-Venus path or a kernel/Codec2 fix passes teardown.
+     Android's MediaProfiles implementation assumes camera IDs are contiguous
+     while it builds required-profile references. ID 1 therefore carries one
+     high-speed CIF sentinel only; it has no ordinary low/high/480p/720p
+     recording profile and must remain blocked by the probe. Two bounded
+     auxiliary recordings reached Venus but reproducibly entered a
+     firmware-recovery IRQ storm after stop, even with Android's documented
+     session-before-recorder teardown order. Preview, YUV and JPEG exposure
+     are unaffected. Do not advertise auxiliary ordinary video again until a
+     non-Venus path or a kernel/Codec2 fix passes teardown.
 -->
 <MediaSettings>
     <CamcorderProfiles cameraId="0">
@@ -25,6 +29,14 @@
         <EncoderProfile quality="720p" fileFormat="mp4" duration="60">
             <Video codec="h264" bitRate="8000000" width="1280" height="720" frameRate="24" />
             <Audio codec="aac" bitRate="96000" sampleRate="48000" channels="1" />
+        </EncoderProfile>
+    </CamcorderProfiles>
+
+    <!-- Framework-contiguity sentinel: never use ID 1 for ordinary recording. -->
+    <CamcorderProfiles cameraId="1">
+        <EncoderProfile quality="highspeedcif" fileFormat="3gp" duration="30">
+            <Video codec="h263" bitRate="192000" width="352" height="288" frameRate="15" />
+            <Audio codec="amrnb" bitRate="12200" sampleRate="8000" channels="1" />
         </EncoderProfile>
     </CamcorderProfiles>
 

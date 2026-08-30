@@ -48,8 +48,8 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
-| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 2; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 1 is omitted after a reproducible Venus teardown fault. |
-| Recording-profile synchronizer | Copies the checked-in, safe camera-ID mapping into both Android recording-profile filenames after a stopped-rootfs preflight. It backs up the exact previous files and supports a bounded rollback, fixing image-level files that still label ID 1 as the front camera. |
+| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 2; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 1 has only a non-recording high-speed sentinel because Android's parser requires contiguous IDs; ordinary auxiliary video remains blocked after a reproducible Venus teardown fault. |
+| Recording-profile synchronizer | Copies the checked-in, safe camera-ID mapping into both Android recording-profile filenames after a stopped-rootfs preflight. It backs up the exact previous files and supports a bounded rollback, fixing image-level files that still label ID 1 as the front camera while retaining the parser-safe ID 1 sentinel. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
 | Venus hardware H.264 | Uses `/dev/video12` for encode. Codec2 r53 completes repeated rear H.264/AAC recordings and teardown; the current illuminated file still averages only 11.62 fps, so this is functional acceptance rather than performance parity. |
 | MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
@@ -116,8 +116,11 @@ camera UI by themselves; an Android camera application consumes them.
 - `config/waydroid/legacy-libcamera.xml` declares the provider's `legacy/0`
   HIDL instance to Android's framework compatibility matrix.
 - `config/waydroid/media_profiles.xml` declares conservative 480p/720p
-  H.264/AAC profiles for main rear ID 0 and front ID 2. It intentionally omits
-  auxiliary rear ID 1 until a non-Venus path or kernel/Codec2 fix is accepted.
+  H.264/AAC profiles for main rear ID 0 and front ID 2. It contains only a
+  high-speed CIF sentinel for auxiliary rear ID 1 because Android's
+  `MediaProfiles` required-profile table assumes contiguous IDs; no ordinary
+  auxiliary profile is advertised until a non-Venus path or kernel/Codec2 fix
+  is accepted.
 - `config/waydroid/mediaswcodec.policy` is the device-specific additive
   seccomp fragment required by Mesa's software encoder path.
 - `scripts/prepare-waydroid-camera-provider` extracts and verifies the four
@@ -135,12 +138,14 @@ camera UI by themselves; an Android camera application consumes them.
 - `scripts/sync-waydroid-camera-profiles` repairs only
   `vendor/etc/media_profiles.xml` and `vendor/etc/media_profiles_V1_0.xml`
   in the host overlay. It validates that the checked-in source advertises
-  only recording-capable IDs 0 and 2, refuses symlink/directory targets,
+  only ordinary recording-capable IDs 0 and 2 plus the parser-only ID 1
+  sentinel, refuses symlink/directory targets,
   requires an unmounted rootfs and zero storage-I/O PSI pressure, records a
   dated exact backup, and supports rollback. This is needed when an otherwise
   correct provider is paired with a stale image-level profile file: the live
   provider order is 0 rear main, 1 auxiliary rear, 2 front, while the old
-  profile file can incorrectly describe 1 as front and omit 2.
+  profile file can incorrectly describe 1 as front and omit 2. The sentinel is
+  deliberately high-speed-only and is not a supported ordinary video path.
 - `patches/android-v4l2-codec2/` carries the Qualcomm Venus queue-memory,
   single-plane layout/lifetime and metadata-only temporary-stride series
   against the exact Android 13 V4L2 Codec2 revision.

@@ -120,7 +120,7 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r39. It adds a guarded synchronizer for the two
+The current checkout recipe is r40. It adds a guarded synchronizer for the two
 Waydroid recording-profile files, alongside the r35 temporary sleep inhibitor
 and root-only shell diagnostic for the SSH-launched camera probe. The location
 bridge accepts both ModemManager key-value layouts with signal-safe cleanup,
@@ -323,7 +323,7 @@ and through an open Camera3 HAL in Waydroid.
 | Waydroid post-processor fence synchronization | Waits once on each GPU-written source fence before mapped YUV/JPEG post-processing, preventing front/auxiliary stills from reading partially rendered rows while direct-only Android surfaces retain asynchronous completion fences. |
 | Waydroid Camera3 worker-lifecycle drain | Completes asynchronous YUV/JPEG workers and pending Camera3 descriptors before close/reset, restarts workers after `flush()`, and supplies valid monotonic timestamps when the simple V4L2 path reports zero; this prevents stale requests poisoning the next camera open. |
 | Waydroid recording profiles and Codec2 policy | Publishes guarded main/front 480p/720p H.264/AAC `EncoderProfiles`, retains Android's software fallback and adds a tightly scoped hardware-codec sandbox. Auxiliary video is deliberately not advertised after a reproducible Venus teardown fault. |
-| Waydroid recording-profile synchronizer | `pmos-sync-waydroid-camera-profiles` repairs stale image-level `media_profiles*.xml` mappings so Android sees rear main ID 0 and front ID 2 for video; it requires a stopped/unmounted Waydroid rootfs, records exact backups, and supports rollback. |
+| Waydroid recording-profile synchronizer | `pmos-sync-waydroid-camera-profiles` repairs stale image-level `media_profiles*.xml` mappings so Android sees rear main ID 0 and front ID 2 for ordinary video; it keeps only a non-recording ID 1 framework sentinel, requires a stopped/unmounted Waydroid rootfs, records exact backups, and supports rollback. |
 | Waydroid Venus hardware H.264 | Drives the SDM845 encoder at `/dev/video12`; r53 completes repeated H.264/AAC recordings and clean teardown. Exact main-rear r49 video averages 11.78 fps, while exact-HAL front r50 video averages 24.77 fps, so performance remains sensor/path dependent. |
 | Waydroid DMA-heap fallback | Keeps the Android HAL usable when the mainline phone image has no legacy gralloc allocator. |
 | Waydroid Camera3 JPEG fix | Tracks the logical BLOB size so Android's JPEG footer is written where the framework expects it. |

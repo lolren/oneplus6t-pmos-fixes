@@ -150,16 +150,23 @@ grep -q 'setprop waydroid.pulse_runtime_path /run/xdg/pulse' \
 	"$ROOT/config/waydroid/init.zz-oneplus6t-camera.rc.in"
 grep -q '^sched_setscheduler: 1$' \
 	"$ROOT/config/waydroid/mediaswcodec.policy"
-for camera_id in 0 2; do
+for camera_id in 0 1 2; do
 	grep -q "<CamcorderProfiles cameraId=\"$camera_id\">" \
 		"$ROOT/config/waydroid/media_profiles.xml"
 done
-if grep -q '<CamcorderProfiles cameraId="1">' \
-	"$ROOT/config/waydroid/media_profiles.xml"; then
-	printf '%s\n' 'unsafe auxiliary Venus recording profile is still advertised' >&2
+grep -q 'quality="highspeedcif"' "$ROOT/config/waydroid/media_profiles.xml"
+if awk '
+	/<CamcorderProfiles cameraId="1">/ { in_sentinel = 1 }
+	in_sentinel && /<EncoderProfile quality="/ && $0 !~ /quality="highspeedcif"/ {
+		unsafe = 1
+	}
+	in_sentinel && /<\/CamcorderProfiles>/ { in_sentinel = 0 }
+	END { exit unsafe ? 0 : 1 }
+' "$ROOT/config/waydroid/media_profiles.xml"; then
+	printf '%s\n' 'unsafe ordinary auxiliary recording profile is still advertised' >&2
 	exit 1
 fi
-grep -q 'ID 1 is intentionally omitted' \
+grep -q 'ID 1 therefore carries one' \
 	"$ROOT/config/waydroid/media_profiles.xml"
 for frame_rate in 24; do
 	grep -q "frameRate=\"$frame_rate\"" \

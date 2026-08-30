@@ -89,6 +89,21 @@ cmp "$ROOT/config/waydroid/media_profiles.xml" \
 	"$overlay/vendor/etc/media_profiles.xml"
 cmp "$ROOT/config/waydroid/media_profiles.xml" \
 	"$overlay/vendor/etc/media_profiles_V1_0.xml"
+grep -q '<CamcorderProfiles cameraId="1">' \
+	"$overlay/vendor/etc/media_profiles.xml"
+grep -q 'quality="highspeedcif"' \
+	"$overlay/vendor/etc/media_profiles.xml"
+if awk '
+	/<CamcorderProfiles cameraId="1">/ { in_sentinel = 1 }
+	in_sentinel && /<EncoderProfile quality="/ && $0 !~ /quality="highspeedcif"/ {
+		unsafe = 1
+	}
+	in_sentinel && /<\/CamcorderProfiles>/ { in_sentinel = 0 }
+	END { exit unsafe ? 0 : 1 }
+' "$overlay/vendor/etc/media_profiles.xml"; then
+	printf '%s\n' 'profile sync left an ordinary auxiliary recording profile' >&2
+	exit 1
+fi
 grep -Fqx 'present	vendor/etc/media_profiles.xml' "$backup_dir/presence.tsv"
 grep -Fqx 'present	vendor/etc/media_profiles_V1_0.xml' "$backup_dir/presence.tsv"
 [ -f "$backup_dir/installed.sha256" ]
