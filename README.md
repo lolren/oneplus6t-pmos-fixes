@@ -105,22 +105,31 @@ commands stall, use `sudo pmos-enable-ssh --apply --restart` locally to replace
 the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
-The last published signed `noarch` runtime package is the
-[runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
+The current signed `noarch` runtime package is the
+[camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
 On a booted phone with normal postmarketOS repositories configured, download
 the APK and checksum, verify them, then install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r25/oneplus6t-pmos-fixes-0.1.0-r25.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r25/SHA256SUMS
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r42-camera-r34/oneplus6t-pmos-fixes-0.1.0_p20260831074522-r42.apk
+curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r42-camera-r34/SHA256SUMS
 sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0-r25.apk
+sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0_p20260831074522-r42.apk
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
 phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
+
+The same pre-release contains the matching native camera pair
+(`libcamera`/IPA r34), PipeWire SPA r8 and Advanced Snapshot r36. Download all
+five camera APKs from that release, verify them with the same `SHA256SUMS`, and
+follow the simulation-first install procedure in
+[packaging/pmaports/README.md](packaging/pmaports/README.md). The r34 profiles
+apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
+Advanced Snapshot action is available as **Image Controls → Green-cast
+correction → Apply** and is reversible with **Reset**.
 
 The current checkout recipe is r42. It adds a guarded synchronizer for the two
 Waydroid recording-profile files, alongside the r35 temporary sleep inhibitor
@@ -134,6 +143,12 @@ r42 also provides an explicit local `sshd` restart path for an
 authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
+
+The clean r42 package built from commit `cb8f1e7` has SHA-256
+`9b1677d6e733b90876e06a3c1958006072bb6670aab1e91baaa2e7903ed9eb50` and is
+published in the pre-release above. It adds the explicit local `sshd` restart
+fallback needed when TCP/22 and authentication work but the SSH session
+channel is wedged.
 
 The clean r40 package built from commit `bbd7287` has SHA-256
 `c93fcbb0e3554320d2bf7d20d0af7802c4564448fcc8bcaae8d5fb908eb9b725`.

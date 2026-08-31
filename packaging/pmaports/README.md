@@ -23,7 +23,9 @@ app, r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
 
 The current source target is r34/r36/r8; the reference phone remains on the
 last accepted r33/r8/r3 line until the new colour package is built and
-installed. The current r33/r34/r36/r8 evidence is:
+installed. The exact AArch64 r34/r36/r8 APK set is published with the runtime
+r42 helper in the [camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
+The current r33/r34/r36/r8 evidence is:
 
 - libcamera/IPA r33 with normalized rear `LensPosition`, `AwbEnable`, two-
   element `ColourGains` and nine-element `ColourCorrectionMatrix` controls;

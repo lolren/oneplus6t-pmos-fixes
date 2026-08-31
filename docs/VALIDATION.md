@@ -30,6 +30,29 @@ this checkpoint. The r34 native green-cast packages and Advanced Snapshot r36
 remain built source artifacts pending that recovery and live colour-chart
 acceptance.
 
+## 2026-08-31 camera/runtime r42 reproducible release bundle
+
+The isolated edge/AArch64 build completed the r34 native camera pair, PipeWire
+SPA r8, Advanced Snapshot r36 and the no-architecture runtime helper r42. The
+exact files and the pmaports integration patch are published in the
+[camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
+The release `SHA256SUMS` was checked locally before upload:
+
+```text
+advanced-snapshot-0.1.0-r36.apk: 8a0f08defead7406823b269f92a161963e754770e26e698ed508a1e3c631d37c
+advanced-snapshot-lang-0.1.0-r36.apk: 32a2893a5e2fa2a68c6a17a2f4581e9a5fa1c78b75cccbb4efd2f04dc5888a5e
+libcamera-99990.7.2-r34.apk: 7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3
+libcamera-ipa-99990.7.2-r34.apk: e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed
+oneplus6t-pmos-fixes-0.1.0_p20260831074522-r42.apk: 9b1677d6e733b90876e06a3c1958006072bb6670aab1e91baaa2e7903ed9eb50
+oneplus6t-camera-stack.patch: ad10239963e2079c16751d762b4c37d99886abadae2236e6464dbd82a4d3274d
+pipewire-spa-libcamera-1.6.8-r8.apk: ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18
+```
+
+The release is intentionally still a development checkpoint: source/package
+tests pass, but installation and saved-chart acceptance remain open while the
+reference phone's authenticated SSH session channel stalls. The bundle has no
+kernel, boot image, firmware, bootloader or vendor camera library.
+
 ## 2026-08-31 Advanced Snapshot r36 live green-cast control checkpoint
 
 The separately maintained Advanced Snapshot source commit

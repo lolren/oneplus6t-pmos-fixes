@@ -40,6 +40,15 @@ The clean r40 APK built from commit `bbd7287` has SHA-256
 It adds the parser-safe ID 1 sentinel, preserves ordinary recording profiles
 only for camera IDs 0 and 2, and was accepted on the reference phone.
 
+The current r42 APK was built from commit `cb8f1e77a64401978f3ab531ca8dd04f424b6275`
+and is published with the matching camera artifacts in the
+[camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
+Its SHA-256 is
+`9b1677d6e733b90876e06a3c1958006072bb6670aab1e91baaa2e7903ed9eb50`.
+The release's `SHA256SUMS` also covers the r34 libcamera/IPA pair, PipeWire r8,
+Advanced Snapshot r36 and the exact pmaports integration patch. The package
+contains no kernel or firmware and does not reboot the phone.
+
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
 packages from Alpine's repositories:
