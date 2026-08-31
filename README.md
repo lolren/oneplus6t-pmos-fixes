@@ -14,6 +14,46 @@ profile falsely activated with a deleted data interface.
 Validated on 23-28 August 2026 with postmarketOS edge, NetworkManager 1.56.1,
 ModemManager 1.25.95 and kernel `7.1.0-rc1-sdm845`.
 
+## Current status: read this first
+
+This table is the authoritative top-level status as of 2026-08-31. The long
+sections below and the linked documents retain the detailed implementation and
+historical release record. “Implemented” means that source and package gates
+pass; “accepted” means that the corresponding behavior was also observed on
+the physical OnePlus 6T. Those are intentionally kept separate.
+
+| Area | Current state | What still remains |
+| --- | --- | --- |
+| USB and SSH | The booted phone is reachable over the postmarketOS USB CDC-NCM gadget; the recent r38/r49 package updates were completed through the working management path | Keep a local-terminal recovery path for the separate case where TCP/22 answers but an authenticated SSH channel stalls; no fastboot/EDL work is needed for these packages |
+| Mobile data | NetworkManager/ModemManager configuration is provider-aware, uses the standard provider database plus a guarded compatibility overlay, understands SIM GID1 and repairs the stale Qualcomm/QMAP bearer case; SMARTY LTE registration, DNS, IPv4 and HTTPS pass on the reference SIM | Live-test another carrier/SIM; the project cannot prove every network without the carrier's APN and a real modem test |
+| Network time | Network time is enabled and the reference phone reported synchronized UTC with `Europe/London`; time configuration is separate from cellular profile selection | Recheck after any base-system time-service change |
+| Native audio | PipeWire/WirePlumber hardware monitoring, native microphone capture, Waydroid AAC capture and speaker playback are implemented; the route policy pairs top microphone with speakerphone and bottom microphone with earpiece, with headset routes left alone | Complete a real modem-call test for earpiece, speakerphone and headset switching; Android application loudness still needs a matched live comparison |
+| Display and kernel safety | Kernel r10 is installed with serialized Samsung brightness writes and bounded Venus error recovery; reports, package manifests and rollback artifacts are present | Finish the physical brightness-slider, lock/unlock and suspend sequence; do not deliberately exercise the unsafe auxiliary Venus encoder again |
+| Native cameras | The matching lower stack is kernel r10, libcamera/IPA r35 and PipeWire SPA r8. IMX371, IMX376 and IMX519 modes, progressive rear AF, rear manual focus, standard AE/AWB controls and the row-sum-preserving green-cast profile are implemented and lower-layer probes pass | Capture controlled saved images on both rear cameras, validate sharpness/colour against a chart and complete native video, HDR and flash checks |
+| Advanced Snapshot | The independently named r38 app and language package is installed as an app-only update. It provides visible live controls, tap-focus reticle, fresh still-stream autofocus, rear manual focus, pinch zoom, exposure/shutter/gain, WB, Gamma, colour profiles, calibration, green-cast correction, software HDR and bounded flash integration | Physical r38 saved-photo/focus acceptance still needs a normal graphical user session and repeatable near/far targets; Android-vendor image parity is not claimed |
+| Waydroid | Google-free Android 13 Vanilla, the open Camera3 provider and Codec2 overlays are installed. All three camera IDs preview; rear-main ID 0 and fixed-focus front ID 1 produce validated 720p H.264/AAC recordings; the profile synchronizer and persistent session unit are installed | The session is deliberately stopped/disabled while the phone is at the greeter. Log in graphically, enable the session only after the health gate, then test ordinary apps, camera-app soaks, audio and location. Auxiliary rear ID 2 video remains disabled after a reproducible Venus teardown fault |
+| Location | Read-only ModemManager/GeoClue reporting and a reversible ModemManager-to-Waydroid mock-provider bridge are implemented with cleanup and rollback | The current phone report still has no fresh GNSS coordinates. Obtain an outdoor native fix before testing maps; a vendor Android GNSS HAL/A-GPS path is not implemented |
+| NFC | Controller/rfkill reports, `nfc0` discovery, bounded kernel-NCI polling and adapter restoration are implemented | Read a real tag/NDEF payload; payment support is not claimed |
+| Battery | The runaway Waydroid location loop was stopped, idle containers freeze safely, and one bounded s2idle cycle plus exact-rollback power policy passed | Repeat unplugged screen-off/screen-on/modem/camera measurements before claiming Android-level battery life |
+| Update safety | Camera-critical package generations have signed manifests, checksums, simulation gates, retained rollback and a safe-upgrade wrapper | Complete a real-phone rollback/persistence test after the graphical session and camera acceptance gates pass |
+
+### Installed reference baseline
+
+The reference phone currently has the following separation of concerns:
+
+| Layer | Installed/current artifact | Repository or release |
+| --- | --- | --- |
+| Kernel | r10, booted on the OnePlus 6T | This repository's display/kernel generation documentation |
+| Native camera lower layer | libcamera/IPA r35 and PipeWire SPA r8 | Reviewed pmaports camera generation; rollback is retained |
+| Native camera UI | Advanced Snapshot r38 | [r38 fresh-still-autofocus](https://github.com/lolren/advanced-snapshot/releases/tag/r38-fresh-still-autofocus), installed app-only without reboot |
+| Device helper | `oneplus6t-pmos-fixes` local checkout recipe r49 | r49 is the current reproducible source revision; the published noarch runtime is [r48 graphical-session](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session) |
+| Android container | Google-free Vanilla image, r53-static10-focus provider and Codec2 r53 overlays | Waydroid guides and releases in this repository |
+| Waydroid session | Installed but disabled/stopped until a normal graphical login | `oneplus6t-waydroid-session.service`; no SSH-scoped session is used |
+
+Recent r38/r49 changes were userspace/package-only. They did not change the
+bootloader, fastboot/EDL state, boot slots, GPT/UFS layout, firmware or raw
+partitions, and they did not reboot the phone.
+
 ## Safety boundary
 
 These tools do not use fastboot/EDL, select boot slots, alter GPT attributes,
@@ -77,7 +117,29 @@ sudo ./scripts/remove-mobile-data
 The selection algorithm, diagnosis, contribution format and rollback behavior
 are documented in [docs/CELLULAR.md](docs/CELLULAR.md).
 
-## Optional system-wide installation
+## Installation methods
+
+There are several layers in this project, and they are intentionally installed
+separately. Use the smallest method that matches the feature you need:
+
+1. Install the no-architecture helper package for mobile data, time, audio,
+   diagnostics, update guards and the release wrappers.
+2. Install Advanced Snapshot r38 separately when only the camera UI/fresh-still
+   autofocus path is required.
+3. Install the reviewed native r35/r36 camera generation only when the matching
+   libcamera, PipeWire SPA and application versions are required together.
+4. Install the Waydroid Vanilla/camera/Codec2 overlays only after the container
+   health checks pass and a normal graphical user session exists.
+
+All package installation commands below are intended for a booted postmarketOS
+phone. A USB CDC-NCM or ordinary network connection is enough; fastboot and EDL
+are not used. Run simulation commands first, retain the exact rollback assets,
+close camera applications before lower-layer changes, and apply package
+transactions as the normal graphical user unless a command explicitly says it
+must be run locally as root. No command in the app-only or helper paths reboots
+the phone.
+
+### 1. Run from a source checkout
 
 The scripts can run directly from a checkout. They can also be staged for a
 future Alpine/postmarketOS package:
@@ -92,6 +154,148 @@ sudo pmos-configure-mobile-data --dry-run
 Makefile does not enable services; `pmos-configure-mobile-data` enables its
 watchdog only after a managed profile activates successfully.
 
+For a phone reached over USB networking, copy or clone this repository on the
+phone and run the commands there. The usual developer-mode address is
+`172.16.42.1`, but the address is environment-dependent:
+
+```sh
+ssh user@PHONE_IP
+git clone https://github.com/lolren/oneplus6t-pmos-fixes.git
+cd oneplus6t-pmos-fixes
+make test
+```
+
+The checkout is safe to use without installing anything. `make test` exercises
+the shell, Python and fixture-backed policy tests. To install the commands
+system-wide from the checked-out source, use a staging directory first when
+building a package, or:
+
+```sh
+sudo make install PREFIX=/usr/local
+```
+
+This installs helpers and service files only. It does not install a kernel,
+libcamera, PipeWire, Waydroid image or private signing key.
+
+### 2. Install the published no-architecture runtime helper
+
+The public [runtime-r48 graphical-session
+release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session)
+is the easiest package path. It contains the reproducible helper commands,
+diagnostics, update policy, release wrapper and the disabled Waydroid-session
+unit. The current source checkout is r49 and refreshes the r38 installer and
+session-unit details; r49 is not a separately published release artifact.
+
+On the booted phone, download the APK and its committed checksum file. GitHub
+CLI is convenient, but downloading the same two files from the release page in
+a browser is equivalent:
+
+```sh
+mkdir -p "$HOME/Downloads/oneplus6t-pmos-fixes-r48"
+cd "$HOME/Downloads/oneplus6t-pmos-fixes-r48"
+gh release download runtime-r48-graphical-session \
+  --repo lolren/oneplus6t-pmos-fixes \
+  --pattern '*-r48.apk' \
+  --pattern SHA256SUMS
+runtime_apk=$(find . -maxdepth 1 -type f \
+  -name 'oneplus6t-pmos-fixes-*-r48.apk' -print -quit)
+test -n "$runtime_apk"
+awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
+```
+
+The standalone APK is not in the phone's configured repository, so
+`--allow-untrusted` is expected after the HTTPS download and checksum have
+been checked. The package's ordinary dependencies are still resolved from the
+configured postmarketOS repositories:
+
+```sh
+sudo apk add --simulate --upgrade --allow-untrusted --no-interactive \
+  "$runtime_apk"
+sudo apk add --upgrade --allow-untrusted --no-interactive \
+  "$runtime_apk"
+apk info -a oneplus6t-pmos-fixes | sed -n '1,20p'
+```
+
+The simulation should contain one `oneplus6t-pmos-fixes` install/upgrade and
+must not remove the kernel, camera stack, Waydroid, NetworkManager or
+ModemManager. If it proposes removals or a different architecture, stop and
+fix the repository state before applying. The package is noarch; native
+camera and Codec2 binaries are deliberately distributed through their own
+reviewed paths.
+
+### 3. Install the current Advanced Snapshot r38 app-only update
+
+The current camera UI is a separate signed package pair. The safest path is
+the packaged wrapper, which downloads the exact r38 tag, checks the release
+key fingerprint, verifies both APK signatures and simulates by default:
+
+```sh
+pmos-install-advanced-snapshot
+pmos-install-advanced-snapshot --apply
+```
+
+If the r48 helper is not installed, use the checked-out script instead:
+
+```sh
+./scripts/install-advanced-snapshot
+./scripts/install-advanced-snapshot --apply
+```
+
+The first command is verification/simulation only. `--apply` changes only
+`advanced-snapshot` and `advanced-snapshot-lang`; it does not change the native
+libcamera/IPA generation, PipeWire SPA, kernel, firmware, Waydroid image,
+boot slots or partitions and does not reboot. The wrapper retains the release
+assets under its work directory. Set `PMOS_SNAPSHOT_WORK_DIR` or pass
+`--work-dir` when those assets are also your rollback copy.
+
+For the direct release procedure, exact r38 APK names, key fingerprint,
+checksums and the app-only rollback command, see the [Advanced Snapshot
+README](https://github.com/lolren/advanced-snapshot#installation-methods).
+
+### 4. Build and install the current r49 helper from source
+
+Use this when you need the newest wrapper/session-unit source before a new
+published runtime release. Building is done on Alpine/postmarketOS with an
+`abuild` key; the resulting package is noarch and does not contain device
+firmware or native ARM camera libraries:
+
+```sh
+apk add alpine-sdk git python3
+cd /path/to/oneplus6t-pmos-fixes
+make test
+cd packaging
+abuild -d
+```
+
+The `make test` line is optional; the authoritative package test is run by the
+`APKBUILD` check phase. If package dependencies are available in a full
+postmarketOS build environment, `abuild -r` may be used instead of `abuild -d`.
+`-d` skips only runtime dependency resolution for a pure Alpine builder; it
+does not skip the Python bridge tests.
+
+The reference r49 build was named
+`oneplus6t-pmos-fixes-0.1.0_p20260831162331-r49.apk` and had SHA-256
+`5f64915c0b99575730a3c31e401348c84ffd30fd90f9c5b7964812387de615d5`. A new
+build can have a different source-date filename, so always use the checksum
+produced for that exact build. Verify the package signature with the matching
+public key from the same buildroot before installing:
+
+```sh
+sha256sum /path/to/oneplus6t-pmos-fixes-*.apk
+apk --keys-dir /path/to/verified-buildroot-keys \
+  verify /path/to/oneplus6t-pmos-fixes-*.apk
+sudo apk add --simulate --upgrade --allow-untrusted \
+  /path/to/oneplus6t-pmos-fixes-*.apk
+sudo apk add --upgrade --allow-untrusted \
+  /path/to/oneplus6t-pmos-fixes-*.apk
+```
+
+Do not use the release key to authenticate an unrelated local build, and do
+not publish a private `abuild` key. After installation, run the read-only
+health/status commands before enabling any optional service.
+
+### 5. Recover SSH locally when the daemon is unhealthy
+
 If USB networking answers ping but port 22 is unavailable, recover the
 phone-side SSH service from its local terminal with the packaged helper:
 
@@ -105,70 +309,17 @@ commands stall, use `sudo pmos-enable-ssh --apply --restart` locally to replace
 the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
-The current signed `noarch` runtime package is the
-[runtime-r48 graphical-session release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
-On a booted phone with normal postmarketOS repositories configured, download
-the r48 APK and `SHA256SUMS` from that release, verify the matching line, then
-install the local package:
+The detailed release history for r44 and earlier is retained in the linked
+release pages and [docs/VALIDATION.md](docs/VALIDATION.md). The current r48
+runtime installation is documented above in Method 2.
 
-```sh
-gh release download runtime-r48-graphical-session \
-  --repo lolren/oneplus6t-pmos-fixes \
-  --pattern 'oneplus6t-pmos-fixes-*-r48.apk' --pattern SHA256SUMS
-runtime_apk=$(find . -maxdepth 1 -type f \
-  -name 'oneplus6t-pmos-fixes-*-r48.apk' -print -quit)
-test -n "$runtime_apk"
-awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
-sudo apk add --allow-untrusted "$runtime_apk"
-```
+The r38 app-only package and wrapper are documented above in Method 3. The
+default native r35/r36 generation remains separate from that app update.
 
-`--allow-untrusted` is needed because this standalone package is not in the
-phone's configured repository; the HTTPS download and committed checksum are
-the integrity check. Its normal dependencies are still resolved from the
-configured postmarketOS repositories.
+The complete native-generation wrapper and its pinned stage procedure are
+documented below in Method 6.
 
-The same pre-release contains the matching native camera pair
-(`libcamera`/IPA r35), PipeWire SPA r8 and Advanced Snapshot r36. Download all
-five package types from that release, verify them with the same `SHA256SUMS`,
-and follow the simulation-first install procedure in
-[packaging/pmaports/README.md](packaging/pmaports/README.md). The r35 profiles
-apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
-Advanced Snapshot action is available as **Image Controls → Green-cast
-correction → Apply** and is reversible with **Reset**.
-
-The follow-up Advanced Snapshot r38 app-only package fixes the preview-to-photo
-autofocus gap while retaining the visible correction preset. It is published
-separately in the [r38 fresh-still-autofocus release](https://github.com/lolren/advanced-snapshot/releases/tag/r38-fresh-still-autofocus)
-with its verification key and portable checksums. The default r35/r36
-generation remains unchanged until the r38 pair is installed and accepted on
-the reference phone.
-
-The checked-in app-only installer downloads both r38 APKs, verifies the
-published checksum file and signing-key fingerprint, runs an APK signature
-check and simulates the upgrade by default:
-
-~~~sh
-./scripts/install-advanced-snapshot
-./scripts/install-advanced-snapshot --apply
-~~~
-
-It changes only Advanced Snapshot and its language package; native camera
-packages, Waydroid, the kernel and firmware remain untouched.
-
-For a one-command download and verification flow, use the checked-in wrapper
-as the graphical login user (it simulates by default):
-
-~~~sh
-./scripts/install-camera-generation
-./scripts/install-camera-generation --apply
-~~~
-
-It pins the release tag and asset names, requires HTTPS, verifies the signed
-release checksum file, retains a fresh stage directory for rollback, and then
-delegates all package changes to pmos-manage-camera-generation. It does not
-reboot or touch firmware, boot slots, partitions or Waydroid. Set
-PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
-candidate and rollback assets must survive a cache cleanup.
+### Current r49 source contents
 
 The current checkout recipe is r49. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
@@ -188,11 +339,118 @@ authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
 
-The clean r48 package, which corrects the Waydroid recording-profile mapping,
-installs the checksum-verified Advanced Snapshot r38 app-only installer, and
-binds the persistent graphical session to the actual postmarketOS user, is
-published in the
-[`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
+### 6. Install the reviewed native camera generation
+
+This is a larger, independently rollback-safe operation. It installs the
+matching libcamera/IPA, PipeWire SPA and Advanced Snapshot generation together
+from a signed offline stage. Use it when starting from a compatible base or
+when deliberately changing the native camera lower layer; do not use it just
+to obtain the r38 app-only autofocus fix.
+
+The checked-in wrapper is pinned to the reviewed r35/r36 stage. It downloads
+the release helper, stage archive, manifest, pmaports patch, public key and
+release checksums over HTTPS. It simulates by default:
+
+```sh
+./scripts/install-camera-generation \
+  --work-dir "$HOME/.cache/oneplus6t-camera-r35-r36"
+
+./scripts/install-camera-generation \
+  --work-dir "$HOME/.cache/oneplus6t-camera-r35-r36" \
+  --apply
+```
+
+Before `--apply`, close every native and Android camera application, ensure
+PipeWire and WirePlumber are healthy, run
+`pmos-check-waydroid-health --status --processes`, and confirm there are no
+Waydroid rootfs mounts, D-state helpers or current PSI I/O pressure. The
+manager verifies the candidate and rollback APKs, repository indexes, package
+hashes, current baseline, package-world change and exact solver transaction.
+It retains the rollback stage and runs the bounded all-sensor smoke test after
+an applied install. It does not reboot, touch fastboot/EDL, change partitions
+or write firmware. The exact candidate/rollback procedure is in
+[docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md), and the stage's
+source/hash record is in [packaging/pmaports/README.md](packaging/pmaports/README.md).
+
+The r35 native profiles apply the documented green-cast starting correction to
+IMX371, IMX376 and IMX519. The app layer is still separate: after accepting the
+lower stack, install r38 with `pmos-install-advanced-snapshot` and perform the
+physical saved-photo checks before changing the default generation manifest.
+
+### 7. Install the Google-free Waydroid camera layers
+
+Waydroid is an optional Android 13 environment, not a prerequisite for native
+postmarketOS cameras or mobile data. The supported default is a verified
+Vanilla image without Google Play Services, Google Services Framework or Play
+Store. Image creation, exact archive hashes and update policy are in
+[docs/WAYDROID-VANILLA.md](docs/WAYDROID-VANILLA.md); optional GMS/GAPPS is a
+separate procedure in [docs/WAYDROID-GAPPS.md](docs/WAYDROID-GAPPS.md).
+
+Install in this order:
+
+1. Initialize the official Vanilla image and run the read-only verifier
+   `pmos-check-waydroid-vanilla`.
+2. Stop both the graphical session and the container. Do not modify an active
+   or stale-mounted rootfs.
+3. Run `pmos-check-waydroid-health --status --processes` and require
+   `overlay_precondition=pass`: rootfs mounts must be zero, both I/O-pressure
+   classes must be clear and no D-state helper may be present.
+4. Install the signed camera provider stage with
+   `sudo scripts/install-waydroid-camera /path/to/camera-stage`. It backs up
+   only its managed files and prints the exact rollback directory.
+5. Install the separately built Codec2 stage with
+   `sudo scripts/install-waydroid-v4l2-codec /path/to/codec-stage`. It also
+   refuses mounted roots and active I/O pressure and prints its rollback path.
+6. Synchronize the two image-level recording-profile files while Waydroid is
+   still stopped. The synchronizer gives ordinary recording profiles only to
+   rear-main camera ID 0 and fixed-focus front ID 1; auxiliary rear ID 2 keeps
+   a framework sentinel and is not advertised for ordinary hardware video:
+
+```sh
+pmos-check-waydroid-health --status --processes
+pmos-sync-waydroid-camera-profiles --dry-run
+sudo pmos-sync-waydroid-camera-profiles
+```
+
+7. Log in to the normal graphical postmarketOS account. Only then enable the
+   installed persistent session boundary:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now oneplus6t-waydroid-session.service
+waydroid status
+```
+
+The unit waits for the normal user's Wayland/D-Bus session and avoids tying
+Waydroid to an SSH login scope. It is installed disabled by design. The
+current reference phone has the Vanilla/provider/Codec2 layers installed but
+the session is stopped and the unit remains disabled while the phone is at the
+greeter; this is a safety state, not a failed camera overlay.
+
+The provider has passed all-camera YUV/JPEG/private preview probes, rear
+tap/manual focus forwarding, EV changes and front-camera colour correction.
+The guarded Codec2 path produces valid H.264/AAC recordings for rear-main ID 0
+and front ID 1. Do not enable ordinary ID-2 video until the separate Venus
+teardown/IRQ fault has a reviewed fix. For each overlay, retain the printed
+backup and use the matching rollback command if validation fails:
+
+```sh
+sudo scripts/install-waydroid-camera --rollback /path/to/camera-backup
+sudo scripts/install-waydroid-v4l2-codec --rollback /path/to/codec-backup
+sudo pmos-sync-waydroid-camera-profiles --rollback /path/to/profile-backup
+```
+
+Do not enable the optional `oneplus6t-waydroid-location.service` merely to make
+Waydroid start. It is a reversible mock-provider bridge for a fresh native
+ModemManager fix, not a vendor Android GNSS HAL. Obtain a real outdoor native
+fix first; the location procedure and cleanup guarantees are in
+[docs/LOCATION.md](docs/LOCATION.md).
+
+#### Earlier signed runtime releases
+
+The following release notes are retained for reproducibility and rollback
+archaeology. New installations should start with r48 (or a freshly built r49)
+and the current procedures above.
 
 The clean r47 package, which corrected the Waydroid recording-profile mapping
 and includes the checksum-verified Advanced Snapshot r38 app-only installer,
@@ -238,6 +496,8 @@ ID-0 displayed-surface camera smoke test pass. The tag remains a development
 pre-release while unplugged battery and broader application acceptance remain
 open.
 
+### 8. Optional location bridge
+
 The optional system service
 `oneplus6t-waydroid-location.service` is installed disabled. After native GNSS
 and Waydroid health acceptance, enable it explicitly with:
@@ -251,6 +511,8 @@ Once enabled, it follows `waydroid-container.service` and does not start the
 container merely for location. It temporarily grants the Android root shell's
 mock-location app-op, uses the required `waydroid shell --` boundary, and
 restores both the original fused provider and prior app-op when stopped.
+
+### 9. Configure daily-use defaults
 
 For the normal daily-use setup, preview and then apply the carrier-neutral
 mobile-data, network-time and microphone-route configuration together:
@@ -418,7 +680,7 @@ and through an open Camera3 HAL in Waydroid.
 | Highlight-aware auto exposure | Regulates light using post-white-balance channel histograms, reducing coloured clipping. |
 | 15–30 fps frame-duration control | Lets clients trade frame rate for longer low-light exposure while fixed-rate video remains fixed. |
 | Stable progressive rear autofocus | Reuses the last good lens position, searches outward only as needed, validates the final position and resumes continuous mode without a reset sweep. |
-| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; r7 transport and Advanced Snapshot r24 correlate the result and use amber/green/red state. |
+| Tap-to-focus and truthful reticle | Maps a preview tap through crop/orientation into a real sensor metering region; the current r35 transport and Advanced Snapshot r38 correlate the result and use amber/green/red state. |
 | Manual rear focus | Exposes `LensPosition` 0.0–2.0 in Advanced Snapshot; the simple IPA maps it to the bounded 400–800 actuator span and the fixed-focus front disables it. |
 | Filtered two-pass GPU scaling | Removes the Bayer-phase grid while retaining the intended field of view and practical preview speed. |
 | Exposure, colour, contrast and detail controls | Changes the software ISP through standard controls and affects preview and saved images. |
@@ -452,7 +714,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer libcamera r35 / Advanced Snapshot r36 / PipeWire r8 line. The
+publishes the newer libcamera r35 / Advanced Snapshot r38 / PipeWire r8 line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -471,9 +733,10 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current source line is libcamera/IPA r35, PipeWire SPA r8 and Advanced
-Snapshot r36, and that generation is installed on the reference phone. The r34
-libcamera/IPA pair remains the exact lower-stack rollback. The app source is commit
+The current source line is libcamera/IPA r35 and PipeWire SPA r8, with
+Advanced Snapshot r38 installed as a separate app-only update. The r34
+libcamera/IPA pair remains the exact lower-stack rollback and the r36 app pair
+remains the lower-generation rollback. The app source is commit
 `df308e9d95ba9d90ac6866010db3b95ce9d11de4`; the exact AArch64 package pair is
 built, artifact-validated and live-tested. The controls panel and calibration dialog now
 include automatic/manual white balance, per-sensor red/blue gains and a
@@ -496,7 +759,7 @@ Gamma, Zoom, Reset and an
 opt-in rear **Hardware flash** switch when the helper is installed. The Camera
 Calibration dialog can save those standard controls, including AWB mode,
 red/blue gains and the optional matrix, per physical sensor and
-optionally restore a deliberate manual focus position. The r36 camera-page
+optionally restore a deliberate manual focus position. The r38 camera-page
 overlay drawer keeps these controls alongside the live preview, and its
 Sensor default, Neutral, Natural, Vivid and Custom presets update the visible
 image without hiding the camera view. Its visible Green-cast correction action
@@ -688,7 +951,7 @@ the expected two-line world-file diff and guarded rollback cleanup. Reproduce
 the historical r6/r0-to-r7/r1 lower-stack update by explicitly passing
 `--manifest data/camera-generation-r7-r1.psv` and its matching stage.
 
-On installed Snapshot r3:
+On installed Advanced Snapshot r38:
 
 1. open **Camera**;
 2. tap an object in either rear preview to request focus—the yellow square
@@ -705,7 +968,7 @@ camera to hold 0 (far) through 2 (near); tapping the preview replaces that
 lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
 front camera has no focus gesture or manual slider.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r36
+The sliders affect both preview and saved output. The Advanced Snapshot r38
 build also exposes opt-in Software HDR when its helper is installed; it
 uses three bracketed JPEG captures, confidence-gated global-translation
 alignment and a linear-light merge. This is not the same as Android-vendor HDR:
@@ -768,41 +1031,109 @@ repeated cycles and unplugged measurements are still required before claiming
 Android battery parity; see
 [docs/POWER.md](docs/POWER.md).
 
-## Project status
+## Project status and remaining work
 
-The current requirement-by-requirement audit is maintained in
-[docs/STATUS-MATRIX.md](docs/STATUS-MATRIX.md). In summary:
+The requirement-by-requirement audit is maintained in
+[docs/STATUS-MATRIX.md](docs/STATUS-MATRIX.md), with sanitized command output
+in [docs/VALIDATION.md](docs/VALIDATION.md). The short version is below, but
+the distinction between “implemented”, “package-verified” and “physically
+accepted” is important for every camera and hardware claim.
 
-- host-side APN selection, time-sync, audio routing, display candidate,
-  camera stack, Waydroid overlays, location bridge, NFC/power reports and
-  update guard are implemented and tested;
-- signed AArch64 camera r28 and Advanced Snapshot r24 development packages,
-  plus the complete Waydroid r52 clean-Vanilla bundle, are published; the
-  installed r53-static10-focus camera overlay, kernel r10 and byte-reproducible Codec2 r53 complete repeated
-  main/front recording. The
-  exact r10/r8 and r53 artifacts are also public. Android frame-rate work and
-  a safe non-Venus auxiliary encoder remain open;
-- live SMARTY cellular routing, DNS and HTTPS pass; Google-free Waydroid
-  networking and all-camera preview pass. Previously accepted rear/front
-  video, microphone and speaker playback remain installed; time-after-boot,
-  modem-call audio,
-  display stability, saved-image colour/quality, native camera video, outdoor
-  GNSS, NFC, battery and rollback persistence still need their respective
-  device tests;
-- Android-vendor HDR, calibrated colour/lens shading and a vendor GNSS HAL are
-  not claimed because the open stack does not provide those proprietary
-  components.
+### Achieved
 
-The current USB evidence is CDC-NCM with ping, TCP/22 and the SSH banner
-working, but an authenticated session currently stalls before the channel is
-opened. ADB and fastboot remain unavailable, so bootloader/raw-partition
-operations are still out of scope. No package installation is claimed until a
-real command channel works; the exact package-managed kernel generation remains
-available only after that management gate is restored.
+- A database-backed, carrier-neutral mobile-data setup chooses the official
+  provider/APN record when it is unambiguous, understands SIM GID1, accepts a
+  user-supplied officially documented APN for carriers absent from the
+  database, and records only the managed connection UUID. SMARTY LTE routing,
+  DNS, IPv4 and HTTPS were live-tested. The five-minute watchdog repairs the
+  stale QMAP bearer case without cycling healthy profiles or interfering with
+  voice calls.
+- Network time, cellular-only fallback testing, provider diagnostics and safe
+  profile removal are reproducible. The reference phone reported synchronized
+  time in `Europe/London`; a bad clock is treated as a separate bootstrap
+  problem rather than silently trusted.
+- PipeWire/WirePlumber owns the native audio graph. The route policy selects
+  top microphone plus speaker output for speakerphone, bottom microphone plus
+  earpiece for ordinary calls, and headset microphone/output when a headset is
+  present. Native capture, Waydroid AAC capture and physical-speaker playback
+  pass the available non-call tests.
+- The native camera generation exposes all three sensors, standard controls,
+  rear AF/manual focus, automatic/manual WB and a repeatable green-cast
+  starting profile. The current physical lower-layer baseline is kernel r10,
+  libcamera/IPA r35 and PipeWire SPA r8.
+- Advanced Snapshot r38 is a separate application and language package. Its
+  live controls, phone-width calibration UI, green-cast action, tap reticle,
+  rear manual focus, pinch zoom, full-resolution still path, fresh still-stream
+  AF, software HDR and bounded flash integration are source/package validated.
+  The exact release is linked in the installation section above.
+- The Waydroid layer is Google-free by construction: Vanilla Android 13,
+  Camera3 provider and Codec2 overlays are verified separately. All three
+  camera IDs preview; ordinary video profiles are deliberately limited to
+  rear-main ID 0 and fixed-focus front ID 1. Those two IDs produced valid
+  H.264/AAC recordings in the validated probes. Android provider teardown,
+  mixed RGB/NV12 processing, JPEG buffer sizing, fence synchronization and
+  worker lifecycle are covered by the open overlays.
+- The display diagnostic, kernel r10 recovery candidate, NFC report/poll
+  cleanup, read-only location report, reversible Waydroid location bridge,
+  battery sampler, five-minute suspend policy and camera-critical update guard
+  all have fixture/source/package tests and retained rollback paths.
+- The current source tree is reproducible and documented. The published r48
+  noarch runtime is available for users; the current r49 source revision
+  refreshes the r38 installer and graphical-session binding. The r49 local
+  reference APK was
+  `oneplus6t-pmos-fixes-0.1.0_p20260831162331-r49.apk` with SHA-256
+  `5f64915c0b99575730a3c31e401348c84ffd30fd90f9c5b7964812387de615d5`.
 
-See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
-The requirement-by-requirement implementation and device-acceptance audit is
-kept in [docs/STATUS-MATRIX.md](docs/STATUS-MATRIX.md).
+### Remaining priority order
+
+1. Log in to the normal graphical session and complete physical r38 tests:
+   no-tap fresh autofocus, rear tap focus, manual focus, saved JPEG sharpness,
+   camera switching, preview recovery and both rear modules. This is the next
+   camera gate; a build or non-image probe cannot replace it.
+2. Compare controlled grey-card/colour-chart images with Android. Measure
+   white balance, exposure, sharpness, local contrast and green cast per sensor.
+   Factory CCM, lens shading, temporal denoise, vendor HDR and proprietary
+   Android ISP tuning remain unavailable and are not claimed.
+3. Validate native video, Advanced Snapshot HDR, rear LED restoration, all
+   visible controls and preview latency. Keep the r38 app-only rollback pair
+   and the lower r34/r36/r8 generation until those tests pass.
+4. Enable `oneplus6t-waydroid-session.service` only after the normal graphical
+   account has a Wayland/D-Bus session and the health gate passes. Then test
+   ordinary Android apps, camera-app open/close soaks, playback, microphone,
+   speakerphone/earpiece routing and Maps. Main-rear video remains
+   performance-limited; auxiliary rear ID 2 hardware encoding remains blocked
+   after the reproducible Venus IRQ/teardown fault.
+5. Obtain a fresh outdoor native GNSS fix before testing the reversible
+   location bridge. The current no-coordinate result must not be replaced by a
+   guessed Reading/Stroud coordinate. A vendor Android GNSS HAL/A-GPS path is
+   still open.
+6. Read a real NFC tag, repeat modem-call audio and display brightness/
+   lock/suspend tests, and collect matched unplugged battery measurements.
+   These are hardware acceptance gates, not assumptions from fixture tests.
+7. Re-run a real-phone rollback and reboot-persistence test for each accepted
+   package generation, then rebase camera-critical recipes against upstream
+   postmarketOS only after the health gate, signatures, manifests and complete
+   smoke tests pass.
+
+### Current device gate
+
+```text
+USB: postmarketOS CDC-NCM developer networking; authenticated SSH was used for
+     the r38 app-only and r49 helper deployments
+Fastboot/ADB: not used or expected while the phone exposes the pMOS USB gadget
+Kernel: r10 installed and booted on the OnePlus 6T
+Native camera: libcamera/IPA r35, PipeWire SPA r8, Advanced Snapshot r38
+Waydroid: Vanilla/provider/Codec2 layers installed; session STOPPED at greeter
+           and persistent graphical-session unit deliberately disabled
+Cellular: SMARTY LTE routing, DNS and HTTPS accepted; Wi-Fi restoration tested
+Recovery: no raw partition, bootloader, EDL or firmware operation performed
+```
+
+The disabled Waydroid session is intentional until a normal graphical login
+exists. It is not safe to infer Android application behavior from an SSH shell
+or from a stopped container. Likewise, an empty `fastboot devices` result
+while the running phone is in CDC-NCM mode is a transport distinction, not
+evidence that the phone needs raw flashing.
 
 ## Upstream data sources
 
