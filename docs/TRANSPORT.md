@@ -56,6 +56,16 @@ timeout 15s ssh -o BatchMode=yes -o ConnectTimeout=3 \
   user@172.16.42.1 'printf ready'
 ```
 
+The checked-in helper records the result without exposing SSH diagnostic text:
+
+```sh
+scripts/check-device-session \
+  --user user \
+  --identity /path/to/oneplus6t-key \
+  --ip 172.16.42.1 \
+  --output /tmp/oneplus6t-device-session.txt
+```
+
 The command must return promptly. If authentication succeeds but the command
 never returns, the phone's `sshd` has accepted the network connection without
 opening a session channel; treat that as unusable and recover `sshd` locally.

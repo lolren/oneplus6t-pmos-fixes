@@ -284,7 +284,9 @@ In particular, `ping=pass` plus `ssh_tcp=pass` but
 `ssh_banner=missing` means the USB/network kernel path is alive while the
 phone-side SSH userspace is not responding. An empty `fastboot devices` result
 is normal while the phone is exposing CDC-NCM rather than fastboot endpoints.
-See [docs/TRANSPORT.md](docs/TRANSPORT.md) for the safe interpretation.
+The banner is not an authenticated session test. After it passes, use
+`scripts/check-device-session` as documented in
+[docs/TRANSPORT.md](docs/TRANSPORT.md) before installing packages.
 
 ## Audio and microphone pairing
 

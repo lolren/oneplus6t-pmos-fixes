@@ -1,0 +1,146 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+set -eu
+
+PROGRAM=${0##*/}
+target_ip=${PMOS_SESSION_IP:-172.16.42.1}
+target_user=${PMOS_SESSION_USER:-}
+identity=${PMOS_SESSION_IDENTITY:-}
+ssh_cmd=${PMOS_SESSION_SSH:-ssh}
+timeout_cmd=${PMOS_SESSION_TIMEOUT_COMMAND:-timeout}
+probe_timeout=${PMOS_SESSION_TIMEOUT:-15}
+output=${PMOS_SESSION_OUTPUT:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM --user USER [--identity FILE] [options]
+
+Run one bounded, read-only authenticated SSH command against a booted
+postmarketOS phone. This is separate from the TCP/banner transport check: it
+verifies that sshd can open a real session channel. No password is requested,
+no command is accepted from the caller, and the remote command is fixed to
+"printf ready".
+
+Options:
+  --ip ADDRESS             target address (default: 172.16.42.1)
+  --user USER              SSH login name (or PMOS_SESSION_USER)
+  --identity FILE          private key to use (optional)
+  --timeout SECONDS        hard command timeout (default: 15)
+  --output FILE            refuse to overwrite and write the report there
+  -h, --help               show this help
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--ip)
+		[ "$#" -ge 2 ] || die '--ip requires an address'
+		target_ip=$2
+		shift 2
+		;;
+	--user)
+		[ "$#" -ge 2 ] || die '--user requires a name'
+		target_user=$2
+		shift 2
+		;;
+	--identity)
+		[ "$#" -ge 2 ] || die '--identity requires a file'
+		identity=$2
+		shift 2
+		;;
+	--timeout)
+		[ "$#" -ge 2 ] || die '--timeout requires seconds'
+		probe_timeout=$2
+		shift 2
+		;;
+	--output)
+		[ "$#" -ge 2 ] || die '--output requires a file'
+		output=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		die "unknown option: $1"
+		;;
+	esac
+done
+
+[ -n "$target_ip" ] || die 'target address must not be empty'
+[ -n "$target_user" ] || die '--user is required (or set PMOS_SESSION_USER)'
+case "$probe_timeout" in
+''|*[!0-9]*) die 'timeout must be a non-negative integer' ;;
+esac
+
+command -v "$ssh_cmd" >/dev/null 2>&1 || die "SSH client not found: $ssh_cmd"
+command -v "$timeout_cmd" >/dev/null 2>&1 || die "timeout command not found: $timeout_cmd"
+
+if [ -n "$output" ]; then
+	[ ! -e "$output" ] || die "refusing to overwrite: $output"
+	mkdir -p "$(dirname -- "$output")"
+	exec >"$output"
+fi
+
+target=$target_user@$target_ip
+ssh_output=
+ssh_status=0
+if [ -n "$identity" ]; then
+	if ssh_output=$("$timeout_cmd" "$probe_timeout" "$ssh_cmd" \
+		-o BatchMode=yes -o ConnectTimeout=3 \
+		-o ConnectionAttempts=1 -o ServerAliveInterval=2 \
+		-o ServerAliveCountMax=2 -o IdentitiesOnly=yes \
+		-i "$identity" "$target" 'printf ready' 2>&1); then
+		ssh_status=0
+	else
+		ssh_status=$?
+	fi
+else
+	if ssh_output=$("$timeout_cmd" "$probe_timeout" "$ssh_cmd" \
+		-o BatchMode=yes -o ConnectTimeout=3 \
+		-o ConnectionAttempts=1 -o ServerAliveInterval=2 \
+		-o ServerAliveCountMax=2 "$target" 'printf ready' 2>&1); then
+		ssh_status=0
+	else
+		ssh_status=$?
+	fi
+fi
+
+session=failed
+case "$ssh_status:$ssh_output" in
+0:*ready*)
+	session=pass
+	;;
+
+124:*|*'Timeout, server '*|*'Connection timed out'*|*'Operation timed out'*|*'not responding'*)
+	session=timeout
+	;;
+*)
+	case "$ssh_output" in
+		*'Permission denied'*|*'No such file or directory'*) session=auth-or-client-failure ;;
+		*) session=failed ;;
+	esac
+	;;
+esac
+
+printf 'report=oneplus6t-device-session\n'
+printf 'target_ip=%s\n' "$target_ip"
+printf 'target_user=%s\n' "$target_user"
+printf 'ssh_status=%s\n' "$ssh_status"
+printf 'ssh_session=%s\n' "$session"
+case "$session" in
+pass) printf '%s\n' 'assessment=command-channel-usable' ;;
+timeout) printf '%s\n' 'assessment=authenticated-channel-stalled' ;;
+auth-or-client-failure) printf '%s\n' 'assessment=authentication-or-client-failure' ;;
+*) printf '%s\n' 'assessment=command-channel-failed' ;;
+esac
+printf '%s\n' 'note=read-only session probe; remote command is fixed to printf ready and no password or state-changing command was sent'
+
+[ "$session" = pass ]

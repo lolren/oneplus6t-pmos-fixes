@@ -54,7 +54,8 @@ HOST_BUILD_SCRIPTS = \
 	scripts/install-waydroid-v4l2-codec
 
 HOST_DIAGNOSTIC_SCRIPTS = \
-	scripts/check-device-transport
+	scripts/check-device-transport \
+	scripts/check-device-session
 
 CAMERA_TEST_SCRIPTS = \
 	tests/camera/run-light-step.sh \
@@ -86,6 +87,7 @@ test:
 		tests/test-mobile-data-watchdog.sh \
 		tests/test-cellular-only.sh \
 		tests/test-ssh-recovery.sh \
+		tests/test-device-session.sh \
 		tests/test-camera-generation.sh tests/test-camera-fixtures.sh \
 		tests/test-waydroid-installer.sh \
 		tests/test-waydroid-audio-probe.sh \
@@ -157,6 +159,7 @@ test:
 	sh tests/test-device-acceptance.sh
 	sh tests/test-location-service.sh
 	sh tests/test-device-transport.sh
+	sh tests/test-device-session.sh
 	./tests/test-update-guard.sh
 	python3 tests/test-location-bridge.py
 	python3 tests/test-ppm-metrics.py

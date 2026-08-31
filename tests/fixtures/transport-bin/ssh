@@ -1,0 +1,18 @@
+#!/bin/sh
+case "${PMOS_TRANSPORT_FIXTURE_SSH:-pass}" in
+pass)
+	printf '%s\n' ready
+	exit 0
+	;;
+timeout)
+	sleep 2
+	exit 0
+	;;
+fail)
+	printf '%s\n' 'Permission denied (fixture)' >&2
+	exit 255
+	;;
+*)
+	exit 2
+	;;
+esac
