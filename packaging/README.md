@@ -66,6 +66,9 @@ session remains alive after remote diagnostics end. It is still disabled by
 default; enable it only after the Vanilla image, camera overlay and health
 preflight pass. The package test suite verifies the unit's dependency,
 identity, Wayland environment and installation mode.
+The signed package and its public verification key are published in the
+[`runtime-r45-waydroid-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session);
+verify the release `SHA256SUMS` before installing it.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime

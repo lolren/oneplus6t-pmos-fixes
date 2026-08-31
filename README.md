@@ -106,17 +106,17 @@ the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is the
-[camera-r35/runtime-r44 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
+[runtime-r45 Waydroid-session release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session).
 On a booted phone with normal postmarketOS repositories configured, download
-the r44 APK and `SHA256SUMS` from that release, verify the matching line, then
+the r45 APK and `SHA256SUMS` from that release, verify the matching line, then
 install the local package:
 
 ```sh
-gh release download runtime-r44-camera-r35 \
+gh release download runtime-r45-waydroid-session \
   --repo lolren/oneplus6t-pmos-fixes \
-  --pattern 'oneplus6t-pmos-fixes-*-r44.apk' --pattern SHA256SUMS
+  --pattern 'oneplus6t-pmos-fixes-*-r45.apk' --pattern SHA256SUMS
 runtime_apk=$(find . -maxdepth 1 -type f \
-  -name 'oneplus6t-pmos-fixes-*-r44.apk' -print -quit)
+  -name 'oneplus6t-pmos-fixes-*-r45.apk' -print -quit)
 test -n "$runtime_apk"
 awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
 sudo apk add --allow-untrusted "$runtime_apk"
@@ -158,7 +158,7 @@ reboot or touch firmware, boot slots, partitions or Waydroid. Set
 PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
 candidate and rollback assets must survive a cache cleanup.
 
-The current checkout recipe is r44. It adds the signed r35/r36 camera-generation
+The current checkout recipe is r45. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
 synchronizer for the two Waydroid recording-profile files and the r35 temporary
 sleep inhibitor,
@@ -168,10 +168,19 @@ frozen container is rejected before a probe can hang against a torn-down LXC
 session. The location bridge accepts both ModemManager key-value layouts with
 signal-safe cleanup, and the NFC checker selects and restores the kernel-NCI
 adapter during an explicit poll; none of these changes normal suspend behavior.
-r42 also provides an explicit local `sshd` restart path for an
+r45 additionally installs the disabled `oneplus6t-waydroid-session.service`,
+which keeps the graphical Waydroid session in the greetd/Wayland system scope
+instead of an SSH login scope. r42 also provides an explicit local `sshd`
+restart path for an
 authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
+
+The clean r45 package is published separately in the
+[`runtime-r45-waydroid-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session).
+It contains no kernel, firmware, bootloader or partition changes and leaves
+the new session unit disabled until the administrator enables it after the
+Waydroid health gate passes.
 
 The clean r44 package built from the current checkout is published in the
 `runtime-r44-camera-r35` pre-release; its exact SHA-256 is recorded in that
