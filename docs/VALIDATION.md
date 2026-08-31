@@ -3,7 +3,62 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
-## 2026-08-31 camera r34/runtime r43 manager-ready release
+## 2026-08-31 live r35/r36 green-cast acceptance
+
+The reference OnePlus 6T is now on the guarded `oneplus6t-r35-r36` generation:
+
+```text
+kernel                 7.1.0-rc1-sdm845 r10
+libcamera/libcamera-ipa 99990.7.2-r35
+pipewire-spa-libcamera 1.6.8-r8
+Snapshot                50.0-r3
+Advanced Snapshot       0.1.0-r36
+manager state           candidate
+world SHA-256           56953eaa84cceb6a1e8f49d0f3c3cf84588aaf0b6a0767c1d561067d51bcc587
+```
+
+The r35 source profile is the same bounded, row-sum-preserving matrix on
+IMX519 main, IMX376 secondary and IMX371 front:
+
+```text
+0.90 0.10 0.00
+0.10 0.80 0.10
+0.00 0.10 0.90
+```
+
+This is a measured scene correction, not a claim of factory Android ISP
+calibration. In the controlled final-frame comparison, rear `green_ratio`
+changed from 1.304 to 1.238 on the main camera and from 1.256 to 1.181 on the
+secondary. The front-camera neutral wall-tile check stayed effectively flat at
+approximately 1.062 versus 1.063 between the compared generations; its wider
+scene capture was 1.058 versus 1.076, showing why a real colour chart is still
+needed before claiming absolute calibration.
+
+The post-install smoke test passed through the normal user session: main and
+secondary returned `tap_result=focused`, with zero restarts and zero lens
+requests during each 60-second rear window; the fixed-focus front completed
+120 frames and correctly reported `focus_status=unsupported`. PipeWire,
+WirePlumber and pipewire-pulse remained active. The manager's rollback
+simulation and actual rollback both completed with exactly two libcamera
+downgrades, and the final guarded install completed with exactly two upgrades.
+No reboot, bootloader, slot, kernel or firmware write was performed.
+
+Release/reproduction anchors:
+
+```text
+camera-generation-r35-r36.psv  f8f84c80bb61cabb80e4f85ee7c5d65cdb0cc2e0251fc6eec93ec078062403e3
+oneplus6t-camera-stack.patch   4de9b61b7e519a271a815e2d74026b1469a66f056dc1363d22d4f2cd35f92f80
+camera-r35-r36 stage archive   276ffa8a39123f2b081a629f223359b806cd8b41305393b07284afd67dd99559
+public signing key              c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6
+```
+
+The matching `runtime-r44-camera-r35` release carries the no-architecture
+runtime helper, signed candidate and rollback repositories, manifest, public
+key, integration patch and `SHA256SUMS`. The runtime APK checksum is kept in
+that release checksum file rather than copied into this package's own
+documentation, avoiding a self-referential package hash.
+
+## 2026-08-31 historical camera r34/runtime r43 manager-ready release
 
 The current source tree passed `make test`, staged installation and an isolated
 AArch64 package build. The exact runtime filename and SHA-256 are recorded in

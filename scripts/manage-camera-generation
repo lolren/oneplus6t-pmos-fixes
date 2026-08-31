@@ -128,7 +128,7 @@ esac
 	usage_error '--apply is not valid with status'
 
 if [ -z "$manifest" ]; then
-	manifest=$SCRIPT_DIR/../data/camera-generation-r7-r5.psv
+	manifest=$SCRIPT_DIR/../data/camera-generation-r35-r36.psv
 fi
 [ -r "$manifest" ] || die "generation manifest is not readable: $manifest"
 manifest=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd)/$(basename -- "$manifest")
@@ -413,6 +413,28 @@ root_run() {
 	fi
 }
 
+unpin_dependency_owned_pipewire() {
+	unpin_prefix=$1
+	root_run apk info -r pipewire-spa-libcamera \
+		>"$evidence/$unpin_prefix.reverse-dependencies.log" 2>&1 || \
+		die 'could not inspect PipeWire reverse dependencies'
+	if ! root_run apk del --simulate --network=no --interactive=no \
+		pipewire-spa-libcamera \
+		>"$evidence/$unpin_prefix.unpin.simulation.log" 2>&1; then
+		die 'PipeWire world-unpin simulation failed'
+	fi
+	grep -q 'not removed due to' \
+		"$evidence/$unpin_prefix.unpin.simulation.log" || \
+		die 'world-unpin would remove the dependency-owned PipeWire plugin'
+	if grep -Eq ' Removing pipewire-spa-libcamera ' \
+		"$evidence/$unpin_prefix.unpin.simulation.log"; then
+		die 'world-unpin unexpectedly removes the PipeWire plugin'
+	fi
+	root_run apk del --network=no --interactive=no pipewire-spa-libcamera \
+		>"$evidence/$unpin_prefix.unpin.actual.log" 2>&1 || \
+		die 'failed to remove the temporary PipeWire world constraint'
+}
+
 record_packages() {
 	record_path=$1
 	: >"$record_path"
@@ -442,6 +464,13 @@ esac
 cp "$world_file" "$evidence/world.before"
 record_packages "$evidence/packages.before.psv"
 world_before_hash=$(sha256sum "$world_file" | awk '{ print $1 }')
+if grep -Eq '^pipewire-spa-libcamera($|[<>=~])' "$evidence/world.before"; then
+	world_pipewire_before=present
+else
+	world_pipewire_before=absent
+fi
+printf 'preexisting_pipewire_world_entry=%s\n' "$world_pipewire_before" \
+	>"$evidence/world-entry-state.txt"
 
 run_transaction() {
 	transaction_mode=$1
@@ -549,6 +578,10 @@ fi
 
 pipewire_was_active=$(systemctl --user is-active pipewire.service 2>/dev/null || true)
 wireplumber_was_active=$(systemctl --user is-active wireplumber.service 2>/dev/null || true)
+pipewire_pulse_socket_was_active=$(systemctl --user is-active \
+	pipewire-pulse.socket 2>/dev/null || true)
+pipewire_pulse_was_active=$(systemctl --user is-active \
+	pipewire-pulse.service 2>/dev/null || true)
 portal_was_active=$(systemctl --user is-active xdg-desktop-portal.service 2>/dev/null || true)
 wlr_portal_was_active=$(systemctl --user is-active xdg-desktop-portal-wlr.service 2>/dev/null || true)
 [ "$pipewire_was_active" = active ] && [ "$wireplumber_was_active" = active ] || \
@@ -559,6 +592,10 @@ restore_user_services() {
 	[ "$services_stopped" = yes ] || return 0
 	systemctl --user start pipewire.socket pipewire.service wireplumber.service \
 		>/dev/null 2>&1 || true
+	[ "$pipewire_pulse_socket_was_active" != active ] || \
+		systemctl --user start pipewire-pulse.socket >/dev/null 2>&1 || true
+	[ "$pipewire_pulse_was_active" != active ] || \
+		systemctl --user start pipewire-pulse.service >/dev/null 2>&1 || true
 	if [ "$portal_was_active" = active ] || [ "$wlr_portal_was_active" = active ]; then
 		systemctl --user reset-failed xdg-desktop-portal.service \
 			xdg-desktop-portal-wlr.service >/dev/null 2>&1 || true
@@ -577,7 +614,22 @@ if [ "$portal_was_active" = active ] || [ "$wlr_portal_was_active" = active ]; t
 	systemctl --user stop xdg-desktop-portal.service \
 		xdg-desktop-portal-wlr.service
 fi
-systemctl --user stop wireplumber.service pipewire.service pipewire.socket
+# pMOS user units use socket activation. Stopping WirePlumber, PipeWire and
+# its socket in one systemd transaction can return "job canceled" while a
+# service remains alive. Stop each unit separately, with the socket before
+# PipeWire, and refuse to touch packages unless both media daemons are down.
+systemctl --user stop wireplumber.service >/dev/null 2>&1 || true
+systemctl --user stop pipewire-pulse.socket >/dev/null 2>&1 || true
+systemctl --user stop pipewire-pulse.service >/dev/null 2>&1 || true
+systemctl --user stop pipewire.socket >/dev/null 2>&1 || true
+systemctl --user stop pipewire.service >/dev/null 2>&1 || true
+pipewire_stopped=$(systemctl --user is-active pipewire.service 2>/dev/null || true)
+wireplumber_stopped=$(systemctl --user is-active wireplumber.service 2>/dev/null || true)
+pipewire_pulse_stopped=$(systemctl --user is-active pipewire-pulse.service \
+	2>/dev/null || true)
+[ "$pipewire_stopped" != active ] && [ "$wireplumber_stopped" != active ] && \
+	[ "$pipewire_pulse_stopped" != active ] || \
+	die 'could not stop PipeWire and WirePlumber before the package transaction'
 
 cmp -s "$evidence/world.before" "$world_file" || \
 	die 'apk world changed between simulation and apply'
@@ -601,22 +653,11 @@ if ! run_transaction apply >"$actual_log" 2>&1; then
 fi
 validate_transaction_log "$actual_log"
 
-if [ "$operation" = rollback ] && \
-	[ "$candidate_pipewire_version" != "$rollback_pipewire_version" ]; then
-	apk info -r pipewire-spa-libcamera >"$evidence/rollback.reverse-dependencies.log"
-	if ! root_run apk del --simulate --network=no --interactive=no \
-		pipewire-spa-libcamera >"$evidence/rollback.unpin.simulation.log" 2>&1; then
-		die 'PipeWire world-unpin simulation failed'
-	fi
-	grep -q 'not removed due to' "$evidence/rollback.unpin.simulation.log" || \
-		die 'rollback would not retain the dependency-owned PipeWire plugin'
-	if grep -Eq ' Removing pipewire-spa-libcamera ' \
-		"$evidence/rollback.unpin.simulation.log"; then
-		die 'rollback unpin unexpectedly removes the PipeWire plugin'
-	fi
-	root_run apk del --network=no --interactive=no pipewire-spa-libcamera \
-		>"$evidence/rollback.unpin.actual.log" 2>&1 || \
-		die 'failed to remove the temporary PipeWire world constraint'
+if grep -Eq '^pipewire-spa-libcamera($|[<>=~])' "$world_file"; then
+	# apk preserves an explicitly listed package in /etc/apk/world even when
+	# the package is retained by other packages. Remove only that constraint;
+	# the simulation above proves the installed plugin remains dependency-owned.
+	unpin_dependency_owned_pipewire "$operation"
 fi
 
 restore_user_services
@@ -633,21 +674,28 @@ for world_snapshot in "$evidence/world.before" "$evidence/world.after"; do
 	[ "$world_app_count" -eq 2 ] || \
 		die "expected exactly two Advanced Snapshot world entries in $world_snapshot"
 	if grep -Eq '^pipewire-spa-libcamera($|[<>=~])' "$world_snapshot"; then
-		die 'PipeWire must remain dependency-owned, not a world entry'
+		if [ "$world_snapshot" != "$evidence/world.before" ] || \
+			[ "$world_pipewire_before" != present ]; then
+			die 'PipeWire must remain dependency-owned, not a world entry'
+		fi
 	fi
-	# Runtime rows may be explicitly selected by apk during a lower-stack
-	# transition. They are generation-owned too, so their world identities must
-	# not be mistaken for unrelated user packages.
-	awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
-		$0 !~ /^libcamera(-ipa)?($|[<>=~])/' "$world_snapshot" \
+		# Runtime rows may be explicitly selected by apk during a lower-stack
+		# transition. They are generation-owned too, so their world identities must
+		# not be mistaken for unrelated user packages.
+		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
+			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/ && \
+			$0 !~ /^libcamera(-ipa)?($|[<>=~])/' "$world_snapshot" \
 		>"$world_snapshot.unrelated"
 	grep -E '^advanced-snapshot(-lang)?($|[<>=~])' "$world_snapshot" | sort \
 		>"$world_snapshot.app"
 done
 cmp -s "$evidence/world.before.unrelated" "$evidence/world.after.unrelated" || \
 	die 'transaction changed an unrelated apk world entry'
-if cmp -s "$evidence/world.before.app" "$evidence/world.after.app"; then
-	die 'Advanced Snapshot world identities did not change with the generation'
+if [ "$candidate_app_version" != "$rollback_app_version" ] || \
+	[ "$candidate_lang_version" != "$rollback_lang_version" ]; then
+	if cmp -s "$evidence/world.before.app" "$evidence/world.after.app"; then
+		die 'Advanced Snapshot world identities did not change with the generation'
+	fi
 fi
 
 if [ "$(systemctl --user is-active pipewire.service 2>/dev/null || true)" != active ] || \

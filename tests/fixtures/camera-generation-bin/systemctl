@@ -3,8 +3,19 @@ set -eu
 
 printf '%s\n' "$*" >>"$PMOS_MOCK_SYSTEMCTL_LOG"
 case " $* " in
+*' stop '*|*' stop')
+	printf '%s\n' inactive >"$PMOS_MOCK_SYSTEMCTL_STATE"
+	;;
+*' start '*|*' start'|*' restart '*|*' restart')
+	printf '%s\n' active >"$PMOS_MOCK_SYSTEMCTL_STATE"
+	;;
 *' is-active '*)
-	printf '%s\n' active
+	if [ -r "$PMOS_MOCK_SYSTEMCTL_STATE" ] && \
+		[ "$(cat "$PMOS_MOCK_SYSTEMCTL_STATE")" = inactive ]; then
+		printf '%s\n' inactive
+	else
+		printf '%s\n' active
+	fi
 	;;
 *' --failed '*)
 	;;

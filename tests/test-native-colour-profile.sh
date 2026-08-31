@@ -35,19 +35,19 @@ check_profile() {
 		fail "$file does not contain its sensor-specific profile"
 	[ "$profile_kind" = green_corrected ] ||
 		fail "$file test must name its colour profile kind"
-	grep -Fq 'ccm: [ 0.95, 0.05, 0.0,' "$PROFILE_DIR/$file" ||
+	grep -Fq 'ccm: [ 0.90, 0.10, 0.0,' "$PROFILE_DIR/$file" ||
 		fail "$file does not contain the measured green-correction matrix"
-	grep -Fq '0.05, 0.90, 0.05,' "$PROFILE_DIR/$file" ||
+	grep -Fq '0.10, 0.80, 0.10,' "$PROFILE_DIR/$file" ||
 		fail "$file does not contain the green-correction centre row"
-	grep -Fq '0.0, 0.05, 0.95 ]' "$PROFILE_DIR/$file" ||
+	grep -Fq '0.0, 0.10, 0.90 ]' "$PROFILE_DIR/$file" ||
 		fail "$file does not contain the green-correction blue row"
 	if grep -Fq 'ccm: [ 1, 0, 0,' "$PROFILE_DIR/$file"; then
 		fail "$file still contains the uncorrected identity colour matrix"
 	fi
 }
 
-check_profile imx371.yaml 1 'ccm: [ 0.95, 0.05, 0.0,' green_corrected
-check_profile imx376.yaml 1 'ccm: [ 0.95, 0.05, 0.0,' green_corrected
-check_profile imx519.yaml 1 'ccm: [ 0.95, 0.05, 0.0,' green_corrected
+check_profile imx371.yaml 1 'ccm: [ 0.90, 0.10, 0.0,' green_corrected
+check_profile imx376.yaml 1 'ccm: [ 0.90, 0.10, 0.0,' green_corrected
+check_profile imx519.yaml 1 'ccm: [ 0.90, 0.10, 0.0,' green_corrected
 
 printf '%s\n' 'Native sensor colour profiles and package-source invariants passed'

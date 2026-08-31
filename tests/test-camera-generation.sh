@@ -15,6 +15,7 @@ state=$TEST_ROOT/packages.psv
 world=$TEST_ROOT/world
 compatible=$TEST_ROOT/compatible
 systemctl_log=$TEST_ROOT/systemctl.log
+systemctl_state=$TEST_ROOT/systemctl.state
 smoke_log=$TEST_ROOT/smoke.log
 manifest=$TEST_ROOT/generation.psv
 
@@ -72,6 +73,7 @@ run_manager() {
 	PMOS_MOCK_WORLD="$world" \
 	PMOS_MOCK_INDEX="$stage/candidate/aarch64/APKINDEX.tar.gz" \
 	PMOS_MOCK_SYSTEMCTL_LOG="$systemctl_log" \
+	PMOS_MOCK_SYSTEMCTL_STATE="$systemctl_state" \
 	PMOS_MOCK_SMOKE_LOG="$smoke_log" \
 		"$MANAGER" --stage "$stage" --manifest "$manifest" \
 		--keys-dir "$keys" --smoke-test "$MOCK_SMOKE" "$@"
@@ -85,7 +87,7 @@ mkdir -p "$installed_scripts" "$installed_root/libexec/data" \
 	"$installed_root/bin"
 cp "$MANAGER" "$installed_scripts/manage-camera-generation"
 cp "$manifest" \
-	"$installed_root/libexec/data/camera-generation-r7-r5.psv"
+	"$installed_root/libexec/data/camera-generation-r35-r36.psv"
 ln -s "$installed_scripts/manage-camera-generation" \
 	"$installed_root/bin/pmos-manage-camera-generation"
 installed_status=$(PATH="$MOCK_BIN:/usr/bin:/bin" \
@@ -135,6 +137,33 @@ grep -q '^advanced-snapshot|0.1.0-r0$' "$state"
 [ "$(hash_file "$world")" = "$initial_world_hash" ]
 tail -n 1 "$smoke_log" | grep -q '^accepted$'
 grep -q 'not removed due to' "$TEST_ROOT/rollback-apply/rollback.unpin.simulation.log"
+
+# apk keeps a package explicitly present in /etc/apk/world after an upgrade
+# when another package still depends on it. The manager must safely unpin that
+# constraint without removing the live PipeWire plugin.
+stage=$TEST_ROOT/stage
+state=$TEST_ROOT/packages.psv
+world=$TEST_ROOT/world
+manifest=$TEST_ROOT/generation.psv
+set_rollback_state
+printf '%s\n' 'pipewire-spa-libcamera' >>"$world"
+sort -o "$world" "$world"
+PMOS_MOCK_PRESERVE_WORLD_PIPEWIRE=yes
+export PMOS_MOCK_PRESERVE_WORLD_PIPEWIRE
+preexisting_world_hash=$(hash_file "$world")
+preexisting_install_sim=$(run_manager --evidence \
+	"$TEST_ROOT/preexisting-world-sim" install)
+printf '%s\n' "$preexisting_install_sim" | grep -q '^mode=simulation$'
+[ "$(hash_file "$world")" = "$preexisting_world_hash" ]
+preexisting_install=$(run_manager --evidence \
+	"$TEST_ROOT/preexisting-world-apply" --apply install)
+printf '%s\n' "$preexisting_install" | grep -q '^state=candidate$'
+! grep -q '^pipewire-spa-libcamera' "$world"
+grep -q 'not removed due to' \
+	"$TEST_ROOT/preexisting-world-apply/install.unpin.simulation.log"
+grep -q '^preexisting_pipewire_world_entry=present$' \
+	"$TEST_ROOT/preexisting-world-apply/world-entry-state.txt"
+unset PMOS_MOCK_PRESERVE_WORLD_PIPEWIRE
 
 printf '%s\n' \
 	'pipewire-spa-libcamera|1.6.8-r6' \

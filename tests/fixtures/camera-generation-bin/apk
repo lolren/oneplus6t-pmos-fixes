@@ -148,7 +148,8 @@ add)
 				"libcamera-ipa|$candidate_libcamera_ipa" >>"$state_tmp"
 		fi
 		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
-			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/ && \
+			($0 !~ /^pipewire-spa-libcamera($|[<>=~])/ || \
+			 ENVIRON["PMOS_MOCK_PRESERVE_WORLD_PIPEWIRE"] == "yes") && \
 			$0 !~ /^libcamera(-ipa)?($|[<>=~])/' \
 			"$PMOS_MOCK_WORLD" >"$world_tmp"
 		printf '%s\n' \
@@ -170,7 +171,8 @@ add)
 				"libcamera-ipa|$rollback_libcamera_ipa" >>"$state_tmp"
 		fi
 		awk '$0 !~ /^advanced-snapshot(-lang)?($|[<>=~])/ && \
-			$0 !~ /^pipewire-spa-libcamera($|[<>=~])/ && \
+			($0 !~ /^pipewire-spa-libcamera($|[<>=~])/ || \
+			 ENVIRON["PMOS_MOCK_PRESERVE_WORLD_PIPEWIRE"] == "yes") && \
 			$0 !~ /^libcamera(-ipa)?($|[<>=~])/' \
 			"$PMOS_MOCK_WORLD" >"$world_tmp"
 		printf '%s\n' \

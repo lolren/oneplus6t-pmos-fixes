@@ -1,0 +1,151 @@
+#!/bin/sh
+set -eu
+
+# Download and hand the reviewed camera generation to the guarded manager.
+# The release tag and filenames are intentionally pinned: changing them must
+# be a reviewed source change rather than an implicit "latest" download.
+
+PROGRAM=${0##*/}
+REPOSITORY=lolren/oneplus6t-pmos-fixes
+RELEASE_TAG=runtime-r44-camera-r35
+RUNTIME_APK=oneplus6t-pmos-fixes-0.1.0_p20260831111454-r44.apk
+STAGE_ARCHIVE=oneplus6t-camera-r35-r36-aarch64.tar.gz
+STACK_PATCH=oneplus6t-camera-stack.patch
+MANIFEST=camera-generation-r35-r36.psv
+SIGNING_KEY=pmos@local-6a92d930.rsa.pub
+CHECKSUMS=SHA256SUMS
+RELEASE_NOTES=RELEASE-NOTES.md
+
+apply=no
+work_dir=${PMOS_CAMERA_WORK_DIR:-}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Download the pinned OnePlus 6T r35/r36 camera generation and pass it to the
+guarded installer. The default is simulation-only; --apply is required to
+install the runtime helper and camera packages.
+
+Options:
+  --apply             install the runtime helper and apply the camera generation
+  --work-dir DIR      retain downloaded assets and rollback stage in DIR
+  -h, --help          show this help
+
+Do not run this wrapper through sudo. The guarded camera manager invokes sudo
+only for the apk transaction and keeps the caller as the graphical user.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--apply)
+		apply=yes
+		shift
+		;;
+	--work-dir)
+		[ "$#" -ge 2 ] || die '--work-dir requires a directory'
+		work_dir=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		die "unknown argument: $1"
+		;;
+	esac
+done
+
+for command in awk curl grep install mkdir mktemp sha256sum tar; do
+	command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
+done
+
+if [ -z "$work_dir" ]; then
+	cache_root=${XDG_CACHE_HOME:-${HOME:-/tmp}}
+	work_dir=$cache_root/oneplus6t-pmos-fixes/$RELEASE_TAG
+fi
+
+case "$work_dir" in
+''|/|/tmp|/var|/var/tmp|/home|/root)
+	die "refusing broad work directory: $work_dir"
+	;;
+esac
+if [ -e "$work_dir" ] && [ -L "$work_dir" ]; then
+	die "refusing symlink work directory: $work_dir"
+fi
+mkdir -p "$work_dir"
+[ -d "$work_dir" ] || die "work directory is not a directory: $work_dir"
+
+base_url=https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG
+download() {
+	asset=$1
+	curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+		--silent --show-error "$base_url/$asset" -o "$work_dir/$asset"
+}
+
+printf 'download_dir=%s\n' "$work_dir"
+printf 'release_tag=%s\n' "$RELEASE_TAG"
+download "$CHECKSUMS"
+download "$RUNTIME_APK"
+download "$STAGE_ARCHIVE"
+download "$STACK_PATCH"
+download "$MANIFEST"
+download "$SIGNING_KEY"
+download "$RELEASE_NOTES"
+
+(
+	cd "$work_dir"
+	sha256sum -c "$CHECKSUMS"
+)
+
+if ! tar -tzf "$work_dir/$STAGE_ARCHIVE" | awk -F/ '
+	$0 == "" || $1 == "" { exit 1 }
+	{
+		for (i = 1; i <= NF; i++)
+			if ($i == "..")
+				exit 1
+	}
+'; then
+	die 'camera stage archive contains an unsafe path'
+fi
+
+stage_dir=$(mktemp -d "$work_dir/stage.XXXXXX")
+tar -xzf "$work_dir/$STAGE_ARCHIVE" -C "$stage_dir"
+keys_dir=$(mktemp -d "$work_dir/keys.XXXXXX")
+install -m 0644 "$work_dir/$SIGNING_KEY" "$keys_dir/$SIGNING_KEY"
+
+manager=$(command -v pmos-manage-camera-generation 2>/dev/null || true)
+if [ -z "$manager" ]; then
+	manager=$(command -v manage-camera-generation 2>/dev/null || true)
+fi
+
+if [ "$apply" = yes ]; then
+	# Install/refresh the noarch helper before asking it to manage the camera
+	# generation. The wrapper itself remains unprivileged.
+	sudo apk add --allow-untrusted "$work_dir/$RUNTIME_APK"
+	manager=$(command -v pmos-manage-camera-generation 2>/dev/null || true)
+	[ -n "$manager" ] || die 'runtime package did not install pmos-manage-camera-generation'
+	"$manager" \
+		--stage "$stage_dir" \
+		--manifest "$work_dir/$MANIFEST" \
+		--keys-dir "$keys_dir" \
+		--apply install
+else
+	[ -n "$manager" ] || \
+		die 'pmos-manage-camera-generation is unavailable; use --apply or install the runtime helper'
+	"$manager" \
+		--stage "$stage_dir" \
+		--manifest "$work_dir/$MANIFEST" \
+		--keys-dir "$keys_dir" \
+		install
+fi
+
+printf 'retained_stage=%s\n' "$stage_dir"
+printf '%s\n' 'The stage is retained for the manager rollback operation.'

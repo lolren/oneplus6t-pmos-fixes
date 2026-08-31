@@ -9,12 +9,14 @@ algorithms:
   - Ccm:
       ccms:
         # Keep equal RGB neutral while gently suppressing the measured
-        # green-channel excess in ordinary scenes.  Every row sums to one,
-        # so the deterministic equal-channel calibration frame remains grey.
+        # green-channel excess in ordinary scenes. Every row sums to one, so
+        # the deterministic equal-channel calibration frame remains grey.
+        # The stronger r35 candidate is still a scene correction, not a
+        # replacement for a measured colour-chart calibration.
         - ct: 6500
-          ccm: [ 0.95, 0.05, 0.0,
-                 0.05, 0.90, 0.05,
-                 0.0, 0.05, 0.95 ]
+          ccm: [ 0.90, 0.10, 0.0,
+                 0.10, 0.80, 0.10,
+                 0.0, 0.10, 0.90 ]
   - Af:
       minPosition: 400
       maxPosition: 800

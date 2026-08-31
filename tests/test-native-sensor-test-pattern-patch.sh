@@ -29,6 +29,6 @@ grep -Eq "^index 0{7,40}\.\.$blob$" "$MONOLITH" ||
 	fail 'sensor test-pattern patch blob is not embedded in pmaports'
 grep -q "^+$sha512  0023-libcamera-simple-Expose-sensor-test-pattern.patch$" \
 	"$MONOLITH" || fail 'sensor test-pattern checksum is not in pmaports'
-grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'libcamera recipe is not r34'
+grep -q '^+pkgrel=35$' "$MONOLITH" || fail 'libcamera recipe is not r35'
 
 printf '%s\n' 'Native sensor test-pattern patch and pmaports integrity tests passed'

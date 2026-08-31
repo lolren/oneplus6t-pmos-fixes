@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-MANIFEST=$ROOT/data/camera-generation-r34-r36.psv
+MANIFEST=$ROOT/data/camera-generation-r35-r36.psv
 KEY=$ROOT/packaging/keys/pmos@local-6a92d930.rsa.pub
 
 fail() {
@@ -10,14 +10,14 @@ fail() {
 	exit 1
 }
 
-[ -f "$MANIFEST" ] || fail 'missing r34/r36 manifest'
+[ -f "$MANIFEST" ] || fail 'missing r35/r36 manifest'
 [ -f "$KEY" ] || fail 'missing current release public key'
 [ "$(sha256sum "$KEY" | awk '{ print $1 }')" = \
 	c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6 ] || \
 	fail 'release public-key hash changed'
 
 grep -Fxq 'schema|1' "$MANIFEST" || fail 'unsupported manifest schema'
-grep -Fxq 'generation|oneplus6t-r34-r36' "$MANIFEST" || \
+grep -Fxq 'generation|oneplus6t-r35-r36' "$MANIFEST" || \
 	fail 'wrong generation name'
 grep -Fxq 'compatible|oneplus,fajita' "$MANIFEST" || \
 	fail 'wrong device compatibility'
@@ -44,7 +44,7 @@ awk -F '|' '
 	END { exit !(rows == 10) }
 ' "$MANIFEST" || fail 'malformed or duplicate package rows'
 
-grep -Fxq 'candidate|libcamera|99990.7.2-r34|aarch64|libcamera-99990.7.2-r34.apk|7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3' "$MANIFEST" || fail 'candidate libcamera pin changed'
-grep -Fxq 'rollback|libcamera|99990.7.2-r33|aarch64|libcamera-99990.7.2-r33.apk|76808314599b548a86c2924aaea82b98ce0a913a38967acfd32cd95b54684f6d' "$MANIFEST" || fail 'rollback libcamera pin changed'
+grep -Fxq 'candidate|libcamera|99990.7.2-r35|aarch64|libcamera-99990.7.2-r35.apk|ff68405a52a1b0fed6fef27f5dcc57f214c1a8ce5112058b02c89bf7b2b08f37' "$MANIFEST" || fail 'candidate libcamera pin changed'
+grep -Fxq 'rollback|libcamera|99990.7.2-r34|aarch64|libcamera-99990.7.2-r34.apk|7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3' "$MANIFEST" || fail 'rollback libcamera pin changed'
 
-printf '%s\n' 'Camera r34/r36 release manifest tests passed'
+printf '%s\n' 'Camera r35/r36 release manifest tests passed'

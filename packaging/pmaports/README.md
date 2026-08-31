@@ -6,9 +6,9 @@ three tuning files, two PipeWire control/state-transport patches, six Snapshot p
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r36 Advanced Snapshot
-source recipe and its verified AArch64 package pair, the libcamera r34 colour-
+source recipe and its verified AArch64 package pair, the libcamera r35 colour-
 matrix/white-balance/manual-focus/tone/test-pattern generation and PipeWire r8 float-array
-transport; r24, r25, r26, r28 and r33 plus
+transport; r24, r25, r26, r28, r33 and r34 plus
 the previously signed app generations remain available as rollback baselines.
 It also carries the Samsung panel brightness-serialization patch and bounded
 Qualcomm Venus firmware-error recovery as kernel r10, with kernel r8 retained
@@ -16,27 +16,28 @@ as its rollback package. r10 is installed and booted on the reference phone;
 brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
-The reference phone has r33/r8/r3 userspace and the visible Image Controls
-Advanced Snapshot r34 build installed without reboot; the r36 app pair is
-source- and package-validated but awaits phone installation. The earlier r30
-app, r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
+The reference phone has r35/r8/r3 userspace and the visible Image Controls
+Advanced Snapshot r36 build installed. The exact r34/r36/r8 lower-stack stage
+is retained for rollback. The earlier r30 app, r28/r7 lower stack and r0/r1 app
+packages remain historical rollback baselines.
 
-The current source target is r34/r36/r8; the reference phone remains on the
-last accepted r33/r8/r3 line until the new colour package is built and
-installed. The exact AArch64 r34/r36/r8 APK set is published with the runtime
-r42 helper in the [camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
-The current r33/r34/r36/r8 evidence is:
+The current source target is r35/r36/r8 and is live-installed on the reference
+phone. The exact AArch64 r35/r36/r8 APK set and the r34/r36/r8 rollback set are
+published with the runtime r44 helper in the
+[`runtime-r44-camera-r35` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
+The current r35/r36/r8 evidence is:
 
-- libcamera/IPA r33 with normalized rear `LensPosition`, `AwbEnable`, two-
+- libcamera/IPA r35 with normalized rear `LensPosition`, `AwbEnable`, two-
   element `ColourGains` and nine-element `ColourCorrectionMatrix` controls;
 - PipeWire SPA r8 with generic fixed-size float-array transport;
-- libcamera/IPA r33 with sensor-specific profiles and the accepted conservative
-  row-sum-preserving green-cast correction on all three sensors;
-- the r34 source target with a moderate row-sum-preserving follow-up matrix;
+- libcamera/IPA r35 with sensor-specific profiles and the stronger row-sum-
+  preserving green-cast correction on all three sensors;
+- the r35 source target with a measured same-scene rear improvement and a
+  neutral-tile regression check for the fixed-focus front;
 - a verified IMX519 equal-channel sensor test pattern that remains neutral
   through the GPU processed path after AWB settles;
 - Advanced Snapshot commit `df308e9d95ba9d90ac6866010db3b95ce9d11de4`;
-- native main/secondary AF validation with 183/239 post-reset metrics and
+- native main/secondary AF validation with 183/240 post-reset metrics and
   zero lens requests; and
 - Waydroid manual-focus result deltas of 2.000 on both rear IDs plus
   terminal tap-focus results on both rear IDs.
@@ -61,7 +62,7 @@ acceptance remains separate. The r36 still path reapplies rear focus after
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its current SHA-256 is
-`ad10239963e2079c16751d762b4c37d99886abadae2236e6464dbd82a4d3274d`.
+`4de9b61b7e519a271a815e2d74026b1469a66f056dc1363d22d4f2cd35f92f80`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -86,7 +87,7 @@ Applying the integration patch to the reviewed base produces:
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r10` (display brightness
   serialization plus bounded Venus firmware-error recovery; r8 remains the
   rollback package);
-- `libcamera-99990.7.2-r34` and `libcamera-ipa-99990.7.2-r34` (writable colour
+- `libcamera-99990.7.2-r35` and `libcamera-ipa-99990.7.2-r35` (writable colour
   matrix, white balance, manual-focus, stable-AF, conservative tone generation
   and downstream sensor-specific colour profiles; r24/r25/r26/r28/r29/r30/r31/r32 remain retained
   diagnostic and rollback candidates);
@@ -99,8 +100,8 @@ Applying the integration patch to the reviewed base produces:
   serialized camera teardown, rear manual-focus, tone-default, Gamma and
   white-balance/colour-matrix-aware per-sensor calibration build with a phone-
   width dialog and unobstructed zoom toolbar, plus the Green-cast correction
-  starting point and visible Apply/Reset action; an exact AArch64 APK pair was built and artifact-validated in
-  the isolated edge buildroot but awaits installation on the reference phone); and
+  starting point and visible Apply/Reset action; an exact AArch64 APK pair was
+  built, artifact-validated and installed on the reference phone); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
@@ -113,8 +114,8 @@ is
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
 compatibility fix. The exact AArch64 pair passed the package validator with the
 local pmbootstrap signing key. The phone-width calibration dialog and toolbar
-zoom placement passed source/package checks; phone installation and live visual
-acceptance remain separate.
+zoom placement passed source/package checks, and the r36 pair is installed on
+the reference phone.
 
 The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
 top of the earlier r3 package and r4 lifecycle guard, plus the GStreamer Rust
@@ -123,16 +124,16 @@ integration patch. A clean isolated release build passes, but no r6 APK hash
 is claimed until an AArch64 package build and phone acceptance are completed.
 Keep the signed r3 packages as the rollback baseline.
 
-The r34 libcamera revision and PipeWire r8 are source- and package-validated. Their
-standalone patches and the full integration diff apply cleanly; the accepted
-r33 AArch64 packages expose the normalized rear
+The r35 libcamera revision and PipeWire r8 are source-, package- and live-
+validated. Their standalone patches and the full integration diff apply cleanly;
+the r35 AArch64 packages expose the normalized rear
 `LensPosition` range plus standard automatic/manual white balance and writable
 colour matrices on all three sensors, r33 exposes the verified sensor test
-pattern for calibration, and r33 installs the documented conservative
-green-corrected sensor profiles. The r34 source retains equal-channel grey
-while applying the stronger moderate correction; its device installation and
-live chart acceptance are still pending.
-The correction is not a factory colour calibration claim. Keep the signed r24/r25/r26/r28/r29/r30/r31/r32/r33 and
+pattern for calibration, and r35 installs the documented stronger
+green-corrected sensor profiles. Controlled final frames reduced the rear
+green ratios from 1.304 to 1.238 and from 1.256 to 1.181; the neutral front
+wall-tile check stayed at approximately 1.062 versus 1.063. The correction is
+not a factory colour calibration claim. Keep the signed r24/r25/r26/r28/r29/r30/r31/r32/r33/r34 and
 PipeWire r7 APKs for rollback.
 
 The complete opt-in userspace transition is described by
@@ -159,14 +160,13 @@ install
 ```
 
 The current complete camera-generation manifest is
-`data/camera-generation-r34-r36.psv`. It pairs the r34 libcamera/IPA source,
-PipeWire r8 and Advanced Snapshot r36 with the exact r33/r34/r8 rollback APKs,
-and pins the current public verification key. The signed stage and runtime r43
+`data/camera-generation-r35-r36.psv`. It pairs the r35 libcamera/IPA source,
+PipeWire r8 and Advanced Snapshot r36 with the exact r34/r36/r8 rollback APKs,
+and pins the current public verification key. The signed stage and runtime r44
 package are published in the
-[`runtime-r43-camera-r34`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34)
-development pre-release. Run the manager's simulation
-first; the r34 colour profiles are still source/package validated rather than
-live chart-accepted until the phone's SSH channel is repaired.
+[`runtime-r44-camera-r35`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35)
+development pre-release. Run the manager's simulation first; `--apply` is the
+explicit guarded installation path and never reboots the phone.
 
 ## Reference artifacts
 
@@ -193,8 +193,10 @@ live chart-accepted until the phone's SSH channel is repaired.
 | `libcamera-ipa-99990.7.2-r32.apk` (sensor test-pattern diagnostic) | `b9fe95d95b751329d754ba05b78f8a71af625362523ad697dd1609ebcd070854` |
 | `libcamera-99990.7.2-r33.apk` (green-cast correction plus test pattern) | `76808314599b548a86c2924aaea82b98ce0a913a38967acfd32cd95b54684f6d` |
 | `libcamera-ipa-99990.7.2-r33.apk` (green-cast correction plus test pattern) | `b54c2ada1f1e2bd833c385247ee796cbd58a40077d7f74646e5d7b5e36c9c89e` |
-| `libcamera-99990.7.2-r34.apk` (moderate green-cast follow-up; built, not yet device-accepted) | `7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3` |
-| `libcamera-ipa-99990.7.2-r34.apk` (moderate green-cast follow-up; built, not yet device-accepted) | `e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed` |
+| `libcamera-99990.7.2-r34.apk` (exact r34 rollback) | `7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3` |
+| `libcamera-ipa-99990.7.2-r34.apk` (exact r34 rollback) | `e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed` |
+| `libcamera-99990.7.2-r35.apk` (live green-cast correction) | `ff68405a52a1b0fed6fef27f5dcc57f214c1a8ce5112058b02c89bf7b2b08f37` |
+| `libcamera-ipa-99990.7.2-r35.apk` (live green-cast correction) | `724eb91b8cde4b65a4a8855d3d802e93422853743b58237625dde4cfe1568e50` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `pipewire-spa-libcamera-1.6.8-r8.apk` (installed float-array transport) | `ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
@@ -225,8 +227,10 @@ live chart-accepted until the phone's SSH channel is repaired.
 | `advanced-snapshot-lang-0.1.0-r32.apk` (historical colour calibration/mobile-layout build) | `8bc79a14ed890dd429188cb7b173cc9d13c61572c92faea4b4f24de66501e377` |
 | `advanced-snapshot-0.1.0-r35.apk` (green-cast preset; historical, not device-accepted) | `1b8ea0f0f6449665876a72a1846b606accecbc9e90d1b984d02da534002e1e08` |
 | `advanced-snapshot-lang-0.1.0-r35.apk` (green-cast preset; historical, not device-accepted) | `902e890dacc1e7f5920b0f625c1daa5bdec26053685c3e111ac6d91e0f08e974` |
-| `advanced-snapshot-0.1.0-r36.apk` (visible green-cast Apply/Reset action; built, not yet device-accepted) | `8a0f08defead7406823b269f92a161963e754770e26e698ed508a1e3c631d37c` |
-| `advanced-snapshot-lang-0.1.0-r36.apk` (visible green-cast Apply/Reset action; built, not yet device-accepted) | `32a2893a5e2fa2a68c6a17a2f4581e9a5fa1c78b75cccbb4efd2f04dc5888a5e` |
+| `advanced-snapshot-0.1.0-r36.apk` (live green-cast Apply/Reset action) | `8a0f08defead7406823b269f92a161963e754770e26e698ed508a1e3c631d37c` |
+| `advanced-snapshot-lang-0.1.0-r36.apk` (live green-cast Apply/Reset action) | `32a2893a5e2fa2a68c6a17a2f4581e9a5fa1c78b75cccbb4efd2f04dc5888a5e` |
+| `oneplus6t-camera-r35-r36-aarch64.tar.gz` (signed candidate and rollback stage) | `276ffa8a39123f2b081a629f223359b806cd8b41305393b07284afd67dd99559` |
+| `oneplus6t-pmos-fixes-0.1.0_p20260831111600-r44.apk` (runtime helper) | `c4a60e2fef44d297fdbd83190de1182cd1bf5e8d47b8e6683363fbbb0e56d9bc` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.
@@ -322,19 +326,20 @@ use the release archive for the documented installer flow.
 The reference phone's current development camera stack runs:
 
 - kernel package `7.1_rc1-r10`;
-- `libcamera` and `libcamera-ipa` `99990.7.2-r28`;
-- `pipewire-spa-libcamera` `1.6.8-r7`;
+- `libcamera` and `libcamera-ipa` `99990.7.2-r35`;
+- `pipewire-spa-libcamera` `1.6.8-r8`;
 - Snapshot and Snapshot language data `50.0-r3`; and
-- Advanced Snapshot and its language data `0.1.0-r24`.
+- Advanced Snapshot and its language data `0.1.0-r36`.
 
-The r28/r24 packages above are the current coherent generation: r7 transports
-generation-correlated `AfState`, r28 adds the normalized rear `LensPosition`
-contract, and r24 waits for correlated results while exposing Gamma, per-sensor
-calibration, manual focus and Reset-to-continuous-AF in the UI. Both rear
-cameras returned a correlated `focused` result and survived the 60-second
-post-reset test; the fixed-focus front completed 120 frames and rejected focus
-as unsupported. Keep the exact lower-stack and app package files as rollback
-and install or roll them back together.
+The r35/r36 packages above are the current coherent generation: r8 transports
+generation-correlated `AfState`, r35 adds the normalized rear `LensPosition`
+contract and the measured row-sum-preserving colour correction, and r36 waits
+for correlated results while exposing Gamma, per-sensor calibration, manual
+focus and Reset-to-continuous-AF in the UI. Both rear cameras returned a
+correlated `focused` result and survived the 60-second post-reset test with no
+restart or lens-request regression; the fixed-focus front completed 120 frames
+and rejected focus as unsupported. Keep the exact r34/r36/r8 package files as
+rollback and install or roll them back together.
 
 The exact r24 libcamera packages are the preferred rollback for the r25
 autofocus-reference update. The exact r23 pair and older complete r20/r6/r2 set remain useful when rolling
@@ -372,7 +377,7 @@ that an online repository will continue to carry old versions.
 ## Installation boundary
 
 The build commands above do not copy or install anything, update boot files or
-reboot. The r7/r5 generation is userspace-only and needs no reboot. Installing
+reboot. The r35/r36 generation is userspace-only and needs no reboot. Installing
 on another phone still requires root, a reviewed simulation and an explicit
 decision by its owner.
 

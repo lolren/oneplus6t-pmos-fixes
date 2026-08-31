@@ -5,11 +5,10 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The reference phone currently runs kernel r10, libcamera/IPA r33,
-`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r34. This source
-tree now targets the r34 lower-layer colour-profile follow-up and Advanced
-Snapshot r36; r33/r34 remain the last device-accepted lower/app generation
-until the new packages can be installed. r30, r31 and r32 remain reproducible
+The reference phone currently runs kernel r10, libcamera/IPA r35,
+`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r36. The r35
+lower-layer generation is the live green-cast follow-up; r34 remains its exact
+lower-stack rollback. r30, r31 and r32 remain reproducible
 rollback/diagnostic generations.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
@@ -106,28 +105,32 @@ These are conservative open tone/detail defaults selected from bounded
 captures. Sharpness 1 applies a restrained five-tap unsharp mask; 0 disables
 it and 2 is the supported maximum.
 
-The r34 downstream package ships a separate ordinary libcamera YAML profile for
-IMX371, IMX376 and IMX519. Each profile applies the same moderate
+The r35 downstream package ships a separate ordinary libcamera YAML profile for
+IMX371, IMX376 and IMX519. Each profile applies the same stronger
 row-sum-preserving matrix:
 
 ```text
-0.95  0.05  0.00
-0.05  0.90  0.05
-0.00  0.05  0.95
+0.90  0.10  0.00
+0.10  0.80  0.10
+0.00  0.10  0.90
 ```
 
-Controlled rear and front captures still showed a small green excess after the
-r33 profile. This r34 matrix is a moderate follow-up that reduces that excess
-while preserving equal-channel grey; the IMX519 solid-colour test pattern
-remains equal in all output channels. `tests/camera/ppm-metrics.py` reports the
-mean RGB values and `green_ratio` (green divided by the mean of red and blue)
-so future captures can measure the change consistently. It is a bounded scene correction, not factory colour
-calibration: there is still no chart, illuminant, lens-shading or flat-field
-measurement, and Android/vendor processing remains outside this open pipeline.
+Controlled rear captures showed a remaining green excess after the r34 profile.
+This r35 matrix is a stronger but still row-sum-preserving follow-up: the
+same-scene 640x480 final frame moved the main-rear `green_ratio` from 1.304 to
+1.238 and the secondary-rear ratio from 1.256 to 1.181. A low-saturation front
+wall tile stayed at approximately 1.062 versus 1.063 on r34, so the small front
+residual is not hidden by a whole-frame average. The IMX519 solid-colour test
+pattern remains equal in all output channels. `tests/camera/ppm-metrics.py`
+reports the mean RGB values and `green_ratio` (green divided by the mean of red
+and blue) so future captures can measure the change consistently. It is a
+bounded scene correction, not factory colour calibration: there is still no
+chart, illuminant, lens-shading or flat-field measurement, and Android/vendor
+processing remains outside this open pipeline.
 The profile test checks the exact matrix and rebuilding from this repository
 reproduces the same result without shipping a vendor binary.
 
-For repeatable pipeline checks, the r34 simple-pipeline patch exposes
+For repeatable pipeline checks, the r35 simple-pipeline patch exposes
 `draft::TestPatternMode`. Set the IMX519 sensor components to the same value,
 then run the checked-in `tests/fixtures/processed-neutral-auto-awb.yaml` with
 `cam` for at least 96 frames. The final frame should be neutral; this test
@@ -292,7 +295,7 @@ view.
 
 ### User controls
 
-The default CCM is a moderate green-cast correction whose three rows each
+The default CCM is the r35 moderate green-cast correction whose three rows each
 sum to one, so equal-channel grey remains grey without pretending that the
 sensors have been colour-chart calibrated. Advanced Snapshot r36 also exposes
 **Image Controls → Green-cast correction → Apply** for the currently selected
@@ -303,11 +306,11 @@ white balance as required by the standard matrix control, and is reversed by
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r34 lower stack/current app |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r35 lower stack/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
-| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r34/r8 transport and r36 source round trip |
+| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r35/r8 transport and r36 source round trip |
 | Manual white balance | Yes | Yes | Yes | Standard two-element `ColourGains`; red/blue 0.1–4.0 UI and per-sensor persistence |
-| Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; r34 profiles reduce the measured green excess while bounded custom requests remain available in manual AWB |
+| Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; r35 profiles reduce the measured rear green excess while bounded custom requests remain available in manual AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
 | Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
@@ -379,7 +382,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The current reference build produced `libcamera`/`libcamera-ipa` r34,
+The current reference build produced `libcamera`/`libcamera-ipa` r35,
 `pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r36 and the SDM845
 kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only; no reboot is implicit.
@@ -389,27 +392,26 @@ These commands build packages only; no reboot is implicit.
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
 
-### Current r34/r36 source entry
+### Current r35/r36 live entry
 
-- The source and pmaports integration patch now target the AArch64
-  `libcamera`/IPA r34 pair and Advanced Snapshot r36. Both package lines build
-  successfully; device installation and live chart acceptance remain pending
-  because the phone's SSH service is currently not accepting sessions. The
-  installed r33/r34/r8 generation remains the rollback point.
+- The source and pmaports integration patch target the AArch64
+  `libcamera`/IPA r35 pair and Advanced Snapshot r36. The guarded transaction
+  is installed on the reference phone; the exact r34/r36/r8 stage remains the
+  rollback point.
+- The r35 profiles apply the stronger row-sum-preserving green-cast correction
+  to IMX519 main, IMX376 secondary and IMX371 front. In controlled final
+  frames, rear green ratios moved from 1.304 to 1.238 and from 1.256 to 1.181;
+  the fixed-focus front moved from 1.058 to 1.076 in a different scene, while
+  its neutral wall-tile comparison remained effectively unchanged at 1.062
+  versus 1.063. These are scene measurements, not a factory colour-calibration
+  claim.
 - The bounded live validator completed both rear tap/reset transitions and
-  10-second stability windows with zero restarts and zero post-reset lens
-  requests: main recorded 41 post-reset metrics, secondary 54, and the fixed-
-  focus front stream completed 120 frames.
-- PipeWire, WirePlumber and pipewire-pulse remained active after the package
-  replacement. No reboot, bootloader or kernel change was involved.
-
-The r33 equal-channel IMX519 sensor pattern produced equal RGB values after
-AWB settled, and the r34 source keeps that row-sum invariant while increasing
-the measured green suppression. The available A/B captures reduced the
-residual green ratio on the secondary rear and front sensors. This validates
-the source/profile invariants, but r34 still needs a built-package and
-controlled chart comparison before it can be called device-accepted or
-Android-vendor image parity.
+  60-second stability windows with zero restarts and zero post-reset lens
+  requests: main recorded 183 post-reset metrics, secondary 240/241, and the
+  fixed-focus front stream completed 120 frames.
+- PipeWire, WirePlumber and pipewire-pulse remained active after the guarded
+  package replacement. No reboot, bootloader, kernel or firmware change was
+  involved.
 
 ### Historical r28/r24 runtime entry
 

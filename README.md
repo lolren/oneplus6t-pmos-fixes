@@ -106,17 +106,17 @@ the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is the
-[camera-r34/runtime-r43 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
+[camera-r35/runtime-r44 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
 On a booted phone with normal postmarketOS repositories configured, download
-the r43 APK and `SHA256SUMS` from that release, verify the matching line, then
+the r44 APK and `SHA256SUMS` from that release, verify the matching line, then
 install the local package:
 
 ```sh
-gh release download runtime-r43-camera-r34 \
+gh release download runtime-r44-camera-r35 \
   --repo lolren/oneplus6t-pmos-fixes \
-  --pattern 'oneplus6t-pmos-fixes-*-r43.apk' --pattern SHA256SUMS
+  --pattern 'oneplus6t-pmos-fixes-*-r44.apk' --pattern SHA256SUMS
 runtime_apk=$(find . -maxdepth 1 -type f \
-  -name 'oneplus6t-pmos-fixes-*-r43.apk' -print -quit)
+  -name 'oneplus6t-pmos-fixes-*-r44.apk' -print -quit)
 test -n "$runtime_apk"
 awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
 sudo apk add --allow-untrusted "$runtime_apk"
@@ -128,15 +128,30 @@ the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
 The same pre-release contains the matching native camera pair
-(`libcamera`/IPA r34), PipeWire SPA r8 and Advanced Snapshot r36. Download all
-five camera APKs from that release, verify them with the same `SHA256SUMS`, and
-follow the simulation-first install procedure in
-[packaging/pmaports/README.md](packaging/pmaports/README.md). The r34 profiles
+(`libcamera`/IPA r35), PipeWire SPA r8 and Advanced Snapshot r36. Download all
+five package types from that release, verify them with the same `SHA256SUMS`,
+and follow the simulation-first install procedure in
+[packaging/pmaports/README.md](packaging/pmaports/README.md). The r35 profiles
 apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
 Advanced Snapshot action is available as **Image Controls → Green-cast
 correction → Apply** and is reversible with **Reset**.
 
-The current checkout recipe is r43. It adds the signed r34/r36 camera-generation
+For a one-command download and verification flow, use the checked-in wrapper
+as the graphical login user (it simulates by default):
+
+~~~sh
+./scripts/install-camera-generation
+./scripts/install-camera-generation --apply
+~~~
+
+It pins the release tag and asset names, requires HTTPS, verifies the signed
+release checksum file, retains a fresh stage directory for rollback, and then
+delegates all package changes to pmos-manage-camera-generation. It does not
+reboot or touch firmware, boot slots, partitions or Waydroid. Set
+PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
+candidate and rollback assets must survive a cache cleanup.
+
+The current checkout recipe is r44. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
 synchronizer for the two Waydroid recording-profile files and the r35 temporary
 sleep inhibitor,
@@ -150,6 +165,11 @@ r42 also provides an explicit local `sshd` restart path for an
 authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
+
+The clean r44 package built from the current checkout is published in the
+`runtime-r44-camera-r35` pre-release; its exact SHA-256 is recorded in that
+release's `SHA256SUMS`. It includes the lower-layer r35/r36 manifest and the
+socket-activation-safe camera generation manager.
 
 The clean r42 package built from commit `cb8f1e7` has SHA-256
 `9b1677d6e733b90876e06a3c1958006072bb6670aab1e91baaa2e7903ed9eb50` and is
@@ -360,7 +380,7 @@ and through an open Camera3 HAL in Waydroid.
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | Gamma and sensor calibration | Advanced Snapshot exposes a standard `Gamma` tone control plus a phone-width per-sensor calibration dialog for repeatable exposure, white balance, 3×3 colour matrix, contrast, detail and focus settings; profiles are keyed by stable camera identity. |
 | Automatic/manual white balance | Keeps statistics-driven AWB as the default, transports standard red/blue `ColourGains` arrays through PipeWire and lets Advanced Snapshot persist bounded gains per physical sensor. |
-| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the r34 downstream profiles add a moderate, grey-preserving green-cast correction, while the app retains bounded user/chart overrides without claiming factory calibration. |
+| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the r35 downstream profiles add a stronger, grey-preserving green-cast correction, while the app retains bounded user/chart overrides without claiming factory calibration. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls, keeps the tappable value chip in the toolbar instead of over the mode selector, and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
@@ -387,7 +407,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer libcamera r34 / Advanced Snapshot r36 / PipeWire r8 line. The
+publishes the newer libcamera r35 / Advanced Snapshot r36 / PipeWire r8 line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -406,18 +426,20 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current source line is libcamera/IPA r34, PipeWire SPA r8 and Advanced
-Snapshot r36; the reference phone is still running the accepted libcamera r33
-pair and the installed r34 app while the r34 colour follow-up and r36 app pair
-await phone installation. The app source is commit
+The current source line is libcamera/IPA r35, PipeWire SPA r8 and Advanced
+Snapshot r36, and that generation is installed on the reference phone. The r34
+libcamera/IPA pair remains the exact lower-stack rollback. The app source is commit
 `df308e9d95ba9d90ac6866010db3b95ce9d11de4`; the exact AArch64 package pair is
-built and artifact-validated. The controls panel and calibration dialog now
+built, artifact-validated and live-tested. The controls panel and calibration dialog now
 include automatic/manual white balance, per-sensor red/blue gains and a
-bounded 3×3 colour matrix. The r34 IPA selects the
-documented sensor-specific profiles and applies a moderate grey-preserving
-green-cast correction; equal-channel test-pattern output remained neutral and
-custom matrix requests were accepted on IMX371, IMX376 and IMX519, while automatic mode
-restored each stream. The 1.0× chip is contained by the top toolbar and no
+bounded 3×3 colour matrix. The r35 IPA selects the documented sensor-specific
+profiles and applies a stronger grey-preserving green-cast correction to
+IMX371, IMX376 and IMX519; equal-channel test-pattern output remains neutral.
+Controlled final frames reduced the rear green ratios from 1.304 to 1.238 and
+from 1.256 to 1.181, while the front neutral-tile check remained stable at
+approximately 1.062 versus 1.063. Custom matrix requests were accepted on all
+three sensors, while automatic mode restored each stream. The 1.0× chip is
+contained by the top toolbar and no
 longer covers the photo/video/QR selector.
 Native and Waydroid rear focus controls also pass their live
 metadata/actuator probes. A factory CCM, lens shading and Android vendor
@@ -526,7 +548,7 @@ commands without stopping services or writing storage. The installer repeats
 the mount and I/O checks itself, so it refuses access even when this report is
 not run.
 
-To reproduce the current r7/r4-to-r7/r5 UI update, stage the unchanged r7
+For historical reproduction of the r7/r4-to-r7/r5 UI update, stage the unchanged r7
 PipeWire SPA, the r7 app packages and the exact r7/r4 rollback in isolated
 repositories:
 
@@ -554,23 +576,23 @@ still requires the simulation and phone-side health gates below.
 An opt-in r8 capture-safety candidate is available from the
 [camera-r7-r6 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r6).
 Use it with `data/camera-generation-r7-r6.psv`; it keeps PipeWire r7 and
-rolls back to the r7 Advanced Snapshot pair. It is source/package validated but
-not hardware-accepted, so the default manager manifest remains r7/r5.
+rolls back to the r7 Advanced Snapshot pair. It remains an explicit historical
+opt-in; the default manager manifest is now r35/r36.
 
 An opt-in r9 save-feedback candidate is available from the
 [camera-r7-r7 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r7).
 Use it with `data/camera-generation-r7-r7.psv`; it keeps PipeWire r7, upgrades
 the app pair from r8 to r9 and rolls back to r8. The app now reports a visible
-error when a capture produces no usable file. It is source/package validated
-but not hardware-accepted, so the default manager manifest remains r7/r5.
+error when a capture produces no usable file. It remains an explicit historical
+opt-in; the default manager manifest is now r35/r36.
 
 An opt-in r10 adjustment-safety candidate is available from the
 [camera-r7-r10 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r10).
 Use it with `data/camera-generation-r7-r10.psv`; it keeps PipeWire r7, upgrades
 the app pair from r9 to r10 and rolls back to r9. r10 cancels stale image-
 adjustment helpers when a newer slider request, camera switch or page teardown
-supersedes them. It is source/package validated but not hardware-accepted, so
-the default manager manifest remains r7/r5.
+supersedes them. It remains an explicit historical opt-in; the default manager
+manifest is now r35/r36.
 
 An opt-in r11 bounded rear-flash candidate is available from the
 [camera-r7-r11 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r7-r11).
@@ -578,31 +600,30 @@ Use it with `data/camera-generation-r7-r11.psv`; it keeps PipeWire r7, upgrades
 the Advanced Snapshot pair from r10 to r11 and retains r10 for rollback. The
 app's Hardware flash switch launches the bounded `pmos-camera-flash` helper
 only for rear stills and restores LED state on completion or interruption. It
-is source/package validated but not hardware-accepted, so the default manager
-manifest remains r7/r5.
+remains an explicit historical opt-in; the default manager manifest is now
+r35/r36.
 
-The current opt-in lower-stack candidate is available from the
+The earlier opt-in lower-stack candidate is available from the
 [camera-r26-r15 prerelease](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/camera-r26-r15).
 Use it with `data/camera-generation-r26-r15.psv`; it updates the matching
 libcamera/IPA r26 pair and Advanced Snapshot r15 while retaining the exact
 r24/r11 rollback stage. r15 aligns bounded whole-frame handheld translation
 before its opt-in linear-light Software HDR merge. It remains source/package
-validated rather than hardware-accepted, and the default manager manifest
-stays r7/r5 until live camera and lifecycle testing is possible.
+validated and is retained for historical reproduction; the default manager
+manifest is now r35/r36.
 
-The current complete lower-stack candidate is `data/camera-generation-r34-r36.psv`.
-Its signed stage upgrades libcamera/IPA to r34, keeps PipeWire at r8 and
-upgrades Advanced Snapshot to r36; the exact r33/r34/r8 package set is retained
+The current complete lower-stack generation is `data/camera-generation-r35-r36.psv`.
+Its signed stage upgrades libcamera/IPA to r35, keeps PipeWire at r8 and
+retains Advanced Snapshot r36; the exact r34/r36/r8 package set is retained
 for rollback. Use the simulation-first procedure in
 [docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md) and pass the explicit
 manifest when the stage is downloaded. It contains the stronger
-grey-preserving green-cast correction for all three sensors, but remains
-pending live installation and chart acceptance while the phone's authenticated
-SSH channel is stalled.
+grey-preserving green-cast correction for all three sensors. It is live-tested
+on the reference phone: rear green ratios fell from 1.304 to 1.238 and from
+1.256 to 1.181 in the controlled final frames, and the all-sensor focus smoke
+test passed with zero restarts during both 60-second rear windows.
 The signed stage and runtime package are published in the
-[runtime-r43/camera-r34 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
-The stage archive SHA-256 is
-`f70b9f8d42259beb5c868847675ef97dcd153533796aef09b5fc0700d4a1fabd`.
+[runtime-r44/camera-r35 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
 
 The equivalent low-level simulation is:
 

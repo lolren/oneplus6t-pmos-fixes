@@ -2,13 +2,9 @@
 
 `scripts/manage-camera-generation` is the guarded installer for the OnePlus 6T
 camera generations and their exact rollback stages. It is deliberately
-narrower than a general package updater. The
-legacy `camera-generation-r7-r1.psv` remains available for the earlier
-r6/r0-to-r7/r1 lower-stack transition; the default manifest is r7/r5. The
-opt-in r7/r7 manifest carries the r9 save-feedback app pair and r8 rollback;
-the newer opt-in r7/r10 manifest carries the r10 adjustment-serialization pair
-and r9 rollback, and r7/r11 carries the bounded rear-flash pair with r10
-rollback.
+narrower than a general package updater. The default manifest is the live
+r35/r36 lower-stack generation; the earlier r7, r26 and r34 manifests remain
+available for exact reproduction and rollback history.
 
 ## Requirements
 
@@ -16,7 +12,7 @@ rollback.
 - postmarketOS with apk-tools 3, systemd user services, PipeWire and
   WirePlumber;
 - the graphical login user with working `sudo` for apk transactions;
-- all six exact APKs and both offline repository indexes; and
+- all ten exact APKs and both offline repository indexes; and
 - a detailed object near the centre of the camera view for the post-install
   autofocus test.
 
@@ -24,15 +20,15 @@ The bundled manifest pins every package filename, version and SHA-256 plus the
 SHA-256 of the public signing key. The public key is kept under
 `packaging/keys/`; no private signing key is present or required.
 
-## Current r34/r36 lower-stack candidate
+## Current r35/r36 lower-stack generation
 
-`data/camera-generation-r34-r36.psv` is the current manager-ready candidate for
-the OnePlus 6T. It upgrades the complete camera path in one guarded
+`data/camera-generation-r35-r36.psv` is the current manager-ready generation for
+the OnePlus 6T. It upgrades the native colour profiles in one guarded
 transaction:
 
 ```text
-candidate: libcamera/IPA r34, PipeWire SPA r8, Advanced Snapshot r36
-rollback:  libcamera/IPA r33, PipeWire SPA r8, Advanced Snapshot r34
+candidate: libcamera/IPA r35, PipeWire SPA r8, Advanced Snapshot r36
+rollback:  libcamera/IPA r34, PipeWire SPA r8, Advanced Snapshot r36
 ```
 
 The manifest pins all ten APK hashes and the SHA-256 of the exact public key
@@ -42,28 +38,40 @@ offline candidate and rollback indexes, with the language package in the
 repository: the manager rejects extra APKs, missing rows, altered hashes or an
 untrusted index before it invokes apk.
 
-The signed stage and r43 runtime helper are published in the
-[`runtime-r43-camera-r34` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
-The stage archive SHA-256 is
-`f70b9f8d42259beb5c868847675ef97dcd153533796aef09b5fc0700d4a1fabd`; verify
-all release assets with its `SHA256SUMS` before extraction.
+The signed stage and r44 runtime helper are published in the
+[`runtime-r44-camera-r35` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
+Verify all release assets with its `SHA256SUMS` before extraction.
 
 Review and simulate it with:
 
 ```sh
 ./scripts/manage-camera-generation \
-  --stage /absolute/path/to/camera-r34-r36 \
-  --manifest data/camera-generation-r34-r36.psv \
+  --stage /absolute/path/to/camera-r35-r36 \
+  --manifest data/camera-generation-r35-r36.psv \
   install
 ```
 
+On a booted phone, the checked-in wrapper can fetch and verify the same pinned
+release without requiring the GitHub CLI. It simulates by default and retains
+the downloaded stage for rollback:
+
+~~~sh
+./scripts/install-camera-generation
+./scripts/install-camera-generation --apply
+~~~
+
+The wrapper must run as the graphical login user; it invokes sudo only when
+the runtime helper or the guarded apk transaction requires it. It verifies
+SHA256SUMS before extraction and never reboots or writes firmware.
+
 The command is simulation-only unless the graphical login user explicitly adds
-`--apply`. It never reboots, writes firmware or changes boot slots. The r34
-profiles apply the moderate grey-preserving green-cast correction to IMX371,
-IMX376 and IMX519; the live phone still needs the local SSH-daemon recovery,
-colour-chart captures and the existing all-sensor autofocus smoke test before
-this candidate can be called device-accepted. Keep the exact rollback stage
-available before applying it.
+`--apply`. It never reboots, writes firmware or changes boot slots. The r35
+profiles apply the stronger grey-preserving green-cast correction to IMX371,
+IMX376 and IMX519. On the reference phone, the guarded r35 transaction and
+the all-sensor smoke test passed: both rear tap-focus results were `focused`,
+there were zero post-reset restarts or lens requests during the 60-second
+windows, and the fixed-focus front completed 120 frames. Keep the exact r34
+rollback stage available before applying it.
 
 ## Earlier r7 UI-only candidates
 
@@ -86,7 +94,7 @@ when reviewing it:
   install
 ```
 
-The default remains `camera-generation-r7-r5.psv`; the r7 UI-only generations
+The default is now `camera-generation-r35-r36.psv`; the r7 UI-only generations
 are retained as historical, independently rollback-safe transitions.
 
 `data/camera-generation-r7-r7.psv` is the next opt-in UI-only candidate. It

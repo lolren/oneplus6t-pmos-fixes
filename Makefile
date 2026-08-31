@@ -20,6 +20,7 @@ SCRIPTS = \
 	scripts/enable-ssh \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
+	scripts/install-camera-generation \
 	scripts/pmos-safe-upgrade \
 	scripts/configure-power \
 	scripts/check-power \
@@ -89,6 +90,7 @@ test:
 		tests/test-ssh-recovery.sh \
 		tests/test-device-session.sh \
 		tests/test-camera-generation.sh tests/test-camera-fixtures.sh \
+		tests/test-camera-release-installer.sh \
 		tests/test-waydroid-installer.sh \
 		tests/test-waydroid-audio-probe.sh \
 		tests/test-snapshot-patches.sh \
@@ -134,6 +136,7 @@ test:
 	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
 	./tests/test-camera-fixtures.sh
+	./tests/test-camera-release-installer.sh
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-camera-profiles.sh
 	sh tests/test-waydroid-audio-probe.sh
@@ -242,6 +245,7 @@ install:
 		data/camera-generation-r26-r14.psv \
 		data/camera-generation-r26-r15.psv \
 		data/camera-generation-r34-r36.psv \
+		data/camera-generation-r35-r36.psv \
 		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a8b0868.rsa.pub \
 		"$(DESTDIR)$(LIBEXECDIR)/keys/"
@@ -264,6 +268,8 @@ install:
 	ln -sfn "$(LIBEXECDIR)/scripts/check-messages" "$(DESTDIR)$(SBINDIR)/pmos-check-messages"
 	ln -sfn "$(LIBEXECDIR)/scripts/manage-camera-generation" \
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"
+	ln -sfn "$(LIBEXECDIR)/scripts/install-camera-generation" \
+		"$(DESTDIR)$(SBINDIR)/pmos-install-camera-generation"
 	ln -sfn "$(LIBEXECDIR)/scripts/pmos-safe-upgrade" \
 		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-power" \

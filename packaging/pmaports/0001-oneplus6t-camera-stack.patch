@@ -6187,7 +6187,7 @@ index 0000000000000000000000000000000000000000..efb018f3925ae0179c8f558dcfefc07c
 + 	bool metadataRequired = false;
 + 
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..5c3aa57b0015137563bd1a8f34eca4773820aa1d 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..755df2b636c500fbc026ef90ae8df9e83024b62e 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -6195,7 +6195,7 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..5c3aa57b0015137563bd1a8f34eca477
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=34
++pkgrel=35
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
@@ -6259,29 +6259,31 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..5c3aa57b0015137563bd1a8f34eca477
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+bfa87b1c1fc3935e27c2775555100ec29199a1f2e9bb78cd9d9e85be35b432e7c9980c78b79992ebdb306468233534aeb9a0ddc3ba99c284ea1fb5adc1e985e8  imx371.yaml
-+a76c0cdd1c08e5d9c736e19d10c7358af306ead1bfaec762620c8983469dc3efe09261b4ec3206d7b7916b43abbf650bd893e88e6a212a0bd862a2c3c7a21f9d  imx376.yaml
-+6d5abe1db17d5f39f39cc5dc8a46ef9a497a19d1fba5aa36f9d60775adfc9585ab99a36be90bef2780687f5359973f333a140611833ac6cdd5356a33c3adccc5  imx519.yaml
++923348df8e2dd3e6bf333348eafa1f70885d121be593808e6953b640d7d94b306bfe862af3508bf64c62b2f4f155f95ce242cf1713ec6ed1e9cb37f1dd1fe92c  imx371.yaml
++d838b9eda0378c291ab5c8a744376c3c5225546bbd3108681ba75725c7e4f511fd9ecce6a17b6a2aafc06a53a498741b508217ad54337979ba9565ba6eaa889b  imx376.yaml
++1f8575bd5994169a475251bcc5019319d3ab34d3f7748b5a4b34bbed7414b694c40cb5a438584001b1bdb106f546d89944f6eb87dcbc2cdb2288bbfd473054af  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..5e696707ce8484a48ccb82442fc7be0ff2cd06d4 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..eda115d34348675872a8dbae8f3c7433f01ce906 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
-@@ -6,6 +6,22 @@ algorithms:
+@@ -6,6 +6,24 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
 +        # Keep equal RGB neutral while gently suppressing the measured
-+        # green-channel excess in ordinary scenes.  Every row sums to one,
-+        # so the deterministic equal-channel calibration frame remains grey.
++        # green-channel excess in ordinary scenes. Every row sums to one, so
++        # the deterministic equal-channel calibration frame remains grey.
++        # The stronger r35 candidate is still a scene correction, not a
++        # replacement for a measured colour-chart calibration.
 +        - ct: 6500
-+          ccm: [ 0.95, 0.05, 0.0,
-+                 0.05, 0.90, 0.05,
-+                 0.0, 0.05, 0.95 ]
++          ccm: [ 0.90, 0.10, 0.0,
++                 0.10, 0.80, 0.10,
++                 0.0, 0.10, 0.90 ]
    - Adjust:
 +      gamma: 2.0
 +      contrast: 1.1
@@ -6293,10 +6295,10 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..5e696707ce8484a48ccb82442fc7be0f
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..73a2b2bddb8f2abad2c285cc312e487c55417405 100644
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..b5d2846167fda024b53cba564fd8a588a91603f9 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,47 @@ algorithms:
+@@ -7,36 +7,49 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -6332,11 +6334,13 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..73a2b2bddb8f2abad2c285cc312e487c
 -                -0.15696, -0.51345,  1.67041 ]
 +        - ct: 6500
 +          # Keep equal RGB neutral while gently suppressing the measured
-+          # green-channel excess in ordinary scenes.  Every row sums to one,
-+          # so the deterministic equal-channel calibration frame remains grey.
-+          ccm: [ 0.95, 0.05, 0.0,
-+                 0.05, 0.90, 0.05,
-+                 0.0, 0.05, 0.95 ]
++          # green-channel excess in ordinary scenes. Every row sums to one, so
++          # the deterministic equal-channel calibration frame remains grey.
++          # The stronger r35 candidate is still a scene correction, not a
++          # replacement for a measured colour-chart calibration.
++          ccm: [ 0.90, 0.10, 0.0,
++                 0.10, 0.80, 0.10,
++                 0.0, 0.10, 0.90 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800
@@ -6374,22 +6378,24 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..73a2b2bddb8f2abad2c285cc312e487c
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..0241d2775ceedefc0c5aea378c2501449f7ae718 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..4647fa9b70c7e3b27aef019332fb07161879fbf9 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,48 @@ algorithms:
+@@ -6,6 +6,50 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
 +        # Keep equal RGB neutral while gently suppressing the measured
-+        # green-channel excess in ordinary scenes.  Every row sums to one,
-+        # so the deterministic equal-channel calibration frame remains grey.
++        # green-channel excess in ordinary scenes. Every row sums to one, so
++        # the deterministic equal-channel calibration frame remains grey.
++        # The stronger r35 candidate is still a scene correction, not a
++        # replacement for a measured colour-chart calibration.
 +        - ct: 6500
-+          ccm: [ 0.95, 0.05, 0.0,
-+                 0.05, 0.90, 0.05,
-+                 0.0, 0.05, 0.95 ]
++          ccm: [ 0.90, 0.10, 0.0,
++                 0.10, 0.80, 0.10,
++                 0.0, 0.10, 0.90 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800

@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r43`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r44`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -49,15 +49,15 @@ The release's `SHA256SUMS` also covers the r34 libcamera/IPA pair, PipeWire r8,
 Advanced Snapshot r36 and the exact pmaports integration patch. The package
 contains no kernel or firmware and does not reboot the phone.
 
-The r43 package adds `data/camera-generation-r34-r36.psv` and the matching
-`pmos@local-6a92d930.rsa.pub` key. The manifest binds the r34/r36 candidate to
-the exact r33/r34/r8 rollback set; the manager verifies both offline repository
-indexes, all APK signatures and all ten hashes before any apk operation. The
-new AArch64 runtime APK and stage archive are published together in the
-[`runtime-r43-camera-r34`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34)
-development pre-release after the isolated build. The runtime APK SHA-256 is
-recorded in the release `SHA256SUMS`, which also covers the signed r34/r36
-stage, manifest, public key and pmaports integration patch.
+The r44 package adds `data/camera-generation-r35-r36.psv` and the matching
+`pmos@local-6a92d930.rsa.pub` key. The manifest binds the live r35/r36 candidate
+to the exact r34/r36/r8 rollback set; the manager verifies both offline
+repository indexes, all APK signatures and all ten hashes before any apk
+operation. The AArch64 runtime APK, signed stage archive, manifest, public key
+and pmaports integration patch are published together in the
+[`runtime-r44-camera-r35`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35)
+development pre-release. The release `SHA256SUMS` is the authoritative checksum
+record for the runtime APK and every staged artifact.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
@@ -151,10 +151,10 @@ available channels without changing them, while `--pulse` performs a capped,
 restorable illumination pulse for Advanced Snapshot. The helper is explicit
 and off by default; it is not a libcamera automatic-flash implementation.
 
-The package also installs `pmos-manage-camera-generation`, the default r7/r5,
+The package also installs `pmos-manage-camera-generation`, the default r35/r36,
 opt-in r7/r6 capture-safety, opt-in r7/r7 save-feedback, opt-in r7/r10
 adjustment-safety, opt-in r7/r11 bounded-flash, the opt-in r26/r13 and r26/r14
-lower-stack generations, the current r34/r36 candidate and legacy r7/r1
+ lower-stack generations, the current r35/r36 candidate and legacy r7/r1
 through r7/r4 immutable manifests, the current and retained rollback public
 verification keys and the non-image all-sensor runner. It also installs
 `pmos-safe-upgrade`, whose simulation-first gate blocks ordinary `apk upgrade`
