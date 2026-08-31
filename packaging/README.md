@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r46`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r48`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -83,6 +83,17 @@ Waydroid-session unit. Its APK payload is otherwise unchanged from r45.
 The r46 package is published in the
 [`runtime-r46-green-cast-installer` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer);
 verify that release's `SHA256SUMS` before installing it.
+
+The r47 package corrected the stale image-level camera-profile mapping after a
+live Camera2 ID audit. It assigns ordinary profiles to rear-main ID 0 and
+fixed-focus front ID 1, retains only the parser sentinel for auxiliary ID 2,
+and is published in the
+[`runtime-r47-video-profile-correction` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r47-video-profile-correction).
+
+The current r48 package retains that correction and fixes the persistent
+session unit to use the normal graphical `user` account and systemd-expanded
+runtime paths; greetd remains the login supervisor. It is published in the
+[`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime

@@ -106,17 +106,17 @@ the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is the
-[runtime-r46 green-cast-installer release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer).
+[runtime-r48 graphical-session release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
 On a booted phone with normal postmarketOS repositories configured, download
-the r46 APK and `SHA256SUMS` from that release, verify the matching line, then
+the r48 APK and `SHA256SUMS` from that release, verify the matching line, then
 install the local package:
 
 ```sh
-gh release download runtime-r46-green-cast-installer \
+gh release download runtime-r48-graphical-session \
   --repo lolren/oneplus6t-pmos-fixes \
-  --pattern 'oneplus6t-pmos-fixes-*-r46.apk' --pattern SHA256SUMS
+  --pattern 'oneplus6t-pmos-fixes-*-r48.apk' --pattern SHA256SUMS
 runtime_apk=$(find . -maxdepth 1 -type f \
-  -name 'oneplus6t-pmos-fixes-*-r46.apk' -print -quit)
+  -name 'oneplus6t-pmos-fixes-*-r48.apk' -print -quit)
 test -n "$runtime_apk"
 awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
 sudo apk add --allow-untrusted "$runtime_apk"
@@ -170,7 +170,7 @@ reboot or touch firmware, boot slots, partitions or Waydroid. Set
 PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
 candidate and rollback assets must survive a cache cleanup.
 
-The current checkout recipe is r46. It adds the signed r35/r36 camera-generation
+The current checkout recipe is r48. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
 synchronizer for the two Waydroid recording-profile files and the r35 temporary
 sleep inhibitor,
@@ -188,7 +188,13 @@ authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
 
-The clean r47 package, which corrects the Waydroid recording-profile mapping
+The clean r48 package, which corrects the Waydroid recording-profile mapping,
+installs the checksum-verified Advanced Snapshot r37 app-only installer, and
+binds the persistent graphical session to the actual postmarketOS user, is
+published in the
+[`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
+
+The clean r47 package, which corrected the Waydroid recording-profile mapping
 and includes the checksum-verified Advanced Snapshot r37 app-only installer,
 is published in the
 [`runtime-r47-video-profile-correction` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r47-video-profile-correction).

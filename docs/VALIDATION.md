@@ -56,6 +56,22 @@ ID 1 front      encodedValid=true encodedDurationMs=9920 encodedBytes=8015983 en
 The runner and probe refuse auxiliary ID 2 before allocating an encoder. No
 auxiliary Venus recording was attempted during this correction.
 
+The r48 runtime package was then installed after independent checksum and APK
+signature verification:
+
+```text
+package  oneplus6t-pmos-fixes-0.1.0_p20260831150819-r48.apk
+sha256   289f1490820432706220cc28bbc03cabecbf4ef7d042486bcd81a9e7e78a2b9b
+```
+
+Its persistent session unit was exercised with `enable --now`. At that time
+the phone's compositor was the `greetd` greeter, with no normal user's
+`/run/user/10000/wayland-0` socket. The unit correctly remained in its bounded
+socket preflight rather than starting Android on the greeter; the test was
+then disabled/stopped to preserve idle battery behavior. After logging into the
+normal graphical account, enable it with the documented command so it owns the
+user's Wayland/D-Bus session and survives SSH disconnects.
+
 ## 2026-08-31 live r35/r36 green-cast acceptance
 
 The reference OnePlus 6T is now on the guarded `oneplus6t-r35-r36` generation:

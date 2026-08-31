@@ -42,8 +42,9 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 On 2026-08-31 the full protected Camera2 probe returned valid YUV and JPEG
 frames for IDs 0, 1 and 2, with zero JPEG row discontinuities. Rear IDs 0 and
 2 returned AF states `[3, 4]` and centre regions; fixed-focus front ID 1
-returned state `[0]` with no AF region. Runtime r47 was then installed and the
-stopped-rootfs synchronizer applied source SHA-256
+returned state `[0]` with no AF region. The r47 profile correction, retained in
+runtime r48, was then installed and the stopped-rootfs synchronizer applied
+source SHA-256
 `1ba320e0f74225d41beb6bf8ffc0c75ae6102938d230245b0f472629a0e51dfe` to both
 Android profile files, preserving the dated rollback backup
 `/var/lib/waydroid/backups/camera-profiles-20260831T134936Z-30401`.
