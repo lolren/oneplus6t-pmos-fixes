@@ -30,6 +30,8 @@ location and Android-container failures cannot obscure one another.
 4. Continue Android acceptance: the Google-free Vanilla image, r53 camera
    provider and r53 Codec2 overlays pass the protected all-camera probes, and
    main/front H.264/AAC files decode without the former colour corruption.
+   The new disabled graphical-session unit now provides a persistent
+   greetd/Wayland boundary instead of binding the session to an SSH scope.
    Main rear remains performance-limited and auxiliary rear hardware encoding
    remains hard-disabled after a reproducible Venus IRQ storm. Soak an
    ordinary Android camera app across open/close and app switching, and keep

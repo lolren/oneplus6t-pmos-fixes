@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r44`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r45`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -58,6 +58,14 @@ and pmaports integration patch are published together in the
 [`runtime-r44-camera-r35`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35)
 development pre-release. The release `SHA256SUMS` is the authoritative checksum
 record for the runtime APK and every staged artifact.
+
+The r45 package additionally installs the disabled
+`oneplus6t-waydroid-session.service`. It keeps the Android session in the
+graphical greetd/Wayland system scope instead of an SSH login scope, so the
+session remains alive after remote diagnostics end. It is still disabled by
+default; enable it only after the Vanilla image, camera overlay and health
+preflight pass. The package test suite verifies the unit's dependency,
+identity, Wayland environment and installation mode.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
@@ -185,6 +193,16 @@ run the documented ModemManager-to-Waydroid mock-provider bridge continuously.
 It is not enabled by the package, follows the Waydroid container lifecycle so
 it does not pull the container into every boot, and does not provide a vendor
 GNSS HAL.
+
+The optional `oneplus6t-waydroid-session.service` is also installed disabled.
+It is the persistent graphical-session boundary for the default OnePlus 6T
+Phosh/greetd setup: it waits for `/run/user/114/wayland-0`, runs `waydroid
+session start` as `greetd`, and is tied to `waydroid-container.service`. Use
+`sudo systemctl enable --now oneplus6t-waydroid-session.service` only after the
+Vanilla image, camera overlay and health gate pass. Keeping the session in
+this system scope avoids killing it when an SSH login exits. The unit is not
+enabled by the package and must be adjusted with a drop-in on a different
+graphical user/compositor.
 
 NFC userspace remains an optional package dependency because `neard` is an
 Alpine testing package. On the recovered reference phone, `neard` and

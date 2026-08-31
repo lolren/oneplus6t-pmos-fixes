@@ -471,7 +471,7 @@ provider override runs as Android's `cameraserver`, adds the host video GID so
 it can open the mainline media devices, and writes bounded diagnostic logs to
 `/data/local/tmp/libcamera-provider.log` inside Android.
 
-Start the container as root and the session as the normal login user:
+Start the container as root and the session as the normal graphical user:
 
 ```sh
 sudo waydroid container start
@@ -481,6 +481,37 @@ waydroid session start
 This operation does not alter a partition, boot slot, kernel or firmware and
 does not require a phone reboot. The installer does not start or stop services;
 that is kept explicit so it cannot unexpectedly interrupt a camera session.
+
+### Persistent graphical-session startup
+
+Do not keep the Waydroid session attached to an SSH login scope. When that
+scope closes, systemd can terminate the session even though the container is
+still healthy. The package includes a disabled system service for the default
+postmarketOS Phosh/greetd session on the OnePlus 6T. It binds the session to
+`waydroid-container.service`, waits for the Wayland socket, and runs it as
+`greetd` with the existing `/run/user/114` graphical bus:
+
+```sh
+sudo systemctl enable --now oneplus6t-waydroid-session.service
+systemctl status oneplus6t-waydroid-session.service
+waydroid status
+```
+
+Enable it only after the Vanilla image, camera overlay and health preflight
+pass. The package does not enable it automatically. To return to manual
+startup, disable the unit and stop it while the container is idle:
+
+```sh
+sudo systemctl disable --now oneplus6t-waydroid-session.service
+```
+
+The unit is intentionally pinned to the stock `greetd` UID 114 and
+`wayland-0` socket used by this phone. On a different compositor/user, copy a
+drop-in with `systemctl edit` and change `User`, `Group`, `HOME`,
+`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` together;
+do not start a second session from SSH at the same time. If the SSH daemon is
+already wedged, run the disable/restart or enable operation from the phone's
+local terminal, not through the stalled SSH channel.
 
 ### Repair stale recording-profile mappings
 

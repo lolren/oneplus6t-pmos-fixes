@@ -1,0 +1,31 @@
+[Unit]
+Description=OnePlus 6T Waydroid graphical session
+Documentation=https://github.com/lolren/oneplus6t-pmos-fixes/blob/main/docs/WAYDROID.md
+Requires=waydroid-container.service
+After=waydroid-container.service graphical.target
+PartOf=waydroid-container.service
+StartLimitIntervalSec=600
+StartLimitBurst=6
+
+[Service]
+Type=simple
+User=greetd
+Group=greetd
+Environment=HOME=/var/lib/greetd
+Environment=XDG_RUNTIME_DIR=/run/user/114
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/114/bus
+Environment=XDG_SESSION_TYPE=wayland
+ExecStartPre=/bin/sh -c 'i=0; while [ ! -S /run/user/114/wayland-0 ] && [ "$i" -lt 120 ]; do sleep 1; i=$((i + 1)); done; test -S /run/user/114/wayland-0'
+ExecStart=/usr/bin/waydroid session start
+ExecStop=/usr/bin/waydroid session stop
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=150s
+TimeoutStopSec=30s
+KillMode=mixed
+
+[Install]
+# Deliberately disabled by the package: enable it after the Vanilla image and
+# camera overlay pass their health gate on this phone.
+WantedBy=graphical.target

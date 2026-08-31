@@ -92,6 +92,7 @@ test:
 		tests/test-camera-generation.sh tests/test-camera-fixtures.sh \
 		tests/test-camera-release-installer.sh \
 		tests/test-waydroid-installer.sh \
+		tests/test-waydroid-session-service.sh \
 		tests/test-waydroid-audio-probe.sh \
 		tests/test-snapshot-patches.sh \
 		 tests/test-native-white-balance-patches.sh \
@@ -138,6 +139,7 @@ test:
 	./tests/test-camera-fixtures.sh
 	./tests/test-camera-release-installer.sh
 	sh tests/test-waydroid-installer.sh
+	sh tests/test-waydroid-session-service.sh
 	sh tests/test-waydroid-camera-profiles.sh
 	sh tests/test-waydroid-audio-probe.sh
 	sh tests/test-snapshot-patches.sh
@@ -220,6 +222,8 @@ install:
 		config/systemd/oneplus6t-waydroid-location.service \
 		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
 	$(CHMOD) 0644 "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-waydroid-location.service"
+	$(INSTALL) -m 0644 config/systemd/oneplus6t-waydroid-session.service \
+		"$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/"
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 		config/systemd/oneplus6t-mobile-data-watchdog.service \
 		> "$(DESTDIR)$(SYSTEMD_SYSTEM_DIR)/oneplus6t-mobile-data-watchdog.service"
