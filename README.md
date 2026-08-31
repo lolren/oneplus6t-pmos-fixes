@@ -170,7 +170,7 @@ reboot or touch firmware, boot slots, partitions or Waydroid. Set
 PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
 candidate and rollback assets must survive a cache cleanup.
 
-The current checkout recipe is r48. It adds the signed r35/r36 camera-generation
+The current checkout recipe is r49. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
 synchronizer for the two Waydroid recording-profile files and the r35 temporary
 sleep inhibitor,

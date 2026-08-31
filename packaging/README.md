@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r48`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r49`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -90,10 +90,13 @@ fixed-focus front ID 1, retains only the parser sentinel for auxiliary ID 2,
 and is published in the
 [`runtime-r47-video-profile-correction` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r47-video-profile-correction).
 
-The current r48 package retains that correction and fixes the persistent
+The current r49 local package retains that correction, updates the Advanced
+Snapshot r38 app-only installer, and fixes the persistent
 session unit to use the normal graphical `user` account and systemd-expanded
-runtime paths; greetd remains the login supervisor. It is published in the
-[`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
+runtime paths; greetd remains the login supervisor. The signed r48 package is
+published in the
+[`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session);
+r49 is the current reproducible local revision for the installer update.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
