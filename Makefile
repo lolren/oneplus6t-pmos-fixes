@@ -21,6 +21,7 @@ SCRIPTS = \
 	scripts/check-messages \
 	scripts/manage-camera-generation \
 	scripts/install-camera-generation \
+	scripts/install-advanced-snapshot \
 	scripts/pmos-safe-upgrade \
 	scripts/configure-power \
 	scripts/check-power \
@@ -91,6 +92,7 @@ test:
 		tests/test-device-session.sh \
 		tests/test-camera-generation.sh tests/test-camera-fixtures.sh \
 		tests/test-camera-release-installer.sh \
+		tests/test-advanced-snapshot-installer.sh \
 		tests/test-waydroid-installer.sh \
 		tests/test-waydroid-session-service.sh \
 		tests/test-waydroid-audio-probe.sh \
@@ -138,6 +140,7 @@ test:
 	./tests/test-camera-generation.sh
 	./tests/test-camera-fixtures.sh
 	./tests/test-camera-release-installer.sh
+	./tests/test-advanced-snapshot-installer.sh
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-session-service.sh
 	sh tests/test-waydroid-camera-profiles.sh
@@ -274,6 +277,8 @@ install:
 		"$(DESTDIR)$(SBINDIR)/pmos-manage-camera-generation"
 	ln -sfn "$(LIBEXECDIR)/scripts/install-camera-generation" \
 		"$(DESTDIR)$(SBINDIR)/pmos-install-camera-generation"
+	ln -sfn "$(LIBEXECDIR)/scripts/install-advanced-snapshot" \
+		"$(DESTDIR)$(SBINDIR)/pmos-install-advanced-snapshot"
 	ln -sfn "$(LIBEXECDIR)/scripts/pmos-safe-upgrade" \
 		"$(DESTDIR)$(SBINDIR)/pmos-safe-upgrade"
 	ln -sfn "$(LIBEXECDIR)/scripts/configure-power" \

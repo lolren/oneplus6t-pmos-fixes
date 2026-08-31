@@ -42,6 +42,27 @@ The signed stage and r44 runtime helper are published in the
 [`runtime-r44-camera-r35` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r44-camera-r35).
 Verify all release assets with its `SHA256SUMS` before extraction.
 
+## Advanced Snapshot r37 app-only correction
+
+The green-cast correction is also available as a separate application-only
+release. It is useful when the native r35/r36 generation is already installed:
+the pair updates Advanced Snapshot and its translations without replacing
+libcamera, PipeWire, the kernel or firmware. From this repository, the
+simulation-first wrapper is:
+
+```sh
+./scripts/install-advanced-snapshot
+./scripts/install-advanced-snapshot --apply
+```
+
+The wrapper downloads the pinned
+[`r37-green-cast`](https://github.com/lolren/advanced-snapshot/releases/tag/r37-green-cast)
+release over HTTPS, checks its portable `SHA256SUMS`, verifies the pinned
+public-key fingerprint and asks APK to verify both packages before simulating
+or applying the upgrade. It does not reboot. The correction is a scene-level
+manual-white-balance/CCM preset; it is reversible in Image Controls with
+Reset, and it is not a factory Android ISP calibration.
+
 Review and simulate it with:
 
 ```sh

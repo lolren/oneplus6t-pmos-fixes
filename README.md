@@ -143,6 +143,18 @@ with its verification key and portable checksums. The default r35/r36
 generation remains unchanged until the r37 pair is installed and accepted on
 the reference phone.
 
+The checked-in app-only installer downloads both r37 APKs, verifies the
+published checksum file and signing-key fingerprint, runs an APK signature
+check and simulates the upgrade by default:
+
+~~~sh
+./scripts/install-advanced-snapshot
+./scripts/install-advanced-snapshot --apply
+~~~
+
+It changes only Advanced Snapshot and its language package; native camera
+packages, Waydroid, the kernel and firmware remain untouched.
+
 For a one-command download and verification flow, use the checked-in wrapper
 as the graphical login user (it simulates by default):
 
@@ -158,7 +170,7 @@ reboot or touch firmware, boot slots, partitions or Waydroid. Set
 PMOS_CAMERA_WORK_DIR=/path/to/retained-camera-release when the downloaded
 candidate and rollback assets must survive a cache cleanup.
 
-The current checkout recipe is r45. It adds the signed r35/r36 camera-generation
+The current checkout recipe is r46. It adds the signed r35/r36 camera-generation
 manifest and its current public verification key alongside the guarded
 synchronizer for the two Waydroid recording-profile files and the r35 temporary
 sleep inhibitor,
@@ -175,6 +187,10 @@ restart path for an
 authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
+
+The clean r46 package, which adds the checksum-verified Advanced Snapshot r37
+app-only installer, is published in the
+[`runtime-r46-green-cast-installer` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer).
 
 The clean r45 package is published separately in the
 [`runtime-r45-waydroid-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session).

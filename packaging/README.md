@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r45`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r46`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -69,6 +69,20 @@ identity, Wayland environment and installation mode.
 The signed package and its public verification key are published in the
 [`runtime-r45-waydroid-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session);
 verify the release `SHA256SUMS` before installing it.
+
+The package also installs `pmos-install-advanced-snapshot`, a separate
+simulation-first wrapper for the published Advanced Snapshot r37 application
+pair. It verifies the HTTPS release checksums, the pinned
+`pmos@local-6a92d930.rsa.pub` fingerprint and both APK signatures before an
+explicit `--apply` transaction. This app-only upgrade does not change the
+native libcamera/PipeWire generation, Waydroid, kernel or firmware; see the
+main [installation guide](../README.md) for the two commands.
+
+The r46 package contains the installer above in addition to the persistent
+Waydroid-session unit. Its APK payload is otherwise unchanged from r45.
+The r46 package is published in the
+[`runtime-r46-green-cast-installer` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer);
+verify that release's `SHA256SUMS` before installing it.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime

@@ -1,0 +1,151 @@
+#!/bin/sh
+set -eu
+
+# Download and install the separately reviewed Advanced Snapshot r37 app pair.
+# This is intentionally separate from the native camera-generation manager:
+# r37 changes only the application-level green-cast preset and does not replace
+# libcamera, PipeWire, the kernel or firmware.
+
+PROGRAM=${0##*/}
+REPOSITORY=lolren/advanced-snapshot
+RELEASE_TAG=r37-green-cast
+MAIN_APK=advanced-snapshot-0.1.0-r37.apk
+LANG_APK=advanced-snapshot-lang-0.1.0-r37.apk
+SIGNING_KEY=pmos@local-6a92d930.rsa.pub
+SIGNING_KEY_SHA256=c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6
+CHECKSUMS=SHA256SUMS
+RELEASE_NOTES=RELEASE-NOTES.md
+
+apply=no
+work_dir=${PMOS_SNAPSHOT_WORK_DIR:-}
+curl_command=${PMOS_SNAPSHOT_CURL:-curl}
+apk_command=${PMOS_SNAPSHOT_APK:-apk}
+sudo_command=${PMOS_SNAPSHOT_SUDO:-sudo}
+
+usage() {
+	cat <<EOF
+Usage: $PROGRAM [options]
+
+Download the pinned Advanced Snapshot r37 application pair. The release
+contains the visible green-cast correction aligned with the OnePlus 6T native
+r35 matrix. The default is simulation-only; --apply is required to install it.
+
+Options:
+  --apply             install both AArch64 application APKs
+  --work-dir DIR      retain downloaded assets and verification evidence in DIR
+  -h, --help          show this help
+
+The command does not change the kernel, firmware, boot slots, partitions,
+native libcamera/PipeWire packages or Waydroid. It does not reboot the phone.
+Run it as the graphical login user, without sudo; sudo is used only by the
+explicit --apply package transaction.
+EOF
+}
+
+die() {
+	printf '%s: %s\n' "$PROGRAM" "$*" >&2
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--apply)
+		apply=yes
+		shift
+		;;
+	--work-dir)
+		[ "$#" -ge 2 ] || die '--work-dir requires a directory'
+		work_dir=$2
+		shift 2
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	*)
+		die "unknown argument: $1"
+		;;
+	esac
+done
+
+for command in awk install mkdir mktemp sha256sum; do
+	command -v "$command" >/dev/null 2>&1 ||
+		die "missing required command: $command"
+done
+command -v "$curl_command" >/dev/null 2>&1 ||
+	die "missing required command: $curl_command"
+
+if [ -z "$work_dir" ]; then
+	cache_root=${XDG_CACHE_HOME:-${HOME:-/tmp}}
+	work_dir=$cache_root/oneplus6t-pmos-fixes/advanced-snapshot-$RELEASE_TAG
+fi
+
+case "$work_dir" in
+''|/|/tmp|/var|/var/tmp|/home|/root)
+	die "refusing broad work directory: $work_dir"
+	;;
+esac
+if [ -e "$work_dir" ] && [ -L "$work_dir" ]; then
+	die "refusing symlink work directory: $work_dir"
+fi
+mkdir -p "$work_dir"
+[ -d "$work_dir" ] || die "work directory is not a directory: $work_dir"
+
+safe_target() {
+	path=$1
+	if [ -L "$path" ] || [ -d "$path" ]; then
+		die "refusing symlink or directory download target: $path"
+	fi
+}
+
+download() {
+	asset=$1
+	path=$work_dir/$asset
+	safe_target "$path"
+	"$curl_command" --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+		--silent --show-error \
+		"https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/$asset" \
+		-o "$path"
+}
+
+printf 'download_dir=%s\n' "$work_dir"
+printf 'release_tag=%s\n' "$RELEASE_TAG"
+download "$CHECKSUMS"
+download "$MAIN_APK"
+download "$LANG_APK"
+download "$SIGNING_KEY"
+download "$RELEASE_NOTES"
+
+(
+	cd "$work_dir"
+	sha256sum -c "$CHECKSUMS"
+)
+actual_key_hash=$(sha256sum "$work_dir/$SIGNING_KEY" | awk '{ print $1 }')
+[ "$actual_key_hash" = "$SIGNING_KEY_SHA256" ] ||
+	die "release key hash changed: $actual_key_hash"
+
+keys_dir=$(mktemp -d "$work_dir/keys.XXXXXX")
+install -m 0644 "$work_dir/$SIGNING_KEY" "$keys_dir/$SIGNING_KEY"
+
+command -v "$apk_command" >/dev/null 2>&1 ||
+	die "missing required command: $apk_command"
+"$apk_command" --keys-dir "$keys_dir" verify \
+	"$work_dir/$MAIN_APK" "$work_dir/$LANG_APK"
+
+if [ "$apply" = yes ]; then
+	command -v "$sudo_command" >/dev/null 2>&1 ||
+		die "missing required command: $sudo_command"
+	"$sudo_command" "$apk_command" add --allow-untrusted --no-progress \
+		--no-interactive --upgrade \
+		"$work_dir/$MAIN_APK" "$work_dir/$LANG_APK"
+	printf '%s\n' 'result=installed'
+else
+	"$apk_command" add --simulate --allow-untrusted --network=no \
+		--no-progress --no-interactive --upgrade \
+		"$work_dir/$MAIN_APK" "$work_dir/$LANG_APK"
+	printf '%s\n' 'result=simulation'
+fi
+
+printf 'verified_key=%s\n' "$SIGNING_KEY"
+printf '%s\n' 'native_camera_stack=unchanged'
+printf '%s\n' 'reboot=not-required'
