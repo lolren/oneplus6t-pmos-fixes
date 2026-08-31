@@ -53,8 +53,8 @@ grep -q "^+$pipewire_sha512  0002-spa-libcamera-Transport-float-array-controls.p
 
 grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'libcamera recipe is not r34'
 grep -q '^+pkgrel=8$' "$MONOLITH" || fail 'PipeWire recipe is not r8'
-grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r34'
-grep -q '^+_commit="0376f68c6808517fdc368d8e92ce67a0463ce960"$' "$MONOLITH" ||
+grep -q '^+pkgrel=35$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r35'
+grep -q '^+_commit="d8eff869ffc98ca69b5d4c24d3537cd3660d2ece"$' "$MONOLITH" ||
 	fail 'Advanced Snapshot source pin is not the tested white-balance commit'
 
 printf '%s\n' 'Native white-balance patch and pmaports integrity tests passed'

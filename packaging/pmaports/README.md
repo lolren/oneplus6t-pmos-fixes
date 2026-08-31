@@ -5,7 +5,7 @@ pmaports: seven SDM845 kernel patches, twenty-one project libcamera patches,
 three tuning files, two PipeWire control/state-transport patches, six Snapshot patches, the
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
-device-specific identifier. The current patch carries the r34 Advanced Snapshot
+device-specific identifier. The current patch carries the r35 Advanced Snapshot
 source recipe and its verified AArch64 package pair, the libcamera r34 colour-
 matrix/white-balance/manual-focus/tone/test-pattern generation and PipeWire r8 float-array
 transport; r24, r25, r26, r28 and r33 plus
@@ -17,12 +17,13 @@ brightness-specific acceptance remains separate from codec safety acceptance.
 The exact signed repositories, manifest and key are published in the
 [kernel-r8-r10 pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/kernel-r8-r10).
 The reference phone has r33/r8/r3 userspace and the visible Image Controls
-Advanced Snapshot r34 build installed without reboot; the earlier r30 app,
-r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
+Advanced Snapshot r34 build installed without reboot; the r35 app pair is
+source- and package-validated but awaits phone installation. The earlier r30
+app, r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
 
-The current source target is r34/r34/r8; the reference phone remains on the
+The current source target is r34/r35/r8; the reference phone remains on the
 last accepted r33/r8/r3 line until the new colour package is built and
-installed. The current r33/r34/r8 evidence is:
+installed. The current r33/r34/r35/r8 evidence is:
 
 - libcamera/IPA r33 with normalized rear `LensPosition`, `AwbEnable`, two-
   element `ColourGains` and nine-element `ColourCorrectionMatrix` controls;
@@ -32,9 +33,9 @@ installed. The current r33/r34/r8 evidence is:
 - the r34 source target with a moderate row-sum-preserving follow-up matrix;
 - a verified IMX519 equal-channel sensor test pattern that remains neutral
   through the GPU processed path after AWB settles;
-- Advanced Snapshot commit `0376f68c6808517fdc368d8e92ce67a0463ce960`;
-- main APK SHA-256 `7f94c88bbc5d7ec300a7f2f1481dff7f882bd43480506fef18f79fdffa390c74`;
-- language APK SHA-256 `6326708ca21e1dacd4e4264cf48358ccc59d8a99dc2f88be5d36cc46f19ef5de`;
+- Advanced Snapshot commit `d8eff869ffc98ca69b5d4c24d3537cd3660d2ece`;
+- main APK SHA-256 `1b8ea0f0f6449665876a72a1846b606accecbc9e90d1b984d02da534002e1e08`;
+- language APK SHA-256 `902e890dacc1e7f5920b0f625c1daa5bdec26053685c3e111ac6d91e0f08e974`;
 - native main/secondary AF validation with 183/239 post-reset metrics and
   zero lens requests; and
 - Waydroid manual-focus result deltas of 2.000 on both rear IDs plus
@@ -44,11 +45,13 @@ The app package adds the visible Image Controls panel, standard Gamma,
 automatic/manual white balance, a writable standard colour matrix and a per-
 sensor calibration dialog. The dialog saves bounded exposure, red/blue gains,
 matrix, tone/detail and optional manual-focus values under a stable sensor
-identity. r34 adds named Sensor default, Neutral, Natural, Vivid and Custom
-presets in a camera-page overlay drawer so the upper preview stays visible
+identity. r35 adds the named Green-cast correction starting point and turns
+automatic white balance off when a custom matrix is selected; it retains the
+named Sensor default, Neutral, Natural, Vivid and Custom presets in a
+camera-page overlay drawer so the upper preview stays visible
 while controls are changed; it does not provide Android's factory
   coefficients, lens shading or multi-frame ISP tuning. Saved-photo scene
-  acceptance remains separate. The r34 still path reapplies rear focus after
+  acceptance remains separate. The r35 still path reapplies rear focus after
   its preview-to-photo stream hand-off, so a focused preview no longer leaves
   the fresh high-resolution stream at an unrelated lens position.
 
@@ -57,7 +60,7 @@ while controls are changed; it does not provide Android's factory
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its current SHA-256 is
-`dcfe71299dfd7dbd0c346dc13a6807fb2ce438f38b36480e784f698dbe51070a`.
+`04493bd0da72190abd0655c171159e04f7b696832d1899f5727b6d13c885a4f6`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
@@ -89,27 +92,28 @@ Applying the integration patch to the reviewed base produces:
 - `pipewire-spa-libcamera-1.6.8-r8` (autofocus state plus generic fixed-size
   float-array control transport; r7 remains retained for rollback);
 - `snapshot-50.0-r6` plus `snapshot-lang-50.0-r6`; and
-- `advanced-snapshot-0.1.0-r34` plus
-  `advanced-snapshot-lang-0.1.0-r34` (handheld-aligned Software HDR,
+- `advanced-snapshot-0.1.0-r35` plus
+  `advanced-snapshot-lang-0.1.0-r35` (handheld-aligned Software HDR,
   camera-page live-control drawer and colour presets,
   serialized camera teardown, rear manual-focus, tone-default, Gamma and
   white-balance/colour-matrix-aware per-sensor calibration build with a phone-
-  width dialog and unobstructed zoom toolbar; an exact AArch64 APK pair was built in the isolated
-  edge buildroot and installed on the reference phone without reboot); and
+  width dialog and unobstructed zoom toolbar, plus the Green-cast correction
+  starting point; an exact AArch64 APK pair was built and artifact-validated in
+  the isolated edge buildroot but awaits installation on the reference phone); and
   the signed r11 pair remains the retained rollback baseline.
 
 The high revisions preserve ordering above the camera packages already used
 during live diagnosis. They do not imply that many public releases.
 
-The r34 application recipe is pinned to Advanced Snapshot commit
-`0376f68c6808517fdc368d8e92ce67a0463ce960`. Its GitHub source archive SHA-512
+The r35 application recipe is pinned to Advanced Snapshot commit
+`d8eff869ffc98ca69b5d4c24d3537cd3660d2ece`. Its GitHub source archive SHA-512
 is
-`8e0f698d342fead6b92e4cef5de2f266f717f23fd65dd287d9a520c0457433edb2387d32e6c007a5909db8773052c5720094648cabbdeee7126347bf508388ab`.
+`145723b788222c34fbae795e7a90bc36560fa048a69c9026ca930fa62c83b558f898b213d6bb27e5e7f8ded46caa65bd49a2b5a2afced1a5f56ec88232ca9801`.
 The pinned GTK/GStreamer source build passed after the GStreamer state-tuple
-compatibility fix. The exact AArch64 pair was built and installed with the
+compatibility fix. The exact AArch64 pair passed the package validator with the
 local pmbootstrap signing key. The phone-width calibration dialog and toolbar
-zoom placement passed visual acceptance; repository-key release publication
-remains separate.
+zoom placement passed source/package checks; phone installation and live visual
+acceptance remain separate.
 
 The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
 top of the earlier r3 package and r4 lifecycle guard, plus the GStreamer Rust
@@ -208,6 +212,8 @@ ISP processing. Review the complete candidate with:
 | `advanced-snapshot-lang-0.1.0-r30.apk` (installed white-balance calibration build) | `b98c7646f84ffc78f5b1c155f5a72cf7b7cc1ede5fb358fc74d365cb9122212e` |
 | `advanced-snapshot-0.1.0-r32.apk` (historical colour calibration/mobile-layout build) | `269f68cb9d2fc7061a7277f21f70c87641d2a20a7206a090bbbbbd279a09ce5b` |
 | `advanced-snapshot-lang-0.1.0-r32.apk` (historical colour calibration/mobile-layout build) | `8bc79a14ed890dd429188cb7b173cc9d13c61572c92faea4b4f24de66501e377` |
+| `advanced-snapshot-0.1.0-r35.apk` (green-cast preset; built, not yet device-accepted) | `1b8ea0f0f6449665876a72a1846b606accecbc9e90d1b984d02da534002e1e08` |
+| `advanced-snapshot-lang-0.1.0-r35.apk` (green-cast preset; built, not yet device-accepted) | `902e890dacc1e7f5920b0f625c1daa5bdec26053685c3e111ac6d91e0f08e974` |
 
 Independent builds may differ because APK metadata and signing keys are local.
 Verify source, package version, architecture and behavior as well as hashes.

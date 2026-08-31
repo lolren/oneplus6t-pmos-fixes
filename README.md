@@ -183,7 +183,7 @@ carrier-specific profile must not be placed in the OnePlus device package.
 
 The camera stack keeps the public libcamera control path intact while adding
 OnePlus-specific tuning in a separate package. Rear tap-focus and manual focus
-use the real IMX519/IMX376 actuator range; Advanced Snapshot r34 also reapplies
+use the real IMX519/IMX376 actuator range; Advanced Snapshot r35 also reapplies
 the selected focus request after opening its separate full-resolution still
 stream, which is the stream that supplies the saved JPEG. The front IMX371 is
 fixed-focus and is intentionally reported that way.
@@ -359,7 +359,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer libcamera r34 / Advanced Snapshot r34 / PipeWire r8 line. The
+publishes the newer libcamera r34 / Advanced Snapshot r35 / PipeWire r8 line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -379,12 +379,13 @@ hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
 The current source line is libcamera/IPA r34, PipeWire SPA r8 and Advanced
-Snapshot r34; the reference phone is still running the accepted libcamera r33
-pair until the r34 colour follow-up can be installed. The app source is commit
-`0376f68c6808517fdc368d8e92ce67a0463ce960`; the exact AArch64 package pair is
-installed on the reference phone without reboot. The controls panel and
-calibration dialog now include automatic/manual white balance, per-sensor
-red/blue gains and a bounded 3×3 colour matrix. The r34 IPA selects the
+Snapshot r35; the reference phone is still running the accepted libcamera r33
+pair and the installed r34 app while the r34 colour follow-up and r35 app pair
+await phone installation. The app source is commit
+`d8eff869ffc98ca69b5d4c24d3537cd3660d2ece`; the exact AArch64 package pair is
+built and artifact-validated. The controls panel and calibration dialog now
+include automatic/manual white balance, per-sensor red/blue gains and a
+bounded 3×3 colour matrix. The r34 IPA selects the
 documented sensor-specific profiles and applies a moderate grey-preserving
 green-cast correction; equal-channel test-pattern output remained neutral and
 custom matrix requests were accepted on IMX371, IMX376 and IMX519, while automatic mode
@@ -400,7 +401,7 @@ Gamma, Zoom, Reset and an
 opt-in rear **Hardware flash** switch when the helper is installed. The Camera
 Calibration dialog can save those standard controls, including AWB mode,
 red/blue gains and the optional matrix, per physical sensor and
-optionally restore a deliberate manual focus position. The r34 camera-page
+optionally restore a deliberate manual focus position. The r35 camera-page
 overlay drawer keeps these controls alongside the live preview, and its
 Sensor default, Neutral, Natural, Vivid and Custom presets update the visible
 image without hiding the camera view. The lower-layer focus

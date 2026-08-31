@@ -3,6 +3,33 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 Advanced Snapshot r35 package checkpoint
+
+The separately maintained Advanced Snapshot source commit
+`d8eff869ffc98ca69b5d4c24d3537cd3660d2ece` completed both optimized and
+auditable AArch64 package builds. The source archive SHA-512 is:
+
+```text
+145723b788222c34fbae795e7a90bc36560fa048a69c9026ca930fa62c83b558f898b213d6bb27e5e7f8ded46caa65bd49a2b5a2afced1a5f56ec88232ca9801
+```
+
+The package validator passed the local pmbootstrap signature, ARM64
+executables, complete file manifest, language split, metadata, schema,
+resource namespace, stale-identifier scan and mobile UI checks:
+
+```text
+advanced-snapshot-0.1.0-r35.apk: 1b8ea0f0f6449665876a72a1846b606accecbc9e90d1b984d02da534002e1e08
+advanced-snapshot-lang-0.1.0-r35.apk: 902e890dacc1e7f5920b0f625c1daa5bdec26053685c3e111ac6d91e0f08e974
+```
+
+The r35 camera-page source adds a named Green-cast correction starting point.
+Selecting its custom matrix automatically disables automatic white balance,
+because the matching native libcamera path applies a custom matrix only in
+manual-WB mode. This is a reproducible userspace control, not a factory colour
+calibration claim. The pair is built and validated but is not yet recorded as
+installed on the reference phone because its SSH session currently stalls
+after authentication; the installed r34 app remains the rollback point.
+
 ## 2026-08-31 native green-cast r34 source checkpoint
 
 The next lower-layer generation changes the three OnePlus profiles from the
