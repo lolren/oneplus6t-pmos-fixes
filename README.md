@@ -106,15 +106,20 @@ the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is the
-[camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
+[camera-r34/runtime-r43 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
 On a booted phone with normal postmarketOS repositories configured, download
-the APK and checksum, verify them, then install the local package:
+the r43 APK and `SHA256SUMS` from that release, verify the matching line, then
+install the local package:
 
 ```sh
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r42-camera-r34/oneplus6t-pmos-fixes-0.1.0_p20260831074522-r42.apk
-curl -fLO https://github.com/lolren/oneplus6t-pmos-fixes/releases/download/runtime-r42-camera-r34/SHA256SUMS
-sha256sum -c SHA256SUMS
-sudo apk add --allow-untrusted ./oneplus6t-pmos-fixes-0.1.0_p20260831074522-r42.apk
+gh release download runtime-r43-camera-r34 \
+  --repo lolren/oneplus6t-pmos-fixes \
+  --pattern 'oneplus6t-pmos-fixes-*-r43.apk' --pattern SHA256SUMS
+runtime_apk=$(find . -maxdepth 1 -type f \
+  -name 'oneplus6t-pmos-fixes-*-r43.apk' -print -quit)
+test -n "$runtime_apk"
+awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
+sudo apk add --allow-untrusted "$runtime_apk"
 ```
 
 `--allow-untrusted` is needed because this standalone package is not in the
@@ -131,8 +136,10 @@ apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
 Advanced Snapshot action is available as **Image Controls → Green-cast
 correction → Apply** and is reversible with **Reset**.
 
-The current checkout recipe is r42. It adds a guarded synchronizer for the two
-Waydroid recording-profile files, alongside the r35 temporary sleep inhibitor
+The current checkout recipe is r43. It adds the signed r34/r36 camera-generation
+manifest and its current public verification key alongside the guarded
+synchronizer for the two Waydroid recording-profile files and the r35 temporary
+sleep inhibitor,
 and root-only shell diagnostic for the SSH-launched camera probe. Every
 Waydroid status and shell operation is now bounded, and a stopped or still-
 frozen container is rejected before a probe can hang against a torn-down LXC
@@ -582,6 +589,20 @@ r24/r11 rollback stage. r15 aligns bounded whole-frame handheld translation
 before its opt-in linear-light Software HDR merge. It remains source/package
 validated rather than hardware-accepted, and the default manager manifest
 stays r7/r5 until live camera and lifecycle testing is possible.
+
+The current complete lower-stack candidate is `data/camera-generation-r34-r36.psv`.
+Its signed stage upgrades libcamera/IPA to r34, keeps PipeWire at r8 and
+upgrades Advanced Snapshot to r36; the exact r33/r34/r8 package set is retained
+for rollback. Use the simulation-first procedure in
+[docs/CAMERA_GENERATIONS.md](docs/CAMERA_GENERATIONS.md) and pass the explicit
+manifest when the stage is downloaded. It contains the stronger
+grey-preserving green-cast correction for all three sensors, but remains
+pending live installation and chart acceptance while the phone's authenticated
+SSH channel is stalled.
+The signed stage and runtime package are published in the
+[runtime-r43/camera-r34 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
+The stage archive SHA-256 is
+`f70b9f8d42259beb5c868847675ef97dcd153533796aef09b5fc0700d4a1fabd`.
 
 The equivalent low-level simulation is:
 

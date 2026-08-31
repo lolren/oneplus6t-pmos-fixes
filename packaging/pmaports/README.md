@@ -155,8 +155,18 @@ ISP processing. Review the complete candidate with:
 ./scripts/manage-camera-generation \
   --stage /absolute/path/to/camera-r26-r15 \
   --manifest data/camera-generation-r26-r15.psv \
-  install
+install
 ```
+
+The current complete camera-generation manifest is
+`data/camera-generation-r34-r36.psv`. It pairs the r34 libcamera/IPA source,
+PipeWire r8 and Advanced Snapshot r36 with the exact r33/r34/r8 rollback APKs,
+and pins the current public verification key. The signed stage and runtime r43
+package are published in the
+[`runtime-r43-camera-r34`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34)
+development pre-release. Run the manager's simulation
+first; the r34 colour profiles are still source/package validated rather than
+live chart-accepted until the phone's SSH channel is repaired.
 
 ## Reference artifacts
 

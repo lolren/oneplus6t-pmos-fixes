@@ -24,6 +24,47 @@ The bundled manifest pins every package filename, version and SHA-256 plus the
 SHA-256 of the public signing key. The public key is kept under
 `packaging/keys/`; no private signing key is present or required.
 
+## Current r34/r36 lower-stack candidate
+
+`data/camera-generation-r34-r36.psv` is the current manager-ready candidate for
+the OnePlus 6T. It upgrades the complete camera path in one guarded
+transaction:
+
+```text
+candidate: libcamera/IPA r34, PipeWire SPA r8, Advanced Snapshot r36
+rollback:  libcamera/IPA r33, PipeWire SPA r8, Advanced Snapshot r34
+```
+
+The manifest pins all ten APK hashes and the SHA-256 of the exact public key
+`pmos@local-6a92d930.rsa.pub`. The release stage contains separately signed
+offline candidate and rollback indexes, with the language package in the
+`noarch` repository. Do not mix packages from another generation into either
+repository: the manager rejects extra APKs, missing rows, altered hashes or an
+untrusted index before it invokes apk.
+
+The signed stage and r43 runtime helper are published in the
+[`runtime-r43-camera-r34` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34).
+The stage archive SHA-256 is
+`f70b9f8d42259beb5c868847675ef97dcd153533796aef09b5fc0700d4a1fabd`; verify
+all release assets with its `SHA256SUMS` before extraction.
+
+Review and simulate it with:
+
+```sh
+./scripts/manage-camera-generation \
+  --stage /absolute/path/to/camera-r34-r36 \
+  --manifest data/camera-generation-r34-r36.psv \
+  install
+```
+
+The command is simulation-only unless the graphical login user explicitly adds
+`--apply`. It never reboots, writes firmware or changes boot slots. The r34
+profiles apply the moderate grey-preserving green-cast correction to IMX371,
+IMX376 and IMX519; the live phone still needs the local SSH-daemon recovery,
+colour-chart captures and the existing all-sensor autofocus smoke test before
+this candidate can be called device-accepted. Keep the exact rollback stage
+available before applying it.
+
 ## Earlier r7 UI-only candidates
 
 `data/camera-generation-r7-r6.psv` describes the earlier capture-safety

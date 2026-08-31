@@ -3,6 +3,29 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 camera r34/runtime r43 manager-ready release
+
+The current source tree passed `make test`, staged installation and an isolated
+AArch64 package build. The exact runtime filename and SHA-256 are recorded in
+the release `SHA256SUMS` so the package can be verified without trusting a
+filename embedded in its own documentation.
+
+The matching
+[`runtime-r43-camera-r34` development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34)
+contains the manager-ready stage archive, public key, immutable manifest and
+reviewed pmaports integration patch. The archive SHA-256 is
+`f70b9f8d42259beb5c868847675ef97dcd153533796aef09b5fc0700d4a1fabd`.
+The release manifest is `data/camera-generation-r34-r36.psv`; its SHA-256 is
+`42e8d7d827ec130536bb2b5c93945656747a903a8ee8af6fb46ea0ed6601b1ce`.
+
+Both candidate and rollback repository indexes contain exactly five package
+rows and verify with `pmos@local-6a92d930.rsa.pub`. All ten package signatures
+and hashes match the manifest. The candidate is libcamera/IPA r34, PipeWire
+SPA r8 and Advanced Snapshot r36; rollback is libcamera/IPA r33, PipeWire r8
+and Advanced Snapshot r34. This is source/package validation only: the phone
+still needs a local SSH-daemon restart followed by live chart, focus, saved
+image and lifecycle acceptance.
+
 ## 2026-08-31 authenticated SSH recovery checkpoint
 
 The host-side transport report still identifies the connected OnePlus 6T as a

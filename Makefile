@@ -94,8 +94,9 @@ test:
 		tests/test-snapshot-patches.sh \
 		 tests/test-native-white-balance-patches.sh \
 		 tests/test-native-colour-matrix-patches.sh \
-		 tests/test-native-sensor-test-pattern-patch.sh \
-		 tests/test-native-colour-profile.sh \
+		tests/test-native-sensor-test-pattern-patch.sh \
+		tests/test-native-colour-profile.sh \
+		tests/test-camera-release-manifest.sh \
 		tests/test-waydroid-v4l2-codec-installer.sh \
 		tests/test-waydroid-v4l2-codec-build.sh \
 		tests/test-waydroid-provider-preparer.sh \
@@ -141,6 +142,7 @@ test:
 	sh tests/test-native-colour-matrix-patches.sh
 	sh tests/test-native-sensor-test-pattern-patch.sh
 	sh tests/test-native-colour-profile.sh
+	sh tests/test-camera-release-manifest.sh
 	sh tests/test-waydroid-v4l2-codec-installer.sh
 	sh tests/test-waydroid-v4l2-codec-build.sh
 	sh tests/test-waydroid-provider-preparer.sh
@@ -239,10 +241,13 @@ install:
 		data/camera-generation-r26-r13.psv \
 		data/camera-generation-r26-r14.psv \
 		data/camera-generation-r26-r15.psv \
+		data/camera-generation-r34-r36.psv \
 		"$(DESTDIR)$(LIBEXECDIR)/data/"
 	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a8b0868.rsa.pub \
 		"$(DESTDIR)$(LIBEXECDIR)/keys/"
 	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a8d1587.rsa.pub \
+		"$(DESTDIR)$(LIBEXECDIR)/keys/"
+	$(INSTALL) -m 0644 packaging/keys/pmos@local-6a92d930.rsa.pub \
 		"$(DESTDIR)$(LIBEXECDIR)/keys/"
 	$(INSTALL) -m 0644 README.md CONTRIBUTING.md docs/*.md "$(DESTDIR)$(DOCDIR)/"
 	$(INSTALL) -m 0644 packaging/README.md "$(DESTDIR)$(DOCDIR)/PACKAGING.md"

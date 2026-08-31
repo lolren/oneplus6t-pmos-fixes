@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r42`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r43`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -40,7 +40,7 @@ The clean r40 APK built from commit `bbd7287` has SHA-256
 It adds the parser-safe ID 1 sentinel, preserves ordinary recording profiles
 only for camera IDs 0 and 2, and was accepted on the reference phone.
 
-The current r42 APK was built from commit `cb8f1e77a64401978f3ab531ca8dd04f424b6275`
+The previous r42 APK was built from commit `cb8f1e77a64401978f3ab531ca8dd04f424b6275`
 and is published with the matching camera artifacts in the
 [camera-r34/runtime-r42 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r42-camera-r34).
 Its SHA-256 is
@@ -48,6 +48,16 @@ Its SHA-256 is
 The release's `SHA256SUMS` also covers the r34 libcamera/IPA pair, PipeWire r8,
 Advanced Snapshot r36 and the exact pmaports integration patch. The package
 contains no kernel or firmware and does not reboot the phone.
+
+The r43 package adds `data/camera-generation-r34-r36.psv` and the matching
+`pmos@local-6a92d930.rsa.pub` key. The manifest binds the r34/r36 candidate to
+the exact r33/r34/r8 rollback set; the manager verifies both offline repository
+indexes, all APK signatures and all ten hashes before any apk operation. The
+new AArch64 runtime APK and stage archive are published together in the
+[`runtime-r43-camera-r34`](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r43-camera-r34)
+development pre-release after the isolated build. The runtime APK SHA-256 is
+recorded in the release `SHA256SUMS`, which also covers the signed r34/r36
+stage, manifest, public key and pmaports integration patch.
 
 On a pure Alpine edge builder, install `alpine-sdk`, `python3` and `git`, then
 build the exact r25 commit without trying to resolve postmarketOS-only runtime
@@ -144,8 +154,9 @@ and off by default; it is not a libcamera automatic-flash implementation.
 The package also installs `pmos-manage-camera-generation`, the default r7/r5,
 opt-in r7/r6 capture-safety, opt-in r7/r7 save-feedback, opt-in r7/r10
 adjustment-safety, opt-in r7/r11 bounded-flash, the opt-in r26/r13 and r26/r14
-lower-stack generations and legacy r7/r1 through r7/r4 immutable manifests, the current
-and retained rollback public verification keys and the non-image all-sensor runner. It also installs
+lower-stack generations, the current r34/r36 candidate and legacy r7/r1
+through r7/r4 immutable manifests, the current and retained rollback public
+verification keys and the non-image all-sensor runner. It also installs
 `pmos-safe-upgrade`, whose simulation-first gate blocks ordinary `apk upgrade`
 transactions that touch camera-critical packages. The
 manager does not contain APKs or a private key and does nothing without an
