@@ -100,8 +100,10 @@ sudo pmos-enable-ssh --apply
 ```
 
 It supports both systemd and OpenRC, persists `sshd`, verifies the listener and
-does not alter firewall rules. The recovery procedure and direct fallback
-commands are in [docs/TRANSPORT.md](docs/TRANSPORT.md).
+does not alter firewall rules. If port 22 and its banner work but authenticated
+commands stall, use `sudo pmos-enable-ssh --apply --restart` locally to replace
+the wedged daemon. The recovery procedure and direct fallback commands are in
+[docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The last published signed `noarch` runtime package is the
 [runtime-r25 development pre-release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r25).
@@ -120,15 +122,16 @@ phone's configured repository; the HTTPS download and committed checksum are
 the integrity check. Its normal dependencies are still resolved from the
 configured postmarketOS repositories.
 
-The current checkout recipe is r41. It adds a guarded synchronizer for the two
+The current checkout recipe is r42. It adds a guarded synchronizer for the two
 Waydroid recording-profile files, alongside the r35 temporary sleep inhibitor
 and root-only shell diagnostic for the SSH-launched camera probe. Every
 Waydroid status and shell operation is now bounded, and a stopped or still-
 frozen container is rejected before a probe can hang against a torn-down LXC
-session. The location
-bridge accepts both ModemManager key-value layouts with signal-safe cleanup,
-and the NFC checker selects and restores the kernel-NCI adapter during an
-explicit poll; none of these changes normal suspend behavior. Build it from
+session. The location bridge accepts both ModemManager key-value layouts with
+signal-safe cleanup, and the NFC checker selects and restores the kernel-NCI
+adapter during an explicit poll; none of these changes normal suspend behavior.
+r42 also provides an explicit local `sshd` restart path for an
+authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
 

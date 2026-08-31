@@ -92,5 +92,8 @@ in [DISPLAY.md](DISPLAY.md).
 
 The fixes package now includes `pmos-enable-ssh --apply`, an idempotent
 systemd/OpenRC recovery helper that starts and persists `sshd` and verifies a
-TCP/22 listener without changing firewall rules. It can be run from the
-phone's local terminal or through the working SSH session.
+TCP/22 listener without changing firewall rules. If TCP/22 and the banner work
+but the authenticated session channel stalls, run
+`pmos-enable-ssh --apply --restart` from the phone's local terminal. It can be
+run from the phone's local terminal or through a working SSH session; the
+restart form must be local because it intentionally interrupts SSH.

@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r41`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r42`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -109,8 +109,12 @@ ModemManager voice call.
 `pmos-enable-ssh --apply` is an explicit, idempotent recovery helper for a
 phone whose postmarketOS USB developer-mode NCM link answers ping but has no
 usable SSH listener. It supports systemd and OpenRC, persists the `sshd`
-service and verifies TCP/22. It intentionally does not modify nftables or
-iptables; firewall changes remain a separately reviewed administrator action.
+service and verifies TCP/22. When an existing daemon accepts authentication but
+does not open session channels, run `pmos-enable-ssh --apply --restart` from the
+phone's local terminal to replace it. The restart is explicit because it
+interrupts current SSH sessions. The helper intentionally does not modify
+nftables or iptables; firewall changes remain a separately reviewed
+administrator action.
 
 The Messages diagnostic is optional and does not make Chatty a package
 dependency. When Chatty is installed, its GLib utilities provide

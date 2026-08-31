@@ -4,6 +4,7 @@ set -eu
 
 PROGRAM=${0##*/}
 apply=no
+restart=no
 init_system=${PMOS_SSH_INIT:-}
 systemctl_command=${PMOS_SSH_SYSTEMCTL:-systemctl}
 rc_update_command=${PMOS_SSH_RC_UPDATE:-rc-update}
@@ -12,11 +13,18 @@ ss_command=${PMOS_SSH_SS:-ss}
 
 usage() {
 	cat <<EOF
-Usage: $PROGRAM [--apply | --dry-run]
+Usage: $PROGRAM [--apply | --dry-run] [--restart]
 
 Start the postmarketOS SSH server for USB-network management and enable it at
 boot. Dry-run is the default; --apply is required before changing service
-state. The helper never changes nftables or iptables rules.
+state. Use --restart from the phone's local terminal to replace an already
+running but wedged sshd. The helper never changes nftables or iptables rules.
+
+Options:
+  --apply                 change service state (default is dry-run)
+  --dry-run               print the action without changing service state
+  --restart               restart an existing sshd after enabling it
+  -h, --help              show this help
 EOF
 }
 
@@ -34,6 +42,10 @@ while [ "$#" -gt 0 ]; do
 		;;
 	--dry-run)
 		[ "$apply" = no ] || die '--apply and --dry-run are mutually exclusive'
+		shift
+		;;
+	--restart)
+		restart=yes
 		shift
 		;;
 	-h|--help)
@@ -62,14 +74,22 @@ case "$init_system" in
 systemd)
 	command -v "$systemctl_command" >/dev/null 2>&1 ||
 		die "systemctl is required for systemd recovery: $systemctl_command"
-	service_description='systemctl enable --now sshd.service'
+	if [ "$restart" = yes ]; then
+		service_description='systemctl enable sshd.service; systemctl restart sshd.service'
+	else
+		service_description='systemctl enable --now sshd.service'
+	fi
 	;;
 openrc)
 	command -v "$rc_update_command" >/dev/null 2>&1 ||
 		die "rc-update is required for OpenRC recovery: $rc_update_command"
 	command -v "$service_command" >/dev/null 2>&1 ||
 		die "service is required for OpenRC recovery: $service_command"
-	service_description='rc-update add sshd default; service sshd start'
+	if [ "$restart" = yes ]; then
+		service_description='rc-update add sshd default; service sshd restart'
+	else
+		service_description='rc-update add sshd default; service sshd start'
+	fi
 	;;
 *)
 	die "unsupported init system: $init_system"
@@ -92,6 +112,7 @@ else
 	printf 'sshd=missing\n'
 fi
 printf 'mode=%s\n' "$([ "$apply" = yes ] && printf apply || printf dry-run)"
+printf 'restart=%s\n' "$restart"
 
 if [ "$apply" = no ]; then
 	printf 'would-run=%s\n' "$service_description"
@@ -105,11 +126,20 @@ fi
 
 case "$init_system" in
 systemd)
-	"$systemctl_command" enable --now sshd.service
+	if [ "$restart" = yes ]; then
+		"$systemctl_command" enable sshd.service
+		"$systemctl_command" restart sshd.service
+	else
+		"$systemctl_command" enable --now sshd.service
+	fi
 	;;
 openrc)
 	"$rc_update_command" add sshd default
-	"$service_command" sshd start
+	if [ "$restart" = yes ]; then
+		"$service_command" sshd restart
+	else
+		"$service_command" sshd start
+	fi
 	;;
 esac
 
@@ -135,5 +165,9 @@ if [ "$listener" = yes ]; then
 else
 	printf '%s\n' 'listener=missing'
 	printf '%s\n' 'hint=inspect systemctl status sshd.service or rc-service sshd status'
-	die 'sshd was started but no TCP/22 listener was observed'
+	if [ "$restart" = yes ]; then
+		die 'sshd was restarted but no TCP/22 listener was observed'
+	else
+		die 'sshd was started but no TCP/22 listener was observed'
+	fi
 fi

@@ -3,6 +3,31 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 authenticated SSH recovery checkpoint
+
+The host-side transport report still identifies the connected OnePlus 6T as a
+postmarketOS CDC-NCM device. The USB link, `172.16.42.1` ping, TCP/22 probe and
+SSH banner all pass. A fresh bounded key-authenticated session probe using the
+fixed read-only command `printf ready` returns status `255` after the server
+has authenticated but before it confirms the session channel, and is classified
+as `authenticated-channel-stalled`. PTY and SFTP channel attempts show the same
+boundary; no alternate service was found on the checked phone-network ports.
+
+The fixes tree now contains `scripts/check-device-session`, which separates
+this condition from a working command channel, and r42 adds the explicit local
+repair command:
+
+```sh
+sudo pmos-enable-ssh --apply --restart
+```
+
+The restart must be run from the phone's local terminal because it intentionally
+interrupts the existing daemon. No package installation, SSH-launched command,
+USB reset, reboot, bootloader operation or firmware write was performed during
+this checkpoint. The r34 native green-cast packages and Advanced Snapshot r36
+remain built source artifacts pending that recovery and live colour-chart
+acceptance.
+
 ## 2026-08-31 Advanced Snapshot r36 live green-cast control checkpoint
 
 The separately maintained Advanced Snapshot source commit

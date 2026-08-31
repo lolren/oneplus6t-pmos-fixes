@@ -21,6 +21,7 @@ grep -Fqx 'report=oneplus6t-ssh-recovery' "$systemd_output"
 grep -Fqx 'init=systemd' "$systemd_output"
 grep -Fqx 'sshd=present' "$systemd_output"
 grep -Fqx 'would-run=systemctl enable --now sshd.service' "$systemd_output"
+grep -Fqx 'restart=no' "$systemd_output"
 grep -Fqx 'result=dry-run' "$systemd_output"
 
 openrc_output=$TEST_DIR/openrc.txt
@@ -32,6 +33,27 @@ env \
 	"$SCRIPT" --dry-run >"$openrc_output"
 grep -Fqx 'init=openrc' "$openrc_output"
 grep -Fqx 'would-run=rc-update add sshd default; service sshd start' "$openrc_output"
+
+restart_systemd_output=$TEST_DIR/restart-systemd.txt
+env \
+	PMOS_SSH_INIT=systemd \
+	PMOS_SSH_SYSTEMCTL=/bin/true \
+	PATH="$TEST_DIR/bin:$PATH" \
+	"$SCRIPT" --dry-run --restart >"$restart_systemd_output"
+grep -Fqx 'restart=yes' "$restart_systemd_output"
+grep -Fqx 'would-run=systemctl enable sshd.service; systemctl restart sshd.service' \
+	"$restart_systemd_output"
+
+restart_openrc_output=$TEST_DIR/restart-openrc.txt
+env \
+	PMOS_SSH_INIT=openrc \
+	PMOS_SSH_RC_UPDATE=/bin/true \
+	PMOS_SSH_SERVICE=/bin/true \
+	PATH="$TEST_DIR/bin:$PATH" \
+	"$SCRIPT" --dry-run --restart >"$restart_openrc_output"
+grep -Fqx 'restart=yes' "$restart_openrc_output"
+grep -Fqx 'would-run=rc-update add sshd default; service sshd restart' \
+	"$restart_openrc_output"
 
 stage=$(mktemp -d "${TMPDIR:-/tmp}/ssh-recovery-stage.XXXXXX")
 trap 'rm -rf "$TEST_DIR" "$stage"' EXIT HUP INT TERM
