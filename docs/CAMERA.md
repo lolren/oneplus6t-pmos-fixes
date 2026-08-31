@@ -7,10 +7,10 @@ the current open pipeline can implement honestly.
 
 The reference phone currently runs kernel r10, libcamera/IPA r33,
 `pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r34. This source
-tree now targets the r34 lower-layer colour-profile follow-up; r33 remains the
-last device-accepted generation until the new package can be built and
-installed. r30, r31 and r32 remain reproducible rollback/diagnostic
-generations.
+tree now targets the r34 lower-layer colour-profile follow-up and Advanced
+Snapshot r35; r33/r34 remain the last device-accepted lower/app generation
+until the new packages can be installed. r30, r31 and r32 remain reproducible
+rollback/diagnostic generations.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
 focus controls. All three sensors expose standard automatic/manual white
@@ -299,9 +299,9 @@ sensors have been colour-chart calibrated. The tested controls are:
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r34/current app |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r34 lower stack/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
-| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r34/r8/Advanced Snapshot r34 round trip live-tested |
+| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r34/r8 transport and r35 source round trip |
 | Manual white balance | Yes | Yes | Yes | Standard two-element `ColourGains`; red/blue 0.1–4.0 UI and per-sensor persistence |
 | Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; r34 profiles reduce the measured green excess while bounded custom requests remain available in manual AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
@@ -376,7 +376,7 @@ pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
 The current reference build produced `libcamera`/`libcamera-ipa` r34,
-`pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r34 and the SDM845
+`pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r35 and the SDM845
 kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only; no reboot is implicit.
 
@@ -385,12 +385,13 @@ These commands build packages only; no reboot is implicit.
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
 
-### Current r34 source entry
+### Current r34/r35 source entry
 
 - The source and pmaports integration patch now target the AArch64
-  `libcamera`/IPA r34 pair. The r34 pair builds successfully; device
-  installation and live chart acceptance remain pending because the phone's
-  SSH service is currently not accepting sessions.
+  `libcamera`/IPA r34 pair and Advanced Snapshot r35. Both package lines build
+  successfully; device installation and live chart acceptance remain pending
+  because the phone's SSH service is currently not accepting sessions. The
+  installed r33/r34/r8 generation remains the rollback point.
 - The bounded live validator completed both rear tap/reset transitions and
   10-second stability windows with zero restarts and zero post-reset lens
   requests: main recorded 41 post-reset metrics, secondary 54, and the fixed-

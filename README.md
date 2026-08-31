@@ -595,7 +595,7 @@ camera to hold 0 (far) through 2 (near); tapping the preview replaces that
 lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
 front camera has no focus gesture or manual slider.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r34
+The sliders affect both preview and saved output. The Advanced Snapshot r35
 build also exposes opt-in Software HDR when its helper is installed; it
 uses three bracketed JPEG captures, confidence-gated global-translation
 alignment and a linear-light merge. This is not the same as Android-vendor HDR:
