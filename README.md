@@ -183,7 +183,7 @@ carrier-specific profile must not be placed in the OnePlus device package.
 
 The camera stack keeps the public libcamera control path intact while adding
 OnePlus-specific tuning in a separate package. Rear tap-focus and manual focus
-use the real IMX519/IMX376 actuator range; Advanced Snapshot r35 also reapplies
+use the real IMX519/IMX376 actuator range; Advanced Snapshot r36 also reapplies
 the selected focus request after opening its separate full-resolution still
 stream, which is the stream that supplies the saved JPEG. The front IMX371 is
 fixed-focus and is intentionally reported that way.
