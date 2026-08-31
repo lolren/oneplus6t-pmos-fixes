@@ -136,6 +136,13 @@ apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
 Advanced Snapshot action is available as **Image Controls → Green-cast
 correction → Apply** and is reversible with **Reset**.
 
+The follow-up Advanced Snapshot r37 app-only package aligns that visible
+correction preset with the native r35 matrix. It is published separately in
+the [r37 green-cast release](https://github.com/lolren/advanced-snapshot/releases/tag/r37-green-cast)
+with its verification key and portable checksums. The default r35/r36
+generation remains unchanged until the r37 pair is installed and accepted on
+the reference phone.
+
 For a one-command download and verification flow, use the checked-in wrapper
 as the graphical login user (it simulates by default):
 

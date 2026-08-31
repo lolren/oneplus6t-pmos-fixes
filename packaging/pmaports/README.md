@@ -117,6 +117,16 @@ local pmbootstrap signing key. The phone-width calibration dialog and toolbar
 zoom placement passed source/package checks, and the r36 pair is installed on
 the reference phone.
 
+Advanced Snapshot r37 is an app-only follow-up for the residual green cast. It
+is built from commit
+`71e3378aacf59c87696af8acd2086418dfa0ea64` and published with its signed APK
+pair and verification key in the [r37 green-cast release](https://github.com/lolren/advanced-snapshot/releases/tag/r37-green-cast).
+It applies the exact native r35 matrix
+`[0.90, 0.10, 0.00; 0.10, 0.80, 0.10; 0.00, 0.10, 0.90]` when the user selects
+**Image Controls → Green-cast correction → Apply**. The default r35/r36
+generation remains unchanged until r37 is installed and its live preview and
+saved-image behavior are accepted on the phone.
+
 The Snapshot r6 candidate adds the asynchronous camerabin teardown barrier on
 top of the earlier r3 package and r4 lifecycle guard, plus the GStreamer Rust
 state-tuple compatibility fix. It is source-tested and included in the
