@@ -213,8 +213,9 @@ GNSS HAL.
 
 The optional `oneplus6t-waydroid-session.service` is also installed disabled.
 It is the persistent graphical-session boundary for the default OnePlus 6T
-Phosh/greetd setup: it waits for `/run/user/114/wayland-0`, runs `waydroid
-session start` as `greetd`, and is tied to `waydroid-container.service`. Use
+Phosh/greetd setup: greetd supervises the login, while the service waits for
+the normal user's `/run/user/<uid>/wayland-0` socket and runs `waydroid
+session start` as that user. It is tied to `waydroid-container.service`. Use
 `sudo systemctl enable --now oneplus6t-waydroid-session.service` only after the
 Vanilla image, camera overlay and health gate pass. Keeping the session in
 this system scope avoids killing it when an SSH login exits. The unit is not

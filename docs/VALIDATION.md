@@ -5,7 +5,7 @@ credential, SSH key or device-unique serial is recorded.
 
 ## 2026-08-31 current Camera2 ID/profile audit
 
-After the r46 runtime and r37 Advanced Snapshot packages were installed, a
+After the r47 runtime and r37 Advanced Snapshot packages were installed, a
 freshly built Camera2 probe from the checked-in source was run against the
 existing r53 provider. Android reported the stable physical mapping as:
 
@@ -31,6 +31,30 @@ ordinary H.264/AAC profiles to IDs 0 and 1 and retains the required
 `highspeedcif` parser sentinel at ID 2. The probe runner's encoder gate now
 refuses ID 2 as well. This XML-only correction is applied through the guarded
 stopped-rootfs synchronizer; it does not change the camera binaries.
+
+The exact r47 runtime package was then installed and independently verified
+with its published APK key and checksum:
+
+```text
+package  oneplus6t-pmos-fixes-0.1.0_p20260831144127-r47.apk
+sha256   c03c4d6392adaf794558dc78c60d5626698b49eb2e00e30b8d5429d87e428be6
+source   1ba320e0f74225d41beb6bf8ffc0c75ae6102938d230245b0f472629a0e51dfe
+backup   /var/lib/waydroid/backups/camera-profiles-20260831T134936Z-30401
+```
+
+The synchronizer changed both profile filenames only after its rootfs/I/O
+preflight passed. After a graphical-session restart, Android reported
+ordinary 480p/720p profiles (`quality=5` and `quality=4`) for IDs 0 and 1 and
+no ordinary profiles for ID 2. The post-sync private preview completed for all
+three cameras. Real 720p H.264/AAC recordings also completed independently:
+
+```text
+ID 0 rear main  encodedValid=true encodedDurationMs=9774 encodedBytes=9838503 encodedFrames=176 encodedHasVideo=yes encodedHasAudio=yes
+ID 1 front      encodedValid=true encodedDurationMs=9920 encodedBytes=8015983 encodedFrames=248 encodedHasVideo=yes encodedHasAudio=yes
+```
+
+The runner and probe refuse auxiliary ID 2 before allocating an encoder. No
+auxiliary Venus recording was attempted during this correction.
 
 ## 2026-08-31 live r35/r36 green-cast acceptance
 

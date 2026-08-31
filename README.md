@@ -188,9 +188,16 @@ authenticated-but-stalled SSH daemon. Build it from
 `packaging/` as documented in [packaging/README.md](packaging/README.md), or
 use the source checkout directly with `make install`.
 
-The clean r46 package, which adds the checksum-verified Advanced Snapshot r37
-app-only installer, is published in the
-[`runtime-r46-green-cast-installer` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer).
+The clean r47 package, which corrects the Waydroid recording-profile mapping
+and includes the checksum-verified Advanced Snapshot r37 app-only installer,
+is published in the
+[`runtime-r47-video-profile-correction` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r47-video-profile-correction).
+
+The r47 profile correction assigns ordinary H.264/AAC recording profiles to
+the live rear-main ID 0 and fixed-focus front ID 1, retains the parser-only ID
+2 sentinel, and records a stopped-rootfs backup before changing either
+profile file. The actual reference phone produced valid 720p H.264/AAC files
+on both supported IDs after synchronization.
 
 The clean r45 package is published separately in the
 [`runtime-r45-waydroid-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session).

@@ -42,11 +42,16 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 On 2026-08-31 the full protected Camera2 probe returned valid YUV and JPEG
 frames for IDs 0, 1 and 2, with zero JPEG row discontinuities. Rear IDs 0 and
 2 returned AF states `[3, 4]` and centre regions; fixed-focus front ID 1
-returned state `[0]` with no AF region. The recording-profile audit found the
-image-level files still advertised the old safe-ID arrangement; the checked-in
-profile correction now targets main rear ID 0 and front ID 1.
-Auxiliary rear ID 2 remains preview/YUV/JPEG-only because its two reproducible
-Venus teardown faults make ordinary encoding unsafe.
+returned state `[0]` with no AF region. Runtime r47 was then installed and the
+stopped-rootfs synchronizer applied source SHA-256
+`1ba320e0f74225d41beb6bf8ffc0c75ae6102938d230245b0f472629a0e51dfe` to both
+Android profile files, preserving the dated rollback backup
+`/var/lib/waydroid/backups/camera-profiles-20260831T134936Z-30401`.
+Android subsequently reported ordinary 480p/720p profiles on IDs 0 and 1 and
+no ordinary profile on ID 2. Real 720p H.264/AAC probe recordings passed on
+rear-main ID 0 (~9.8 seconds, 176 frames) and fixed-focus front ID 1 (~9.9
+seconds, 248 frames). Auxiliary rear ID 2 remains preview/YUV/JPEG-only because
+its two reproducible Venus teardown faults make ordinary encoding unsafe.
 
 The runner must be used while a single graphical Waydroid session is held
 open. The reference image freezes an idle container for battery life, and a
@@ -489,9 +494,10 @@ that is kept explicit so it cannot unexpectedly interrupt a camera session.
 Do not keep the Waydroid session attached to an SSH login scope. When that
 scope closes, systemd can terminate the session even though the container is
 still healthy. The package includes a disabled system service for the default
-postmarketOS Phosh/greetd session on the OnePlus 6T. It binds the session to
-`waydroid-container.service`, waits for the Wayland socket, and runs it as
-`greetd` with the existing `/run/user/114` graphical bus:
+postmarketOS Phosh/greetd session on the OnePlus 6T. greetd supervises the
+login, while the unit binds the session to `waydroid-container.service`, waits
+for the normal graphical account's Wayland socket, and runs with that account's
+matching user D-Bus:
 
 ```sh
 sudo systemctl enable --now oneplus6t-waydroid-session.service
@@ -507,13 +513,14 @@ startup, disable the unit and stop it while the container is idle:
 sudo systemctl disable --now oneplus6t-waydroid-session.service
 ```
 
-The unit is intentionally pinned to the stock `greetd` UID 114 and
-`wayland-0` socket used by this phone. On a different compositor/user, copy a
-drop-in with `systemctl edit` and change `User`, `Group`, `HOME`,
-`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` together;
-do not start a second session from SSH at the same time. If the SSH daemon is
-already wedged, run the disable/restart or enable operation from the phone's
-local terminal, not through the stalled SSH channel.
+The unit uses the stock postmarketOS `user` account and systemd specifiers for
+its UID, home and runtime directory; greetd is not the D-Bus owner. On a
+different graphical account/compositor, copy a drop-in with `systemctl edit`
+and change `User`, `Group`, `HOME`, `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` and
+`DBUS_SESSION_BUS_ADDRESS` together. Do not start a second session from SSH at
+the same time. If the SSH daemon is already wedged, run the disable/restart or
+enable operation from the phone's local terminal, not through the stalled SSH
+channel.
 
 ### Repair stale recording-profile mappings
 

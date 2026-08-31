@@ -9,14 +9,17 @@ StartLimitBurst=6
 
 [Service]
 Type=simple
-User=greetd
-Group=greetd
-Environment=HOME=/var/lib/greetd
-Environment=XDG_RUNTIME_DIR=/run/user/114
+# greetd supervises the graphical login, but the Phosh/Wayland session and
+# its D-Bus belong to the normal postmarketOS account.  Keeping this service
+# in the system manager prevents an SSH scope from killing that session.
+User=user
+Group=user
+Environment=HOME=%h
+Environment=XDG_RUNTIME_DIR=/run/user/%U
 Environment=WAYLAND_DISPLAY=wayland-0
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/114/bus
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 Environment=XDG_SESSION_TYPE=wayland
-ExecStartPre=/bin/sh -c 'i=0; while [ ! -S /run/user/114/wayland-0 ] && [ "$i" -lt 120 ]; do sleep 1; i=$((i + 1)); done; test -S /run/user/114/wayland-0'
+ExecStartPre=/bin/sh -c 'i=0; while [ ! -S "$XDG_RUNTIME_DIR/wayland-0" ] && [ "$i" -lt 120 ]; do sleep 1; i=$((i + 1)); done; test -S "$XDG_RUNTIME_DIR/wayland-0"'
 ExecStart=/usr/bin/waydroid session start
 ExecStop=/usr/bin/waydroid session stop
 Restart=on-failure
