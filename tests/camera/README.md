@@ -30,10 +30,13 @@ validation.
 - `tone-vivid-manual.yaml` is a diagnostic-only stronger contrast/saturation
   candidate; it is not a production default until a like-for-like chart or
   scene comparison accepts it.
-- `ppm-metrics.py` reports luma, average channel spread, HSV-style saturation,
-  near-clipping percentages and two luma-detail signals from private binary
-  PPM captures. Edge and Laplacian values are scene-dependent and are valid
-  only for like-for-like framing, lighting and resolution.
+- `ppm-metrics.py` reports RGB means and a green-balance ratio (green divided
+  by the mean of red and blue), plus luma, average channel spread, HSV-style
+  saturation, near-clipping percentages and two luma-detail signals from
+  private binary PPM captures. A ratio near 1.0 is neutral; it is a
+  scene-dependent comparison, not a universal colour target. Edge and
+  Laplacian values are likewise valid only for like-for-like framing, lighting
+  and resolution.
 - `run-light-step.sh` performs a bounded, low-power rear-camera flash step with
   unconditional LED-off and lens-park cleanup.
 - `capture-portal-screenshot.py` asks the desktop screenshot portal for one

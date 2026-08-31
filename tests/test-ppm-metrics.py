@@ -52,6 +52,18 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["clipped"], 100)
         self.assertEqual(result["white"], 0)
 
+    def test_green_ratio_uses_mean_of_red_and_blue(self) -> None:
+        result = PPM_METRICS.metrics(
+            2,
+            1,
+            bytes((64, 96, 48, 32, 48, 32)),
+            250,
+        )
+        self.assertAlmostEqual(result["red_mean"], 48)
+        self.assertAlmostEqual(result["green_mean"], 72)
+        self.assertAlmostEqual(result["blue_mean"], 40)
+        self.assertAlmostEqual(result["green_ratio"], 72 / 44)
+
 
 if __name__ == "__main__":
     unittest.main()

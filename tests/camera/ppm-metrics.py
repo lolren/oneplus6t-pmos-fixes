@@ -45,6 +45,9 @@ def read_ppm(path):
 
 def metrics(width, height, pixels, threshold):
     count = len(pixels) // 3
+    red_mean = 0.0
+    green_mean = 0.0
+    blue_mean = 0.0
     luma = 0.0
     chroma = 0.0
     saturation = 0.0
@@ -54,6 +57,9 @@ def metrics(width, height, pixels, threshold):
 
     for index, offset in enumerate(range(0, len(pixels), 3)):
         red, green, blue = pixels[offset : offset + 3]
+        red_mean += red
+        green_mean += green
+        blue_mean += blue
         high = max(red, green, blue)
         low = min(red, green, blue)
         spread = high - low
@@ -82,7 +88,18 @@ def metrics(width, height, pixels, threshold):
             edge += abs(right - left) + abs(below - above)
             laplacian += abs(4 * center - left - right - above - below)
 
+    red_mean /= count
+    green_mean /= count
+    blue_mean /= count
+    neutral_reference = (red_mean + blue_mean) / 2.0
+
     return {
+        "red_mean": red_mean,
+        "green_mean": green_mean,
+        "blue_mean": blue_mean,
+        "green_ratio": (
+            green_mean / neutral_reference if neutral_reference else 0.0
+        ),
         "luma": luma / count,
         "chroma": chroma / count,
         "saturation": saturation / count,
@@ -112,6 +129,9 @@ def main():
         result = metrics(width, height, pixels, args.threshold)
         print(
             f"{path}: {width}x{height} "
+            f"rgb_mean=({result['red_mean']:.1f},"
+            f"{result['green_mean']:.1f},{result['blue_mean']:.1f}) "
+            f"green_ratio={result['green_ratio']:.3f} "
             f"luma={result['luma']:.1f} "
             f"chroma={result['chroma']:.1f} "
             f"saturation={result['saturation']:.3f} "

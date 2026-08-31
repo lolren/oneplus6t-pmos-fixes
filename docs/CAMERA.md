@@ -119,7 +119,9 @@ row-sum-preserving matrix:
 Controlled rear and front captures still showed a small green excess after the
 r33 profile. This r34 matrix is a moderate follow-up that reduces that excess
 while preserving equal-channel grey; the IMX519 solid-colour test pattern
-remains equal in all output channels. It is a bounded scene correction, not factory colour
+remains equal in all output channels. `tests/camera/ppm-metrics.py` reports the
+mean RGB values and `green_ratio` (green divided by the mean of red and blue)
+so future captures can measure the change consistently. It is a bounded scene correction, not factory colour
 calibration: there is still no chart, illuminant, lens-shading or flat-field
 measurement, and Android/vendor processing remains outside this open pipeline.
 The profile test checks the exact matrix and rebuilding from this repository
