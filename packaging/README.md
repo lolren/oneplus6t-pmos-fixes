@@ -12,7 +12,7 @@ cd packaging
 abuild -r
 ```
 
-The current checkout recipe is `0.1.0-r40`. A pure Alpine builder must also
+The current checkout recipe is `0.1.0-r41`. A pure Alpine builder must also
 install `python3` because the package check phase runs the Python bridge tests;
 the `-d` flag skips only runtime dependency resolution, not those checks:
 
@@ -31,7 +31,9 @@ it on a matching booted phone only after verifying the checksum and use
 The clean r36 APK built from commit `bed6615` has SHA-256
 `048cc37fb0b97300ad12712e27738e62bda59a310ba3172d0664a54e681a5c4d`.
 It adds the guarded Waydroid camera-profile synchronizer and its fixture
-coverage; the package is still a local development artifact.
+coverage. r41 additionally bounds every Waydroid shell/status operation and
+rejects a stopped or still-frozen container before the camera probe starts;
+the package is still a local development artifact.
 
 The clean r40 APK built from commit `bbd7287` has SHA-256
 `c93fcbb0e3554320d2bf7d20d0af7802c4564448fcc8bcaae8d5fb908eb9b725`.

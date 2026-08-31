@@ -49,11 +49,15 @@ Venus teardown faults make ordinary encoding unsafe.
 
 The runner must be used while a single graphical Waydroid session is held
 open. The reference image freezes an idle container for battery life, and a
-root-side SSH probe cannot reliably keep that session alive by itself. The
-runner's temporary sleep inhibitor and explicit thaw are bounded to the probe;
-the normal freeze-on-idle policy is restored afterward. Saved `PixelCopy`
-surface samples are diagnostic only until an interactive Android camera app is
-accepted on the visible compositor.
+root-side SSH probe cannot reliably keep that session alive by itself. Before
+doing any package or activity operation, the runner now performs bounded
+`waydroid status` and shell calls and rejects a stopped or still-frozen
+container; this makes a bad lifecycle state fail promptly instead of leaving
+an SSH session blocked on a torn-down LXC container. Its temporary sleep
+inhibitor and explicit thaw are bounded to the probe; the normal freeze-on-idle
+policy is restored afterward. Saved `PixelCopy` surface samples are diagnostic
+only until an interactive Android camera app is accepted on the visible
+compositor.
 
 ## Features and their benefit
 

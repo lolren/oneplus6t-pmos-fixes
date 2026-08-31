@@ -75,6 +75,19 @@ set -eu
 
 printf '%s\n' "$*" >> "$WAYDROID_TEST_LOG"
 case "$*" in
+status)
+	case "${WAYDROID_STATUS:-running}" in
+	stopped)
+		printf '%s\n' 'Session: STOPPED' 'Container: STOPPED'
+		;;
+	frozen)
+		printf '%s\n' 'Session: RUNNING' 'Container: FROZEN'
+		;;
+	*)
+		printf '%s\n' 'Session: RUNNING' 'Container: RUNNING'
+		;;
+	esac
+	;;
 "shell -- cat "*"encoded-camera-"*)
 	printf '%s\n' 'fixture encoded media'
 	;;
@@ -108,6 +121,19 @@ grep -q 'shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.REC
 grep -q 'shell -- am force-stop dev.lolren.waydroidcameraprobe' \
 	"$TEST_DIR/waydroid.log"
 grep -q '^container unfreeze$' "$TEST_DIR/waydroid.log"
+grep -q '^status$' "$TEST_DIR/waydroid.log"
+
+stopped_result=$TEST_DIR/result-stopped.txt
+if PATH="$TEST_DIR/bin:$PATH" \
+	WAYDROID_TEST_LOG="$TEST_DIR/waydroid-stopped.log" \
+	WAYDROID_STATUS=stopped \
+	PMOS_WAYDROID_PROBE_TIMEOUT=0 \
+	"$RUNNER" "$apk" preview "$stopped_result" \
+	>"$TEST_DIR/stopped-stdout" 2>"$TEST_DIR/stopped-stderr"; then
+	printf '%s\n' 'probe runner accepted a stopped Waydroid session' >&2
+	exit 1
+fi
+grep -q 'graphical session/container is stopped' "$TEST_DIR/stopped-stderr"
 
 fallback_result=$TEST_DIR/result-fallback.txt
 PATH="$TEST_DIR/bin:$PATH" \

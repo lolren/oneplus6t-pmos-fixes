@@ -150,6 +150,23 @@ if [ "$(id -u 2>/dev/null || printf '1')" != 0 ]; then
 		die "Waydroid shell requires root on this image; rerun with sudo ($waydroid_shell_check)"
 fi
 
+waydroid_shell() {
+	timeout "$control_timeout" waydroid shell -- "$@"
+}
+
+# A stopped graphical session cannot be repaired by the root-side probe. Check
+# it before the first shell operation so an SSH invocation fails promptly
+# instead of waiting on a shell attached to a torn-down LXC container. Fixture
+# implementations may not provide status output; real Waydroid does, so only
+# enforce states when the expected status fields are present.
+waydroid_status=$(timeout "$control_timeout" waydroid status 2>&1) ||
+	die "could not query Waydroid status ($waydroid_status)"
+case "$waydroid_status" in
+*'Session:'*'STOPPED'*|*'Container:'*'STOPPED'*)
+	die 'Waydroid graphical session/container is stopped; start one graphical session before running the probe'
+	;;
+esac
+
 if [ "$unfreeze" = yes ]; then
 	# The supported battery policy freezes an idle Android container. A probe
 	# started over SSH must explicitly thaw it before an ImageReader/native
@@ -157,36 +174,46 @@ if [ "$unfreeze" = yes ]; then
 	# its graphical session.
 	timeout "$control_timeout" waydroid container unfreeze \
 		</dev/null >/dev/null 2>&1 || :
+	waydroid_status=$(timeout "$control_timeout" waydroid status 2>&1) ||
+		die "could not verify Waydroid after thaw ($waydroid_status)"
+	case "$waydroid_status" in
+	*'Session:'*'STOPPED'*|*'Container:'*'STOPPED'*)
+		die 'Waydroid stopped while the probe was being prepared'
+		;;
+	*'Container:'*'FROZEN'*)
+		die 'Waydroid container remained frozen after the bounded thaw'
+		;;
+	esac
 fi
 
 if [ "$skip_install" = no ]; then
 	apk_bytes=$(wc -c <"$apk" | tr -d ' ')
 	[ "$apk_bytes" -gt 0 ] || die "APK is empty: $apk"
-	waydroid shell -- pm install -r -S "$apk_bytes" <"$apk"
+	waydroid_shell pm install -r -S "$apk_bytes" <"$apk"
 else
-	waydroid shell -- pm path dev.lolren.waydroidcameraprobe >/dev/null ||
+	waydroid_shell pm path dev.lolren.waydroidcameraprobe >/dev/null ||
 		die 'probe package is not installed in Waydroid'
 fi
-waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
+waydroid_shell pm grant dev.lolren.waydroidcameraprobe android.permission.CAMERA \
 	2>/dev/null || :
-waydroid shell -- pm grant dev.lolren.waydroidcameraprobe android.permission.RECORD_AUDIO \
+waydroid_shell pm grant dev.lolren.waydroidcameraprobe android.permission.RECORD_AUDIO \
 	2>/dev/null || :
-timeout "$control_timeout" waydroid shell -- am force-stop \
+waydroid_shell am force-stop \
 	dev.lolren.waydroidcameraprobe </dev/null >/dev/null 2>&1 || :
-waydroid shell -- rm -f \
+waydroid_shell rm -f \
 	/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 	2>/dev/null || :
 if [ "$profile" = encode-720p ] && [ -n "$camera_id" ]; then
-	waydroid shell -- rm -f \
+	waydroid_shell rm -f \
 		"/data/user/0/dev.lolren.waydroidcameraprobe/files/encoded-camera-$camera_id.mp4" \
 		2>/dev/null || :
 fi
 if [ -n "$camera_id" ]; then
-	waydroid shell -- am start -W -n \
+	waydroid_shell am start -W -n \
 		dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
 		--es profile "$profile" --es camera-id "$camera_id"
 else
-	waydroid shell -- am start -W -n \
+	waydroid_shell am start -W -n \
 		dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
 		--es profile "$profile"
 fi
@@ -194,7 +221,7 @@ fi
 result=''
 elapsed=0
 while [ "$elapsed" -le "$timeout_seconds" ]; do
-	result=$(waydroid shell -- cat \
+	result=$(waydroid_shell cat \
 		/data/user/0/dev.lolren.waydroidcameraprobe/files/result.txt \
 		2>/dev/null || :)
 	case "$result" in
@@ -202,7 +229,7 @@ while [ "$elapsed" -le "$timeout_seconds" ]; do
 		if [ -n "$media_output" ]; then
 			mkdir -p "$(dirname -- "$media_output")"
 			media_tmp=$(mktemp "${TMPDIR:-/tmp}/waydroid-camera-media.XXXXXX")
-			if ! waydroid shell -- cat \
+			if ! waydroid_shell cat \
 				"/data/user/0/dev.lolren.waydroidcameraprobe/files/encoded-camera-$camera_id.mp4" \
 				>"$media_tmp"; then
 				rm -f -- "$media_tmp"
