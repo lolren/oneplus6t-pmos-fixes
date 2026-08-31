@@ -52,6 +52,33 @@ The r33 profile SHA-512 values are:
 The exact source fixture and the sensor-component setup are documented in
 `docs/CAMERA.md`; no photograph or raw frame is committed.
 
+## 2026-08-31 Waydroid Camera2 and video checkpoint
+
+With the graphical Waydroid session held open during the root-side runner, the
+installed vanilla Android 13 image completed the full Camera2 probe for all
+three mapped sensors. Every sensor returned valid 640x480 YUV and JPEG data;
+all JPEG checks reported zero repeated row discontinuities. Camera2 reported
+rear AF states `[3, 4]` with a centre region for IDs 0 and 1, and the fixed-
+focus front ID 2 reported AF state `[0]` with no region. The private preview
+rates were approximately 14.72, 4.34 and 18.06 fps for IDs 0, 1 and 2 in the
+current low-light scene. The low ID 1 rate is expected for the auxiliary
+module and does not make it safe to encode.
+
+The safe encoder profiles were then exercised independently. Main rear ID 0
+produced a 9.877-second 1280x720 H.264/AAC file with 280 decoded video frames;
+front ID 2 produced a 9.959-second file with 248 decoded video frames. Both
+files passed `ffprobe` and contained separate H.264 video and AAC audio
+streams. The auxiliary rear ID 1 was not encoded: both its known teardown
+orders previously reproduce the SDM845 Venus IRQ storm, so its ordinary video
+profile remains deliberately absent.
+
+The `surface` probe's private `PixelCopy` diagnostic images are not used as
+display acceptance evidence: the probe activity finishes quickly and the
+visible compositor returned to Chatty before the screenshot. A real Android
+camera application still needs an interactive on-screen acceptance pass. The
+full YUV/JPEG/private-stream results above are nevertheless Camera2 data-path
+evidence, not a claim that a third-party camera UI has been validated.
+
 ## 2026-08-30 native sensor-colour r31/r8 and app r32 checkpoint
 
 The twentieth native libcamera patch registers the standard nine-element

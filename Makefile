@@ -86,7 +86,8 @@ test:
 		tests/test-mobile-data-watchdog.sh \
 		tests/test-cellular-only.sh \
 		tests/test-ssh-recovery.sh \
-		tests/test-camera-generation.sh tests/test-waydroid-installer.sh \
+		tests/test-camera-generation.sh tests/test-camera-fixtures.sh \
+		tests/test-waydroid-installer.sh \
 		tests/test-waydroid-audio-probe.sh \
 		tests/test-snapshot-patches.sh \
 		 tests/test-native-white-balance-patches.sh \
@@ -129,6 +130,7 @@ test:
 	./tests/test-location-report.sh
 	./tests/test-waydroid-health.sh
 	./tests/test-camera-generation.sh
+	./tests/test-camera-fixtures.sh
 	sh tests/test-waydroid-installer.sh
 	sh tests/test-waydroid-camera-profiles.sh
 	sh tests/test-waydroid-audio-probe.sh

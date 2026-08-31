@@ -37,6 +37,24 @@ preserving Android's software encoder as fallback. Aperture now configures
 simultaneous preview and encoder streams and saves playable H.264/AAC video.
 The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 
+## Latest runtime checkpoint
+
+On 2026-08-31 the full protected Camera2 probe returned valid YUV and JPEG
+frames for IDs 0, 1 and 2, with zero JPEG row discontinuities. Rear IDs 0 and
+1 returned AF states `[3, 4]` and centre regions; fixed-focus front ID 2
+returned state `[0]` with no AF region. The safe encoder profiles then
+produced decodable 1280x720 H.264/AAC files for main rear ID 0 and front ID 2.
+Auxiliary rear ID 1 remains preview/YUV/JPEG-only because its two reproducible
+Venus teardown faults make ordinary encoding unsafe.
+
+The runner must be used while a single graphical Waydroid session is held
+open. The reference image freezes an idle container for battery life, and a
+root-side SSH probe cannot reliably keep that session alive by itself. The
+runner's temporary sleep inhibitor and explicit thaw are bounded to the probe;
+the normal freeze-on-idle policy is restored afterward. Saved `PixelCopy`
+surface samples are diagnostic only until an interactive Android camera app is
+accepted on the visible compositor.
+
 ## Features and their benefit
 
 | Feature | What it brings |
