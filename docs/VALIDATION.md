@@ -3,6 +3,55 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 native green-cast r33 checkpoint
+
+The downstream profiles now use the same row-sum-preserving matrix on IMX371,
+IMX376 and IMX519:
+
+```text
+0.97  0.03  0.00
+0.03  0.94  0.03
+0.00  0.03  0.97
+```
+
+This is intentionally a mild scene correction: equal RGB inputs remain equal,
+while a controlled rear-scene A/B capture reduced the green-to-red/blue excess
+on the main IMX519 from `1.255` to `1.162` and on the secondary IMX376 from
+`1.410` to `1.361` when measured as `G / average(R,B)`. The correction is not
+factory colour calibration and does not claim Android vendor-ISP parity.
+
+The r33 package also exposes the verified simple-pipeline
+`draft::TestPatternMode`. With IMX519 sensor components set to 512 and the
+checked-in automatic-WB fixture, a 96-frame processed capture settled at
+RGB `(119.0, 119.0, 120.04)`; channel minima/maxima were R `119..119`, G
+`119..119` and B `120..121`. Final AWB gains were approximately
+`(0.9998, 1.0040)`. The pattern was disabled and WirePlumber was active after
+the test.
+
+The installed artifacts are:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r33.apk` | `76808314599b548a86c2924aaea82b98ce0a913a38967acfd32cd95b54684f6d` |
+| `libcamera-ipa-99990.7.2-r33.apk` | `b54c2ada1f1e2bd833c385247ee796cbd58a40077d7f74646e5d7b5e36c9c89e` |
+
+The complete pmaports integration patch applies cleanly to the reviewed base;
+its current SHA-256 is
+`ee4dbda47a119246bbef5832b29f1119df4f0084b0ee05e6edff0da7d2f221a6`.
+The r33 package was installed over r32 without reboot, bootloader access or
+kernel change.
+
+The r33 profile SHA-512 values are:
+
+| Profile | SHA-512 |
+| --- | --- |
+| `imx371.yaml` | `743defaf312963050603888464dd24c5beeb5c4a7b0fd1606ab1469863d22eea936bf01472f94d765d5efdf91de1e0153af9fc0a12f41b43d7d6487f5a9e34a1` |
+| `imx376.yaml` | `427d1f31dbfcd5f8d20a4278ee8bbd65b4c88c98469da28c3321743b47ad64fe1b231528ecea1792807f72961998f0b76e099ec08232428e4b0e45b1b1d8d60d` |
+| `imx519.yaml` | `f611cc58742aa936f118be273b784b8006af0703d7fcc05eeb8c4399baba28f9ecb7201950fd3923748d15673fb1f5573d086ab3f759298fba080eda62497ac9` |
+
+The exact source fixture and the sensor-component setup are documented in
+`docs/CAMERA.md`; no photograph or raw frame is committed.
+
 ## 2026-08-30 native sensor-colour r31/r8 and app r32 checkpoint
 
 The twentieth native libcamera patch registers the standard nine-element

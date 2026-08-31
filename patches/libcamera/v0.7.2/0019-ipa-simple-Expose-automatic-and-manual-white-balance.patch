@@ -1,17 +1,12 @@
-From 057a24f2da0c1aa7ee8f76b2c3c7fd096e0ca18f Mon Sep 17 00:00:00 2001
+From a5ca7bcf7c0b99c9293e80669e0632f35f57ada5 Mon Sep 17 00:00:00 2001
 From: Lolren <loren.bufanu@gmail.com>
 Date: Sun, 30 Aug 2026 08:32:37 +0100
 Subject: [PATCH] ipa: simple: Expose automatic and manual white balance
 
 Signed-off-by: Lolren <loren.bufanu@gmail.com>
----
- src/ipa/simple/algorithms/awb.cpp | 78 +++++++++++++++++++++++++++----
- src/ipa/simple/algorithms/awb.h   |  5 ++
- src/ipa/simple/ipa_context.h      |  2 +
- 3 files changed, 77 insertions(+), 8 deletions(-)
 
 diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
-index 05155c8..f2b6a6d 100644
+index 05155c8..6fa69f7 100644
 --- a/src/ipa/simple/algorithms/awb.cpp
 +++ b/src/ipa/simple/algorithms/awb.cpp
 @@ -7,6 +7,7 @@
@@ -22,15 +17,92 @@ index 05155c8..f2b6a6d 100644
  #include <numeric>
  #include <stdint.h>
  
-@@ -23,21 +24,79 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
+@@ -23,21 +24,159 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
  
  namespace ipa::soft::algorithms {
  
 +namespace {
 +
 +constexpr float kMinColourGain = 0.0f;
++constexpr float kMinAutoColourGain = 0.5f;
 +constexpr float kMaxColourGain = 4.0f;
 +constexpr unsigned int kDefaultColourTemperature = 5000;
++constexpr unsigned int kAwbBlackMargin = 8;
++constexpr unsigned int kAwbWhiteLimit = 248;
++constexpr double kAwbLowerPercentile = 0.05;
++constexpr double kAwbUpperPercentile = 0.95;
++constexpr float kAwbSmoothing = 0.25f;
++
++/*
++ * Calculate a channel mean from the useful part of its histogram. The
++ * original simple-ISP AWB used every sample, including black-level noise and
++ * clipped highlights. That is especially unstable on this phone's small
++ * preview crop, where a few saturated or near-black blocks can dominate the
++ * ratio. Trimming both tails makes the estimate represent mid-tone scene
++ * pixels instead.
++ */
++bool trimmedChannelMean(const SwIspStats::Histogram &histogram,
++			unsigned int blackLevel, double *mean)
++{
++	constexpr unsigned int binWidth =
++		256 / SwIspStats::kYHistogramSize;
++	const unsigned int minValue = std::min(
++		255u, blackLevel + kAwbBlackMargin);
++	const unsigned int firstBin = std::min(
++		SwIspStats::kYHistogramSize - 1, minValue / binWidth);
++	const unsigned int lastBin = std::min(
++		SwIspStats::kYHistogramSize,
++		(kAwbWhiteLimit / binWidth) + 1);
++
++	if (firstBin >= lastBin)
++		return false;
++
++	uint64_t total = 0;
++	for (unsigned int i = firstBin; i < lastBin; ++i)
++		total += histogram[i];
++
++	/* A tiny or entirely clipped window is not a useful AWB reference. */
++	if (total < 32)
++		return false;
++
++	const double lower = total * kAwbLowerPercentile;
++	const double upper = total * kAwbUpperPercentile;
++	double sum = 0.0;
++	double count = 0.0;
++	uint64_t seen = 0;
++
++	for (unsigned int i = firstBin; i < lastBin; ++i) {
++		const uint64_t binCount = histogram[i];
++		const double begin = std::max(lower, static_cast<double>(seen));
++		const double end = std::min(upper,
++					   static_cast<double>(seen + binCount));
++
++		if (end > begin) {
++			const double value =
++				static_cast<double>(i * binWidth + binWidth / 2) -
++				blackLevel;
++			sum += (end - begin) * value;
++			count += end - begin;
++		}
++
++		seen += binCount;
++	}
++
++	if (count <= 0.0 || sum <= 0.0)
++		return false;
++
++	*mean = sum / count;
++	return true;
++}
++
++float gainFor(double reference, double channel)
++{
++	if (channel <= 0.0)
++		return kMaxColourGain;
++
++	return std::clamp(static_cast<float>(reference / channel),
++			  kMinAutoColourGain, kMaxColourGain);
++}
 +
 +} /* namespace */
 +
@@ -54,6 +126,7 @@ index 05155c8..f2b6a6d 100644
 +	awb.gains = { { 1.0, 1.0, 1.0 } };
 +	awb.temperatureK = kDefaultColourTemperature;
 +	awb.autoEnabled = true;
++	awb.autoGainsInitialized = false;
  
  	return 0;
  }
@@ -68,6 +141,8 @@ index 05155c8..f2b6a6d 100644
 +	const auto &awbEnable = controls.get(controls::AwbEnable);
 +	if (awbEnable && *awbEnable != awb.autoEnabled) {
 +		awb.autoEnabled = *awbEnable;
++		if (awb.autoEnabled)
++			awb.autoGainsInitialized = false;
 +		LOG(IPASoftAwb, Debug)
 +			<< (awb.autoEnabled ? "Enabling" : "Disabling") << " AWB";
 +	}
@@ -105,7 +180,7 @@ index 05155c8..f2b6a6d 100644
  
  	frameContext.gains = gains;
  	params->gains = gains;
-@@ -51,11 +110,14 @@ void Awb::process(IPAContext &context,
+@@ -51,11 +190,14 @@ void Awb::process(IPAContext &context,
  {
  	const SwIspStats::Histogram &histogram = stats->yHistogram;
  	const uint8_t blackLevel = context.activeState.blc.level;
@@ -121,17 +196,76 @@ index 05155c8..f2b6a6d 100644
  		return;
  
  	/*
-@@ -77,7 +139,7 @@ void Awb::process(IPAContext &context,
- 	 * Calculate red and blue gains for AWB.
- 	 * Clamp max gain at 4.0, this also avoids 0 division.
+@@ -74,23 +216,74 @@ void Awb::process(IPAContext &context,
+ 	const RGB<uint64_t> sum = stats->sum_.max(offset + minValid) - offset;
+ 
+ 	/*
+-	 * Calculate red and blue gains for AWB.
+-	 * Clamp max gain at 4.0, this also avoids 0 division.
++	 * Start with the traditional grey-world estimate. It remains a useful
++	 * fallback when the image is too dark to form a trimmed estimate.
  	 */
 -	auto &gains = context.activeState.awb.gains;
++	const RGB<float> globalGains = { {
++		gainFor(sum.g(), sum.r()),
++		1.0f,
++		gainFor(sum.g(), sum.b()),
++	} };
++
++	/*
++	 * Prefer the mid-tone estimate. Per-channel histograms are deliberately
++	 * used here rather than a fixed RGB correction: the same method adapts to
++	 * daylight, tungsten and every supported sensor. The lower cutoff rejects
++	 * the 0x40 pedestal/noise and the upper cutoff rejects clipped highlights.
++	 */
++	double meanR = 0.0;
++	double meanG = 0.0;
++	double meanB = 0.0;
++	const bool haveTrimmedMeans =
++		trimmedChannelMean(stats->rgbHistogram[0], blackLevel, &meanR) &&
++		trimmedChannelMean(stats->rgbHistogram[1], blackLevel, &meanG) &&
++		trimmedChannelMean(stats->rgbHistogram[2], blackLevel, &meanB);
++
++	RGB<float> targetGains = globalGains;
++	if (haveTrimmedMeans) {
++		const RGB<float> trimmedGains = { {
++			gainFor(meanG, meanR),
++			1.0f,
++			gainFor(meanG, meanB),
++		} };
++
++		/* Keep a small grey-world contribution for strongly coloured scenes. */
++		constexpr float kTrimmedWeight = 0.8f;
++		targetGains = { {
++			kTrimmedWeight * trimmedGains.r() +
++				(1.0f - kTrimmedWeight) * globalGains.r(),
++			1.0f,
++			kTrimmedWeight * trimmedGains.b() +
++				(1.0f - kTrimmedWeight) * globalGains.b(),
++		} };
++
++		LOG(IPASoftAwb, Debug)
++			<< "trimmed means R/G/B: " << meanR << "/" << meanG
++			<< "/" << meanB << "; global gains: " << globalGains
++			<< "; target gains: " << targetGains;
++	} else {
++		LOG(IPASoftAwb, Debug)
++			<< "using global AWB gains: " << globalGains
++			<< " (insufficient mid-tone statistics)";
++	}
++
++	/* Smooth normal scene changes, but do not delay the first valid estimate. */
 +	auto &gains = awb.gains;
++	const float weight = awb.autoGainsInitialized ? kAwbSmoothing : 1.0f;
  	gains = { {
- 		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
- 		1.0,
-@@ -85,12 +147,12 @@ void Awb::process(IPAContext &context,
+-		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
+-		1.0,
+-		sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
++		gains.r() + weight * (targetGains.r() - gains.r()),
++		1.0f,
++		gains.b() + weight * (targetGains.b() - gains.b()),
  	} };
++	awb.autoGainsInitialized = true;
  
  	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
 -	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
@@ -164,18 +298,19 @@ index ad993f3..2ef8849 100644
  		     const uint32_t frame,
  		     IPAFrameContext &frameContext,
 diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
-index 0c29ef0..017901e 100644
+index 0c29ef0..48a4b54 100644
 --- a/src/ipa/simple/ipa_context.h
 +++ b/src/ipa/simple/ipa_context.h
-@@ -65,6 +65,7 @@ struct IPAActiveState {
+@@ -65,6 +65,8 @@ struct IPAActiveState {
  	struct {
  		RGB<float> gains;
  		unsigned int temperatureK;
 +		bool autoEnabled;
++		bool autoGainsInitialized;
  	} awb;
  
  	struct {
-@@ -99,6 +100,7 @@ struct IPAFrameContext : public FrameContext {
+@@ -99,6 +101,7 @@ struct IPAFrameContext : public FrameContext {
  	} agc;
  
  	RGB<float> gains;
@@ -183,6 +318,3 @@ index 0c29ef0..017901e 100644
  
  	float gamma;
  	std::optional<float> contrast;
--- 
-2.49.0
-

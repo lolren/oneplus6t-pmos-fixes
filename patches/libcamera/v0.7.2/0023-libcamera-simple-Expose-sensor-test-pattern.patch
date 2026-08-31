@@ -1,0 +1,58 @@
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 7ec71cf..0350ede 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -672,6 +672,26 @@ int SimpleCameraData::init()
+ 
+ 	properties_ = sensor_->properties();
+ 
++	/*
++	 * Expose the sensor test-pattern control when the sensor database has a
++	 * verified mapping for it.  The simple pipeline otherwise exposes only
++	 * the controls produced by the Software ISP, which makes it impossible
++	 * for applications and calibration tools to validate the Bayer input and
++	 * debayer colour path independently of the scene.
++	 */
++	if (!sensor_->testPatternModes().empty()) {
++		std::vector<ControlValue> values;
++		values.reserve(sensor_->testPatternModes().size());
++		for (auto pattern : sensor_->testPatternModes())
++			values.emplace_back(pattern);
++
++		ControlInfoMap::Map controlMap;
++		for (const auto &control : controlInfo_)
++			controlMap.emplace(control.first, control.second);
++		controlMap[&controls::draft::TestPatternMode] = ControlInfo(values);
++		controlInfo_ = ControlInfoMap(std::move(controlMap), controls::controls);
++	}
++
+ 	/* Find the first subdev that can generate a frame start signal, if any. */
+ 	frameStartEmitter_ = nullptr;
+ 	for (const Entity &entity : entities_) {
+@@ -1775,6 +1795,26 @@ int SimplePipelineHandler::queueRequestDevice(Camera *camera, Request *request)
+ 	SimpleCameraData *data = cameraData(camera);
+ 	int ret;
+ 
++	/*
++	 * TestPatternMode is a sensor control rather than a Software ISP control.
++	 * Apply it before queuing this request so the next captured frames use the
++	 * requested pattern.  This is also useful for deterministic calibration
++	 * and regression tests on simple-pipeline sensors.
++	 */
++	const auto &testPatternMode =
++		request->controls().get(controls::draft::TestPatternMode);
++	if (testPatternMode) {
++		ret = data->sensor_->setTestPatternMode(
++			static_cast<controls::draft::TestPatternModeEnum>(*testPatternMode));
++		if (ret) {
++			LOG(SimplePipeline, Error)
++				<< "Failed to set test pattern mode: " << ret;
++			return ret;
++		}
++		request->_d()->metadata().set(controls::draft::TestPatternMode,
++					      *testPatternMode);
++	}
++
+ 	std::map<const Stream *, FrameBuffer *> buffers;
+ 	bool metadataRequired = false;
+ 

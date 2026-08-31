@@ -5,12 +5,12 @@ This repository contains a reproducible camera stack for the OnePlus 6T
 focus actuators, software-ISP scaling, exposure defaults and the controls that
 the current open pipeline can implement honestly.
 
-The current reference phone runs kernel r10, libcamera/IPA r31,
-`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r32. The r30/r8
-lower layer and r32 app were built for AArch64 and installed without a reboot;
-r31 is the same lower-layer control stack with the sensor-specific colour
-profiles described below. Both r30 and r31 remain reproducible rollback
-generations.
+The current reference phone runs kernel r10, libcamera/IPA r33,
+`pipewire-spa-libcamera` r8, Snapshot r3 and Advanced Snapshot r34. The r33/r8
+lower layer and r34 app were built for AArch64 and installed without a reboot;
+r33 includes the sensor-specific colour profiles and the deterministic
+sensor-test-pattern control described below. r30, r31 and r32 remain
+reproducible rollback/diagnostic generations.
 Both rear modules now expose bounded manual `LensPosition` control as well as
 contrast-detect autofocus; the fixed-focus IMX371 is explicitly excluded from
 focus controls. All three sensors expose standard automatic/manual white
@@ -106,16 +106,31 @@ These are conservative open tone/detail defaults selected from bounded
 captures. Sharpness 1 applies a restrained five-tap unsharp mask; 0 disables
 it and 2 is the supported maximum.
 
-The r31 downstream package also ships sensor-specific 3×3 colour matrices for
-IMX371, IMX376 and IMX519, selected by the estimated colour temperature. They
-are represented as ordinary libcamera YAML in `config/libcamera/simple/` and
-were recovered as numeric transforms from the matching stock sensor tuning.
-They are useful interoperability defaults, not a measured factory calibration:
-there is no accompanying colour-chart, illuminant, lens-shading or flat-field
-measurement. The profile test checks the entry counts, ordering and sentinels;
-rebuilding the package from this repository reproduces the exact data without
-shipping a vendor binary. Android/vendor processing remains outside this open
-pipeline.
+The r33 downstream package ships a separate ordinary libcamera YAML profile for
+IMX371, IMX376 and IMX519. Each profile applies the same conservative
+row-sum-preserving matrix:
+
+```text
+0.97  0.03  0.00
+0.03  0.94  0.03
+0.00  0.03  0.97
+```
+
+Controlled rear captures showed a small green excess in normal scenes. This
+matrix reduces that excess while preserving equal-channel grey; the IMX519
+solid-colour test pattern remained equal in all output channels after the
+profile was installed. It is a bounded scene correction, not factory colour
+calibration: there is still no chart, illuminant, lens-shading or flat-field
+measurement, and Android/vendor processing remains outside this open pipeline.
+The profile test checks the exact matrix and rebuilding from this repository
+reproduces the same result without shipping a vendor binary.
+
+For repeatable pipeline checks, the r33 simple-pipeline patch exposes
+`draft::TestPatternMode`. Set the IMX519 sensor components to the same value,
+then run the checked-in `tests/fixtures/processed-neutral-auto-awb.yaml` with
+`cam` for at least 96 frames. The final frame should be neutral; this test
+separates a real Bayer/debayer defect from a scene-dependent white-balance
+problem. Turn the sensor pattern off after the test.
 
 The simple AGC also exposes the standard `ExposureValue` control from -1 to +1
 EV. It shifts both the configured histogram target and the protective
@@ -275,17 +290,18 @@ view.
 
 ### User controls
 
-An identity CCM enables a truthful saturation control without pretending that
-the sensors have been colour-chart calibrated. The tested controls are:
+The default CCM is a conservative green-cast correction whose three rows each
+sum to one, so equal-channel grey remains grey without pretending that the
+sensors have been colour-chart calibrated. The tested controls are:
 
 | Feature | Main rear | Secondary rear | Front | Status |
 | --- | --- | --- | --- | --- |
 | Automatic exposure | Yes | Yes | Yes | Corrected gain models plus per-channel highlight protection |
-| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r30/current app |
+| Exposure compensation | Yes | Yes | Yes | Standard `ExposureValue`, -1..+1 EV; r33/current app |
 | Variable frame duration | Yes | Yes | Yes | Standard `FrameDurationLimits`; client-selectable to a conservative 15 fps |
-| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r30/r8/r32 round trip live-tested |
+| Automatic white balance | Yes | Yes | Yes | Standard `AwbEnable`; r33/r8/r34 round trip live-tested |
 | Manual white balance | Yes | Yes | Yes | Standard two-element `ColourGains`; red/blue 0.1–4.0 UI and per-sensor persistence |
-| Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; bounded identity/custom requests live-tested while AWB is manual |
+| Colour correction matrix | Yes | Yes | Yes | Standard nine-element `ColourCorrectionMatrix`; r33 profiles reduce the measured green excess while bounded custom requests remain available in manual AWB |
 | Continuous autofocus | Yes | Yes | No hardware | Added and live-tested in isolation |
 | One-shot autofocus | Yes | Yes | No hardware | Trigger/state sequence tested |
 | Tap-to-focus | Yes | Yes | No hardware | Snapshot sensor-region transport live-tested |
@@ -357,8 +373,8 @@ pmbootstrap -p "$PWD" build --arch aarch64 advanced-snapshot
 pmbootstrap -p "$PWD" build --arch aarch64 linux-postmarketos-qcom-sdm845
 ```
 
-The current reference build produced `libcamera`/`libcamera-ipa` r31,
-`pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r32 and the SDM845
+The current reference build produced `libcamera`/`libcamera-ipa` r33,
+`pipewire-spa-libcamera` r8, Snapshot r3, Advanced Snapshot r34 and the SDM845
 kernel r10. See `packaging/pmaports/README.md` for hashes and rollback rules.
 These commands build packages only; no reboot is implicit.
 
@@ -367,10 +383,10 @@ These commands build packages only; no reboot is implicit.
 All camera processes were bounded, captures remained private and both rear
 lenses were parked at DAC 0 after tests.
 
-### Current r31 runtime entry
+### Current r33 runtime entry
 
-- The signed AArch64 `libcamera`/IPA r31 pair is installed and its three
-  deployed profile hashes match the source and build output exactly.
+- The AArch64 `libcamera`/IPA r33 pair is installed and its three deployed
+  profile hashes match the source and build output exactly.
 - The bounded live validator completed both rear tap/reset transitions and
   10-second stability windows with zero restarts and zero post-reset lens
   requests: main recorded 41 post-reset metrics, secondary 54, and the fixed-
@@ -378,8 +394,11 @@ lenses were parked at DAC 0 after tests.
 - PipeWire, WirePlumber and pipewire-pulse remained active after the package
   replacement. No reboot, bootloader or kernel change was involved.
 
-This validates profile selection, packaging and stream stability. It does not
-replace a controlled chart comparison or prove Android-vendor image parity.
+The r33 equal-channel IMX519 sensor pattern produced equal RGB values after
+AWB settled, and the rear A/B scene captures reduced the green-channel excess
+with the row-sum-preserving profile. This validates profile selection,
+packaging and the colour-path diagnostic; it does not replace a controlled
+chart comparison or prove Android-vendor image parity.
 
 ### Historical r28/r24 runtime entry
 

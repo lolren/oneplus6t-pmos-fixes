@@ -1,0 +1,13 @@
+# Diagnostic capture script for comparing the recovered Android IMX519 matrix
+# with the open pipeline's neutral baseline. This is not a production profile.
+properties:
+  - loop: 20
+
+frames:
+  - 0:
+      AwbEnable: false
+      ColourGains: [ 0.96, 1.71 ]
+      ColourCorrectionMatrix: [ 1.4905, -0.545645, 0.0551411, -0.220963, 1.14068, 0.0802817, -0.0620148, -0.598863, 1.66088 ]
+      Gamma: 2.1
+      Contrast: 1.0
+      Saturation: 1.0

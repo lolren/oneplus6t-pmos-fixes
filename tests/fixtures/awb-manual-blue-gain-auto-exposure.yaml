@@ -1,0 +1,14 @@
+# Reference capture for checking the direction and strength of the blue
+# channel gain while automatic exposure remains enabled.
+properties:
+  - loop: 18
+
+frames:
+  - 0:
+      AwbEnable: false
+      ColourGains: [ 1.0, 2.0 ]
+      ColourCorrectionMatrix: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 ]
+      Gamma: 2.0
+      Contrast: 1.0
+      Saturation: 1.0
+      Sharpness: 1.0

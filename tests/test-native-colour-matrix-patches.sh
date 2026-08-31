@@ -15,7 +15,7 @@ fail() {
 
 libcamera_blob=0ec442a1e389e4de713e4e5d12dbf6eb606a4b8f
 libcamera_sha512=43bb6a94fea96df34b1c97a137d731390d9463b63a49d042196c434666661b1a45eed8ce27b6edb405814e1c8005ad822b976205f5d4fa0088e455ce99c0c5b3
-app_sha512=4d308df29085404171264470b6a29171307af9055795bd69cff7aef95d0afe394a1d7790b23ef23b7d865d2cf865704be958c1549f91f3157d0b9f19021d5ba8
+app_sha512=8e0f698d342fead6b92e4cef5de2f266f717f23fd65dd287d9a520c0457433edb2387d32e6c007a5909db8773052c5720094648cabbdeee7126347bf508388ab
 
 test "$(git hash-object "$LIBCAMERA_PATCH")" = "$libcamera_blob" ||
 	fail 'libcamera patch blob changed without updating integration'
@@ -41,9 +41,9 @@ grep -q "^+$libcamera_sha512  0022-ipa-simple-expose-manual-colour-correction-ma
 	"$MONOLITH" || fail 'libcamera patch checksum is not in pmaports'
 grep -q "^+$app_sha512  advanced-snapshot-0.1.0.tar.gz$" "$MONOLITH" ||
 	fail 'Advanced Snapshot archive checksum is not in pmaports'
-grep -q '^+pkgrel=31$' "$MONOLITH" || fail 'libcamera recipe is not r31'
-grep -q '^+pkgrel=32$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r32'
-grep -q '^+_commit="aa9fea6464c580c308cefecc6383f57c58910102"$' "$MONOLITH" ||
+grep -q '^+pkgrel=33$' "$MONOLITH" || fail 'libcamera recipe is not r33'
+grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r34'
+grep -q '^+_commit="0376f68c6808517fdc368d8e92ce67a0463ce960"$' "$MONOLITH" ||
 	fail 'Advanced Snapshot source pin is not the tested colour-calibration commit'
 
 printf '%s\n' 'Native colour-matrix patch and pmaports integrity tests passed'

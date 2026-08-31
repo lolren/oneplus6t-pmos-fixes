@@ -126,13 +126,14 @@ Android HAL compiles on the host and the ARM provider passed the diagnostic
 reopen/full-probe checks; ordinary third-party-app soak and a focused
 framework test remain required before an upstream proposal.
 
-Do not upstream the OnePlus r31 sensor profiles as if they were measured,
+Do not upstream the OnePlus r33 sensor profiles as if they were measured,
 generic libcamera calibration. They are downstream numeric interoperability
-data recovered from the matching stock tuning and are deliberately kept in the
-OnePlus pmaports overlay. The generic patch series remains valid with identity
-as its safe control default; the downstream YAML adds the per-sensor matrices
-only for this phone. The values have no chart, illuminant or flat-field
-validation and do not include a vendor binary, lens shading or denoise stage.
+data and a conservative scene-level green-cast correction deliberately kept in
+the OnePlus pmaports overlay. The generic patch series remains valid without
+the downstream profiles; the YAML applies the same row-sum-preserving matrix to
+the three sensors only for this phone. The values have no chart, illuminant or
+flat-field validation and do not include a vendor binary, lens shading or
+denoise stage.
 The OnePlus gamma/contrast/saturation values are likewise downstream defaults,
 not a substitute for a proper camera-calibration submission.
 

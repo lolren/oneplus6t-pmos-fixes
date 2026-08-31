@@ -176,6 +176,22 @@ A local Alpine `APKBUILD` and its upstreaming checklist are in
 [packaging/](packaging/). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for why a
 carrier-specific profile must not be placed in the OnePlus device package.
 
+## Camera quality generation
+
+The camera stack keeps the public libcamera control path intact while adding
+OnePlus-specific tuning in a separate package. Rear tap-focus and manual focus
+use the real IMX519/IMX376 actuator range; Advanced Snapshot r34 also reapplies
+the selected focus request after opening its separate full-resolution still
+stream, which is the stream that supplies the saved JPEG. The front IMX371 is
+fixed-focus and is intentionally reported that way.
+
+The current profiles use a conservative row-sum-preserving colour matrix on all
+three sensors to reduce the measured green excess without changing equal-channel
+grey. Controlled IMX519 test-pattern output remains neutral after the profile,
+and rear-scene A/B captures show less green on both IMX519 and IMX376. This is a
+bounded open-pipeline correction, not a claim of factory calibration or Android
+vendor-ISP parity; chart-based colour and lens-shading calibration remain open.
+
 ## Unattended acceptance run
 
 After the phone is reachable, collect one reproducible evidence directory for
@@ -312,7 +328,7 @@ and through an open Camera3 HAL in Waydroid.
 | Manual shutter and analogue gain | Disables automatic regulation and submits standard `ExposureTime` and `AnalogueGain` values in microseconds and linear gain units; the IPA clamps them to the active sensor. |
 | Gamma and sensor calibration | Advanced Snapshot exposes a standard `Gamma` tone control plus a phone-width per-sensor calibration dialog for repeatable exposure, white balance, 3×3 colour matrix, contrast, detail and focus settings; profiles are keyed by stable camera identity. |
 | Automatic/manual white balance | Keeps statistics-driven AWB as the default, transports standard red/blue `ColourGains` arrays through PipeWire and lets Advanced Snapshot persist bounded gains per physical sensor. |
-| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the r31 downstream IPA also ships sensor-specific stock-derived numeric matrices, while the app retains bounded user/chart overrides without claiming factory calibration. |
+| Writable colour correction | Exposes the standard nine-element `ColourCorrectionMatrix` on all three native cameras while white balance is manual; the r33 downstream profiles add a conservative, grey-preserving green-cast correction, while the app retains bounded user/chart overrides without claiming factory calibration. |
 | 1x–4x zoom and 2048x1536 stills | Provides useful framing controls, keeps the tappable value chip in the toolbar instead of over the mode selector, and avoids saving only preview-resolution photographs. |
 | Bounded rear hardware flash | Provides an explicit, opt-in LED pulse through `pmos-camera-flash`; it saves/restores both rear LED channels, caps the pulse at 5 seconds and is disabled for the front camera. |
 | Waydroid Camera3 bridge | Gives Android YUV/JPEG/private streams, EV metadata, low-light timing, rear tap-focus and standard rear manual focus without vendor camera blobs. |
@@ -339,7 +355,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer r31/r32/r8 development line. The
+publishes the newer libcamera r33 / Advanced Snapshot r34 / PipeWire r8 line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -358,14 +374,15 @@ layout band. Main-rear video remains in the 11.78 fps class, and auxiliary
 hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
-The current native line is libcamera/IPA r31, PipeWire SPA r8 and Advanced
-Snapshot r32. The app source is commit
-`aa9fea6464c580c308cefecc6383f57c58910102`; the exact AArch64 package pair is
+The current native line is libcamera/IPA r33, PipeWire SPA r8 and Advanced
+Snapshot r34. The app source is commit
+`0376f68c6808517fdc368d8e92ce67a0463ce960`; the exact AArch64 package pair is
 installed on the reference phone without reboot. The controls panel and
 calibration dialog now include automatic/manual white balance, per-sensor
-red/blue gains and a bounded 3×3 colour matrix. The r31 IPA selects the
-documented sensor-specific numeric profiles by colour temperature; identity and custom matrix
-requests were accepted on IMX371, IMX376 and IMX519, and automatic mode
+red/blue gains and a bounded 3×3 colour matrix. The r33 IPA selects the
+documented sensor-specific profiles and applies a conservative grey-preserving
+green-cast correction; equal-channel test-pattern output remained neutral and
+custom matrix requests were accepted on IMX371, IMX376 and IMX519, while automatic mode
 restored each stream. The 1.0× chip is contained by the top toolbar and no
 longer covers the photo/video/QR selector.
 Native and Waydroid rear focus controls also pass their live
@@ -378,7 +395,10 @@ Gamma, Zoom, Reset and an
 opt-in rear **Hardware flash** switch when the helper is installed. The Camera
 Calibration dialog can save those standard controls, including AWB mode,
 red/blue gains and the optional matrix, per physical sensor and
-optionally restore a deliberate manual focus position. The lower-layer focus
+optionally restore a deliberate manual focus position. The r33 camera-page
+overlay drawer keeps these controls alongside the live preview, and its
+Sensor default, Neutral, Natural, Vivid and Custom presets update the visible
+image without hiding the camera view. The lower-layer focus
 instability is fixed: both rear cameras now use bounded progressive tap-focus
 and return to continuous monitoring without moving the lens. Advanced Snapshot
 additionally offers a manual rear-lens slider and explicitly returns to
@@ -569,7 +589,7 @@ camera to hold 0 (far) through 2 (near); tapping the preview replaces that
 lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
 front camera has no focus gesture or manual slider.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r32
+The sliders affect both preview and saved output. The Advanced Snapshot r33
 build also exposes opt-in Software HDR when its helper is installed; it
 uses three bracketed JPEG captures, confidence-gated global-translation
 alignment and a linear-light merge. This is not the same as Android-vendor HDR:

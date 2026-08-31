@@ -582,7 +582,7 @@ index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..fd146ce28deb562739a575752ad3974f
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000000000000000000000000000000000000..2b11e7af12e323e66920f9c37946f3ee89bba718
+index 0000000000000000000000000000000000000000..3f3e95c20e312bee0967dd4b6bd8576cdff27eac
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -590,8 +590,8 @@ index 0000000000000000000000000000000000000000..2b11e7af12e323e66920f9c37946f3ee
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=32
-+_commit="aa9fea6464c580c308cefecc6383f57c58910102"
++pkgrel=34
++_commit="0376f68c6808517fdc368d8e92ce67a0463ce960"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -652,7 +652,7 @@ index 0000000000000000000000000000000000000000..2b11e7af12e323e66920f9c37946f3ee
 +}
 +
 +sha512sums="
-+4d308df29085404171264470b6a29171307af9055795bd69cff7aef95d0afe394a1d7790b23ef23b7d865d2cf865704be958c1549f91f3157d0b9f19021d5ba8  advanced-snapshot-0.1.0.tar.gz
++8e0f698d342fead6b92e4cef5de2f266f717f23fd65dd287d9a520c0457433edb2387d32e6c007a5909db8773052c5720094648cabbdeee7126347bf508388ab  advanced-snapshot-0.1.0.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch
@@ -5676,24 +5676,19 @@ index 0000000000000000000000000000000000000000..5c29639d5b4f29f2e039380408db4172
 +2.49.0
 diff --git a/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b5497d923
+index 0000000000000000000000000000000000000000..96461dfd7e0f3561bebb85d1c8740969129217f5
 --- /dev/null
 +++ b/temp/libcamera/0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
-@@ -0,0 +1,188 @@
-+From 057a24f2da0c1aa7ee8f76b2c3c7fd096e0ca18f Mon Sep 17 00:00:00 2001
+@@ -0,0 +1,320 @@
++From a5ca7bcf7c0b99c9293e80669e0632f35f57ada5 Mon Sep 17 00:00:00 2001
 +From: Lolren <loren.bufanu@gmail.com>
 +Date: Sun, 30 Aug 2026 08:32:37 +0100
 +Subject: [PATCH] ipa: simple: Expose automatic and manual white balance
 +
 +Signed-off-by: Lolren <loren.bufanu@gmail.com>
-+---
-+ src/ipa/simple/algorithms/awb.cpp | 78 +++++++++++++++++++++++++++----
-+ src/ipa/simple/algorithms/awb.h   |  5 ++
-+ src/ipa/simple/ipa_context.h      |  2 +
-+ 3 files changed, 77 insertions(+), 8 deletions(-)
 +
 +diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
-+index 05155c8..f2b6a6d 100644
++index 05155c8..6fa69f7 100644
 +--- a/src/ipa/simple/algorithms/awb.cpp
 ++++ b/src/ipa/simple/algorithms/awb.cpp
 +@@ -7,6 +7,7 @@
@@ -5704,15 +5699,92 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 + #include <numeric>
 + #include <stdint.h>
 + 
-+@@ -23,21 +24,79 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
++@@ -23,21 +24,159 @@ LOG_DEFINE_CATEGORY(IPASoftAwb)
 + 
 + namespace ipa::soft::algorithms {
 + 
 ++namespace {
 ++
 ++constexpr float kMinColourGain = 0.0f;
+++constexpr float kMinAutoColourGain = 0.5f;
 ++constexpr float kMaxColourGain = 4.0f;
 ++constexpr unsigned int kDefaultColourTemperature = 5000;
+++constexpr unsigned int kAwbBlackMargin = 8;
+++constexpr unsigned int kAwbWhiteLimit = 248;
+++constexpr double kAwbLowerPercentile = 0.05;
+++constexpr double kAwbUpperPercentile = 0.95;
+++constexpr float kAwbSmoothing = 0.25f;
+++
+++/*
+++ * Calculate a channel mean from the useful part of its histogram. The
+++ * original simple-ISP AWB used every sample, including black-level noise and
+++ * clipped highlights. That is especially unstable on this phone's small
+++ * preview crop, where a few saturated or near-black blocks can dominate the
+++ * ratio. Trimming both tails makes the estimate represent mid-tone scene
+++ * pixels instead.
+++ */
+++bool trimmedChannelMean(const SwIspStats::Histogram &histogram,
+++			unsigned int blackLevel, double *mean)
+++{
+++	constexpr unsigned int binWidth =
+++		256 / SwIspStats::kYHistogramSize;
+++	const unsigned int minValue = std::min(
+++		255u, blackLevel + kAwbBlackMargin);
+++	const unsigned int firstBin = std::min(
+++		SwIspStats::kYHistogramSize - 1, minValue / binWidth);
+++	const unsigned int lastBin = std::min(
+++		SwIspStats::kYHistogramSize,
+++		(kAwbWhiteLimit / binWidth) + 1);
+++
+++	if (firstBin >= lastBin)
+++		return false;
+++
+++	uint64_t total = 0;
+++	for (unsigned int i = firstBin; i < lastBin; ++i)
+++		total += histogram[i];
+++
+++	/* A tiny or entirely clipped window is not a useful AWB reference. */
+++	if (total < 32)
+++		return false;
+++
+++	const double lower = total * kAwbLowerPercentile;
+++	const double upper = total * kAwbUpperPercentile;
+++	double sum = 0.0;
+++	double count = 0.0;
+++	uint64_t seen = 0;
+++
+++	for (unsigned int i = firstBin; i < lastBin; ++i) {
+++		const uint64_t binCount = histogram[i];
+++		const double begin = std::max(lower, static_cast<double>(seen));
+++		const double end = std::min(upper,
+++					   static_cast<double>(seen + binCount));
+++
+++		if (end > begin) {
+++			const double value =
+++				static_cast<double>(i * binWidth + binWidth / 2) -
+++				blackLevel;
+++			sum += (end - begin) * value;
+++			count += end - begin;
+++		}
+++
+++		seen += binCount;
+++	}
+++
+++	if (count <= 0.0 || sum <= 0.0)
+++		return false;
+++
+++	*mean = sum / count;
+++	return true;
+++}
+++
+++float gainFor(double reference, double channel)
+++{
+++	if (channel <= 0.0)
+++		return kMaxColourGain;
+++
+++	return std::clamp(static_cast<float>(reference / channel),
+++			  kMinAutoColourGain, kMaxColourGain);
+++}
 ++
 ++} /* namespace */
 ++
@@ -5736,6 +5808,7 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 ++	awb.gains = { { 1.0, 1.0, 1.0 } };
 ++	awb.temperatureK = kDefaultColourTemperature;
 ++	awb.autoEnabled = true;
+++	awb.autoGainsInitialized = false;
 + 
 + 	return 0;
 + }
@@ -5750,6 +5823,8 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 ++	const auto &awbEnable = controls.get(controls::AwbEnable);
 ++	if (awbEnable && *awbEnable != awb.autoEnabled) {
 ++		awb.autoEnabled = *awbEnable;
+++		if (awb.autoEnabled)
+++			awb.autoGainsInitialized = false;
 ++		LOG(IPASoftAwb, Debug)
 ++			<< (awb.autoEnabled ? "Enabling" : "Disabling") << " AWB";
 ++	}
@@ -5787,7 +5862,7 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 + 
 + 	frameContext.gains = gains;
 + 	params->gains = gains;
-+@@ -51,11 +110,14 @@ void Awb::process(IPAContext &context,
++@@ -51,11 +190,14 @@ void Awb::process(IPAContext &context,
 + {
 + 	const SwIspStats::Histogram &histogram = stats->yHistogram;
 + 	const uint8_t blackLevel = context.activeState.blc.level;
@@ -5803,17 +5878,76 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 + 		return;
 + 
 + 	/*
-+@@ -77,7 +139,7 @@ void Awb::process(IPAContext &context,
-+ 	 * Calculate red and blue gains for AWB.
-+ 	 * Clamp max gain at 4.0, this also avoids 0 division.
++@@ -74,23 +216,74 @@ void Awb::process(IPAContext &context,
++ 	const RGB<uint64_t> sum = stats->sum_.max(offset + minValid) - offset;
++ 
++ 	/*
++-	 * Calculate red and blue gains for AWB.
++-	 * Clamp max gain at 4.0, this also avoids 0 division.
+++	 * Start with the traditional grey-world estimate. It remains a useful
+++	 * fallback when the image is too dark to form a trimmed estimate.
 + 	 */
 +-	auto &gains = context.activeState.awb.gains;
+++	const RGB<float> globalGains = { {
+++		gainFor(sum.g(), sum.r()),
+++		1.0f,
+++		gainFor(sum.g(), sum.b()),
+++	} };
+++
+++	/*
+++	 * Prefer the mid-tone estimate. Per-channel histograms are deliberately
+++	 * used here rather than a fixed RGB correction: the same method adapts to
+++	 * daylight, tungsten and every supported sensor. The lower cutoff rejects
+++	 * the 0x40 pedestal/noise and the upper cutoff rejects clipped highlights.
+++	 */
+++	double meanR = 0.0;
+++	double meanG = 0.0;
+++	double meanB = 0.0;
+++	const bool haveTrimmedMeans =
+++		trimmedChannelMean(stats->rgbHistogram[0], blackLevel, &meanR) &&
+++		trimmedChannelMean(stats->rgbHistogram[1], blackLevel, &meanG) &&
+++		trimmedChannelMean(stats->rgbHistogram[2], blackLevel, &meanB);
+++
+++	RGB<float> targetGains = globalGains;
+++	if (haveTrimmedMeans) {
+++		const RGB<float> trimmedGains = { {
+++			gainFor(meanG, meanR),
+++			1.0f,
+++			gainFor(meanG, meanB),
+++		} };
+++
+++		/* Keep a small grey-world contribution for strongly coloured scenes. */
+++		constexpr float kTrimmedWeight = 0.8f;
+++		targetGains = { {
+++			kTrimmedWeight * trimmedGains.r() +
+++				(1.0f - kTrimmedWeight) * globalGains.r(),
+++			1.0f,
+++			kTrimmedWeight * trimmedGains.b() +
+++				(1.0f - kTrimmedWeight) * globalGains.b(),
+++		} };
+++
+++		LOG(IPASoftAwb, Debug)
+++			<< "trimmed means R/G/B: " << meanR << "/" << meanG
+++			<< "/" << meanB << "; global gains: " << globalGains
+++			<< "; target gains: " << targetGains;
+++	} else {
+++		LOG(IPASoftAwb, Debug)
+++			<< "using global AWB gains: " << globalGains
+++			<< " (insufficient mid-tone statistics)";
+++	}
+++
+++	/* Smooth normal scene changes, but do not delay the first valid estimate. */
 ++	auto &gains = awb.gains;
+++	const float weight = awb.autoGainsInitialized ? kAwbSmoothing : 1.0f;
 + 	gains = { {
-+ 		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
-+ 		1.0,
-+@@ -85,12 +147,12 @@ void Awb::process(IPAContext &context,
++-		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
++-		1.0,
++-		sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
+++		gains.r() + weight * (targetGains.r() - gains.r()),
+++		1.0f,
+++		gains.b() + weight * (targetGains.b() - gains.b()),
 + 	} };
+++	awb.autoGainsInitialized = true;
 + 
 + 	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
 +-	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
@@ -5846,18 +5980,19 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 + 		     const uint32_t frame,
 + 		     IPAFrameContext &frameContext,
 +diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
-+index 0c29ef0..017901e 100644
++index 0c29ef0..48a4b54 100644
 +--- a/src/ipa/simple/ipa_context.h
 ++++ b/src/ipa/simple/ipa_context.h
-+@@ -65,6 +65,7 @@ struct IPAActiveState {
++@@ -65,6 +65,8 @@ struct IPAActiveState {
 + 	struct {
 + 		RGB<float> gains;
 + 		unsigned int temperatureK;
 ++		bool autoEnabled;
+++		bool autoGainsInitialized;
 + 	} awb;
 + 
 + 	struct {
-+@@ -99,6 +100,7 @@ struct IPAFrameContext : public FrameContext {
++@@ -99,6 +101,7 @@ struct IPAFrameContext : public FrameContext {
 + 	} agc;
 + 
 + 	RGB<float> gains;
@@ -5865,9 +6000,6 @@ index 0000000000000000000000000000000000000000..6621efd70669bb31abfee773635ade9b
 + 
 + 	float gamma;
 + 	std::optional<float> contrast;
-+-- 
-+2.49.0
-+
 diff --git a/temp/libcamera/0022-ipa-simple-expose-manual-colour-correction-matrix.patch b/temp/libcamera/0022-ipa-simple-expose-manual-colour-correction-matrix.patch
 new file mode 100644
 index 0000000000000000000000000000000000000000..0ec442a1e389e4de713e4e5d12dbf6eb606a4b8f
@@ -5990,8 +6122,72 @@ index 0000000000000000000000000000000000000000..0ec442a1e389e4de713e4e5d12dbf6eb
 + } /* namespace ipa::soft::algorithms */
 +-- 
 +2.49.0
+diff --git a/temp/libcamera/0023-libcamera-simple-Expose-sensor-test-pattern.patch b/temp/libcamera/0023-libcamera-simple-Expose-sensor-test-pattern.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..efb018f3925ae0179c8f558dcfefc07cf974e45c
+--- /dev/null
++++ b/temp/libcamera/0023-libcamera-simple-Expose-sensor-test-pattern.patch
+@@ -0,0 +1,58 @@
++diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
++index 7ec71cf..0350ede 100644
++--- a/src/libcamera/pipeline/simple/simple.cpp
+++++ b/src/libcamera/pipeline/simple/simple.cpp
++@@ -672,6 +672,26 @@ int SimpleCameraData::init()
++ 
++ 	properties_ = sensor_->properties();
++ 
+++	/*
+++	 * Expose the sensor test-pattern control when the sensor database has a
+++	 * verified mapping for it.  The simple pipeline otherwise exposes only
+++	 * the controls produced by the Software ISP, which makes it impossible
+++	 * for applications and calibration tools to validate the Bayer input and
+++	 * debayer colour path independently of the scene.
+++	 */
+++	if (!sensor_->testPatternModes().empty()) {
+++		std::vector<ControlValue> values;
+++		values.reserve(sensor_->testPatternModes().size());
+++		for (auto pattern : sensor_->testPatternModes())
+++			values.emplace_back(pattern);
+++
+++		ControlInfoMap::Map controlMap;
+++		for (const auto &control : controlInfo_)
+++			controlMap.emplace(control.first, control.second);
+++		controlMap[&controls::draft::TestPatternMode] = ControlInfo(values);
+++		controlInfo_ = ControlInfoMap(std::move(controlMap), controls::controls);
+++	}
+++
++ 	/* Find the first subdev that can generate a frame start signal, if any. */
++ 	frameStartEmitter_ = nullptr;
++ 	for (const Entity &entity : entities_) {
++@@ -1775,6 +1795,26 @@ int SimplePipelineHandler::queueRequestDevice(Camera *camera, Request *request)
++ 	SimpleCameraData *data = cameraData(camera);
++ 	int ret;
++ 
+++	/*
+++	 * TestPatternMode is a sensor control rather than a Software ISP control.
+++	 * Apply it before queuing this request so the next captured frames use the
+++	 * requested pattern.  This is also useful for deterministic calibration
+++	 * and regression tests on simple-pipeline sensors.
+++	 */
+++	const auto &testPatternMode =
+++		request->controls().get(controls::draft::TestPatternMode);
+++	if (testPatternMode) {
+++		ret = data->sensor_->setTestPatternMode(
+++			static_cast<controls::draft::TestPatternModeEnum>(*testPatternMode));
+++		if (ret) {
+++			LOG(SimplePipeline, Error)
+++				<< "Failed to set test pattern mode: " << ret;
+++			return ret;
+++		}
+++		request->_d()->metadata().set(controls::draft::TestPatternMode,
+++					      *testPatternMode);
+++	}
+++
++ 	std::map<const Stream *, FrameBuffer *> buffers;
++ 	bool metadataRequired = false;
++ 
 diff --git a/temp/libcamera/APKBUILD b/temp/libcamera/APKBUILD
-index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95c710af21 100644
+index 3857ef249404bfe701331b3833b5caf9421d087e..5c3aa57b0015137563bd1a8f34eca4773820aa1d 100644
 --- a/temp/libcamera/APKBUILD
 +++ b/temp/libcamera/APKBUILD
 @@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
@@ -5999,11 +6195,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95
  _pkgver=0.7.2
  pkgver=9999$_pkgver
 -pkgrel=2
-+pkgrel=31
++pkgrel=33
  pkgdesc="Linux camera framework"
  url="https://libcamera.org/"
  arch="all"
-@@ -59,6 +59,26 @@ _tuning_files="
+@@ -59,6 +59,27 @@ _tuning_files="
  source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
  	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -6027,10 +6223,11 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95
 +	0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
 +	0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
 +	0022-ipa-simple-expose-manual-colour-correction-matrix.patch
++	0023-libcamera-simple-Expose-sensor-test-pattern.patch
  	qcam.desktop
  	$_tuning_files
  	"
-@@ -175,13 +195,33 @@ sha512sums="
+@@ -175,13 +196,34 @@ sha512sums="
  b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
  eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
  191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
@@ -6052,8 +6249,9 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95
 +fe165f6c165c4aebc587abe5c704a4a201e444ecaf60bc6d07fe2f1e99c7b88dea3dddee47552f21abfc0a6046f56588f519b0b0862f47485d68b9b600fb9042  0018-ipa-simple-Stabilise-continuous-autofocus-transitions.patch
 +bfc381b8e1cb1201e0552ddc6f76c41d33d5fb358e00922a4afc79d0cf41ac183094e83d0b974042e2e92728fab03f40c13d8d5de4cf05b4b382db0146968046  0019-ipa-simple-Expose-manual-exposure-and-gain-controls.patch
 +c5f34c8856a34d8c985e08a8fa2d778ba2fe8a59cfb6a331dd3d946999ea358e8989cc388a183aaa95d6bc6f85d9ac93e88c9ff22da2f1c5149a5bdcd7c6112d  0020-ipa-simple-Expose-LensPosition-for-manual-focus.patch
-+abb838dd82f87fda3d32f24e0322f62f8619ce6b8200223dc9da570e287bc503e23aecf9fbbd55fb2940224f1791c1b8d513df1f815e967953aadc64b80798c1  0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
++2c99d73fded811919b02806820a6ac4e82791f0e54ed5a485183049d4d2a0159b6a593f4da379e64285c0376e1dbba34fd5a674fe89f246f901c1f9fbc39d9e1  0021-ipa-simple-Expose-automatic-and-manual-white-balance.patch
 +43bb6a94fea96df34b1c97a137d731390d9463b63a49d042196c434666661b1a45eed8ce27b6edb405814e1c8005ad822b976205f5d4fa0088e455ce99c0c5b3  0022-ipa-simple-expose-manual-colour-correction-matrix.patch
++7300f9145b164757382cb79c5fb7a21a7758c0b68d59b9f9505c7f0de3559590ca1b0a1d8ba739f83c020414fc03d0dc9818dc6cfe25c50dc9fa4a4d533d22f3  0023-libcamera-simple-Expose-sensor-test-pattern.patch
  22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
@@ -6061,77 +6259,29 @@ index 3857ef249404bfe701331b3833b5caf9421d087e..a2b47b3bea51cb50f40f8e9a32018e95
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 -55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml
 -2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx519.yaml
-+e8ee48b18edb75861658546d9e70ea6fdbc59243034b64c5bc8536eda80dd81e37a04dd04e0e2d9572d3ae2c5cf2dc6b3eca6232735728f1034073dd4f6a9dc7  imx371.yaml
-+2d6819cce2a4585a12f79b53d41b9bbe24d1245e9bcee8255826e1ce9524707a9524b69c96e039f247657662fe10f0237efd2f6113fd1b6c49573ba63684db7f  imx376.yaml
-+4cf513477e46cdcca38dc6d94832e42ee1bf56ae1a87e9a129713ea3f060727f52fd2724cee2ce57c700267f0403d609b78448212d5c394d20fdc799539d1175  imx519.yaml
++743defaf312963050603888464dd24c5beeb5c4a7b0fd1606ab1469863d22eea936bf01472f94d765d5efdf91de1e0153af9fc0a12f41b43d7d6487f5a9e34a1  imx371.yaml
++427d1f31dbfcd5f8d20a4278ee8bbd65b4c88c98469da28c3321743b47ad64fe1b231528ecea1792807f72961998f0b76e099ec08232428e4b0e45b1b1d8d60d  imx376.yaml
++f611cc58742aa936f118be273b784b8006af0703d7fcc05eeb8c4399baba28f9ecb7201950fd3923748d15673fb1f5573d086ab3f759298fba080eda62497ac9  imx519.yaml
  55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx858.yaml
  2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
  d59020e62520ee622282c85ce7bcdfe453c99becf48cc1005c5f8a4bb8b2511b19c89f38fb3c994e7c6a79d1f84e2ed5f5a09b4c5bdc1dc4a44b071dbccf0d44  s5kjn1.yaml
 diff --git a/temp/libcamera/imx371.yaml b/temp/libcamera/imx371.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..bf7c43c74fe689c13371c7333f2cbba27b5e1ba1 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..d07f3d923afbc9f4cd987ccb21a73b8267923c5f 100644
 --- a/temp/libcamera/imx371.yaml
 +++ b/temp/libcamera/imx371.yaml
-@@ -6,6 +6,70 @@ algorithms:
+@@ -6,6 +6,22 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
-+        # OnePlus 6T IMX371 calibration profile.  These matrices are the
-+        # colour transforms recovered from the phone's stock sensor tuning
-+        # and are kept as ordinary libcamera data, not a vendor binary.
-+        - ct: 2300
-+          ccm: [ 1.87925, -0.0746165, -0.804633,
-+                 -0.587836, 2.03054, -0.442705,
-+                 -0.322184, -0.175213, 1.4974 ]
-+        - ct: 2450
-+          ccm: [ 1.65534, -0.801927, 0.146589,
-+                 -0.208629, 1.34924, -0.140612,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 2750
-+          ccm: [ 1.65534, -0.801927, 0.146589,
-+                 -0.208629, 1.34924, -0.140612,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 2950
-+          ccm: [ 1.65834, -0.801927, 0.143589,
-+                 -0.213629, 1.34624, -0.132612,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 3250
-+          ccm: [ 1.65834, -0.801927, 0.143589,
-+                 -0.213629, 1.34624, -0.132612,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 4400
-+          ccm: [ 1.65534, -0.801927, 0.146589,
-+                 -0.1744, 1.1677, 0.0067,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 4600
-+          ccm: [ 1.65534, -0.801927, 0.146589,
-+                 -0.1744, 1.1677, 0.0067,
-+                 0.08581, -0.84179, 1.75598 ]
-+        - ct: 5000
-+          ccm: [ 1.6063, -0.7378, 0.1315,
-+                 -0.1744, 1.1677, 0.0067,
-+                 0.0441, -0.7253, 1.6812 ]
-+        - ct: 5350
-+          ccm: [ 1.6063, -0.7378, 0.1315,
-+                 -0.1744, 1.1677, 0.0067,
-+                 0.0441, -0.7253, 1.6812 ]
-+        - ct: 5500
-+          ccm: [ 1.6063, -0.7378, 0.1315,
-+                 -0.1844, 1.1677, 0.0167,
-+                 0.0641, -0.6953, 1.6312 ]
-+        - ct: 6000
-+          ccm: [ 1.6063, -0.7378, 0.1315,
-+                 -0.1844, 1.1677, 0.0167,
-+                 0.0641, -0.6953, 1.6312 ]
++        # Keep equal RGB neutral while gently suppressing the measured
++        # green-channel excess in ordinary scenes.  Every row sums to one,
++        # so the deterministic equal-channel calibration frame remains grey.
 +        - ct: 6500
-+          ccm: [ 1.76332, -0.775904, 0.012579,
-+                 -0.141068, 1.29809, -0.157023,
-+                 0.109155, -0.861136, 1.75198 ]
-+        - ct: 10000
-+          ccm: [ 1.76332, -0.775904, 0.012579,
-+                 -0.141068, 1.29809, -0.157023,
-+                 0.109155, -0.861136, 1.75198 ]
++          ccm: [ 0.97, 0.03, 0.0,
++                 0.03, 0.94, 0.03,
++                 0.0, 0.03, 0.97 ]
    - Adjust:
 +      gamma: 2.0
 +      contrast: 1.1
@@ -6143,10 +6293,10 @@ index e903d96a8f660647c81b9f62a8936c1ca7556a94..bf7c43c74fe689c13371c7333f2cbba2
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx376.yaml b/temp/libcamera/imx376.yaml
-index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..ba34d09517558b46a409bdbd8a85a1c4f8c8fa31 100644
+index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..d2b8e0a121a46f7d1dd89e6e296c44ca7c56a64b 100644
 --- a/temp/libcamera/imx376.yaml
 +++ b/temp/libcamera/imx376.yaml
-@@ -7,36 +7,46 @@ algorithms:
+@@ -7,36 +7,47 @@ algorithms:
        blackLevel: 4096
    - Awb:
    - Ccm:
@@ -6181,11 +6331,12 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..ba34d09517558b46a409bdbd8a85a1c4
 -                -0.43049,  2.00702, -0.57652,
 -                -0.15696, -0.51345,  1.67041 ]
 +        - ct: 6500
-+          # OnePlus 6T IMX376 calibration recovered from the matching stock
-+          # sensor tuning; it is plain libcamera data, not a vendor binary.
-+          ccm: [ 1.7858, -0.7494, -0.0364,
-+                 -0.1317, 1.209, -0.0773,
-+                 0.04, -0.7876, 1.7476 ]
++          # Keep equal RGB neutral while gently suppressing the measured
++          # green-channel excess in ordinary scenes.  Every row sums to one,
++          # so the deterministic equal-channel calibration frame remains grey.
++          ccm: [ 0.97, 0.03, 0.0,
++                 0.03, 0.94, 0.03,
++                 0.0, 0.03, 0.97 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800
@@ -6223,42 +6374,22 @@ index 2c5ea9e510afb19dd3efe63044decef1e7fa99ce..ba34d09517558b46a409bdbd8a85a1c4
 +      highlightTarget: 0.95
  ...
 diff --git a/temp/libcamera/imx519.yaml b/temp/libcamera/imx519.yaml
-index e903d96a8f660647c81b9f62a8936c1ca7556a94..4c5dd2ef3cbba31ce972d995bd3fe8e2460451f7 100644
+index e903d96a8f660647c81b9f62a8936c1ca7556a94..5507e609db5e795557d5eac3bb79afef8774dea7 100644
 --- a/temp/libcamera/imx519.yaml
 +++ b/temp/libcamera/imx519.yaml
-@@ -6,6 +6,68 @@ algorithms:
+@@ -6,6 +6,48 @@ algorithms:
    - BlackLevel:
        blackLevel: 4096
    - Awb:
 +  - Ccm:
 +      ccms:
-+        # OnePlus 6T IMX519 calibration profile.  These matrices are the
-+        # colour transforms recovered from the phone's stock sensor tuning
-+        # and are kept as ordinary libcamera data, not a vendor binary.
-+        - ct: 2400
-+          ccm: [ 1.4905, -0.545645, 0.0551411,
-+                 -0.220963, 1.14068, 0.0802817,
-+                 -0.0620148, -0.598863, 1.66088 ]
-+        - ct: 3250
-+          ccm: [ 1.4905, -0.545645, 0.0551411,
-+                 -0.220963, 1.14068, 0.0802817,
-+                 -0.0620148, -0.598863, 1.66088 ]
-+        - ct: 4300
-+          ccm: [ 1.56339, -0.74001, 0.176618,
-+                 -0.140864, 1.12936, 0.011506,
-+                 0.0938884, -0.83175, 1.73786 ]
-+        - ct: 4600
-+          ccm: [ 1.56339, -0.74001, 0.176618,
-+                 -0.140864, 1.12936, 0.011506,
-+                 0.0938884, -0.83175, 1.73786 ]
-+        - ct: 5000
-+          ccm: [ 1.89305, -0.942903, 0.049853,
-+                 0.034627, 0.979567, -0.014195,
-+                 0.225675, -1.00057, 1.77489 ]
-+        - ct: 10000
-+          ccm: [ 1.89305, -0.942903, 0.049853,
-+                 0.034627, 0.979567, -0.014195,
-+                 0.225675, -1.00057, 1.77489 ]
++        # Keep equal RGB neutral while gently suppressing the measured
++        # green-channel excess in ordinary scenes.  Every row sums to one,
++        # so the deterministic equal-channel calibration frame remains grey.
++        - ct: 6500
++          ccm: [ 0.97, 0.03, 0.0,
++                 0.03, 0.94, 0.03,
++                 0.0, 0.03, 0.97 ]
 +  - Af:
 +      minPosition: 400
 +      maxPosition: 800

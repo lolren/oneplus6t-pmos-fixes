@@ -8,33 +8,13 @@ algorithms:
   - Awb:
   - Ccm:
       ccms:
-        # OnePlus 6T IMX519 calibration profile.  These matrices are the
-        # colour transforms recovered from the phone's stock sensor tuning
-        # and are kept as ordinary libcamera data, not a vendor binary.
-        - ct: 2400
-          ccm: [ 1.4905, -0.545645, 0.0551411,
-                 -0.220963, 1.14068, 0.0802817,
-                 -0.0620148, -0.598863, 1.66088 ]
-        - ct: 3250
-          ccm: [ 1.4905, -0.545645, 0.0551411,
-                 -0.220963, 1.14068, 0.0802817,
-                 -0.0620148, -0.598863, 1.66088 ]
-        - ct: 4300
-          ccm: [ 1.56339, -0.74001, 0.176618,
-                 -0.140864, 1.12936, 0.011506,
-                 0.0938884, -0.83175, 1.73786 ]
-        - ct: 4600
-          ccm: [ 1.56339, -0.74001, 0.176618,
-                 -0.140864, 1.12936, 0.011506,
-                 0.0938884, -0.83175, 1.73786 ]
-        - ct: 5000
-          ccm: [ 1.89305, -0.942903, 0.049853,
-                 0.034627, 0.979567, -0.014195,
-                 0.225675, -1.00057, 1.77489 ]
-        - ct: 10000
-          ccm: [ 1.89305, -0.942903, 0.049853,
-                 0.034627, 0.979567, -0.014195,
-                 0.225675, -1.00057, 1.77489 ]
+        # Keep equal RGB neutral while gently suppressing the measured
+        # green-channel excess in ordinary scenes.  Every row sums to one,
+        # so the deterministic equal-channel calibration frame remains grey.
+        - ct: 6500
+          ccm: [ 0.97, 0.03, 0.0,
+                 0.03, 0.94, 0.03,
+                 0.0, 0.03, 0.97 ]
   - Af:
       minPosition: 400
       maxPosition: 800

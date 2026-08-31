@@ -1,0 +1,15 @@
+# Reference capture for separating automatic exposure from automatic white
+# balance.  The camera keeps AE enabled while the ISP receives neutral manual
+# white-balance gains and an identity matrix.
+properties:
+  - loop: 24
+
+frames:
+  - 0:
+      AwbEnable: false
+      ColourGains: [ 1.0, 1.0 ]
+      ColourCorrectionMatrix: [ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 ]
+      Gamma: 2.0
+      Contrast: 1.0
+      Saturation: 1.0
+      Sharpness: 1.0
