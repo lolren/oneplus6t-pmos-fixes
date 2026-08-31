@@ -101,7 +101,7 @@ The installed artifacts are:
 
 The complete pmaports integration patch applies cleanly to the reviewed base;
 its current SHA-256 is
-`dcfe71299dfd7dbd0c346dc13a6807fb2ce438f38b36480e784f698dbe51070a`.
+`04493bd0da72190abd0655c171159e04f7b696832d1899f5727b6d13c885a4f6`.
 The r33 package was installed over r32 without reboot, bootloader access or
 kernel change.
 
