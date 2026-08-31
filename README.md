@@ -685,10 +685,12 @@ The current requirement-by-requirement audit is maintained in
   not claimed because the open stack does not provide those proprietary
   components.
 
-The current USB evidence is CDC-NCM with ping and password SSH working. ADB
-and fastboot remain unavailable, so bootloader/raw-partition operations are
-still out of scope. Userspace/Waydroid work and the exact package-managed
-kernel generation can be managed over the working SSH transport.
+The current USB evidence is CDC-NCM with ping, TCP/22 and the SSH banner
+working, but an authenticated session currently stalls before the channel is
+opened. ADB and fastboot remain unavailable, so bootloader/raw-partition
+operations are still out of scope. No package installation is claimed until a
+real command channel works; the exact package-managed kernel generation remains
+available only after that management gate is restored.
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for sanitized test evidence.
 The requirement-by-requirement implementation and device-acceptance audit is

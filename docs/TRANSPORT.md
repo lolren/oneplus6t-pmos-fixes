@@ -34,7 +34,9 @@ postmarketOS's USB network gadget. An empty `fastboot devices` result is
 expected in that mode; the USB product database may still display a generic
 Qualcomm/Google fastboot label for the same vendor/product ID.
 
-The important SSH combinations are:
+The banner check is only a transport-layer check. It does not prove that an
+authenticated session can open a command channel. The important SSH
+combinations are:
 
 | Report | Meaning |
 | --- | --- |
@@ -44,6 +46,21 @@ The important SSH combinations are:
 | `ping=fail`, `ssh_tcp=fail` | No usable IP path was confirmed; check the USB gadget, cable, interface address and phone boot state. |
 | `adb_oneplus=present` | ADB identifies a OnePlus/fajita device; this is a separate transport from NCM and SSH. |
 | `fastboot_devices` greater than zero | A fastboot device is visible, but the report does not assume it is the OnePlus when other Android devices are attached. |
+
+After the banner check, use a bounded authenticated command before installing
+anything:
+
+```sh
+timeout 15s ssh -o BatchMode=yes -o ConnectTimeout=3 \
+  -o ConnectionAttempts=1 -o ServerAliveInterval=2 \
+  user@172.16.42.1 'printf ready'
+```
+
+The command must return promptly. If authentication succeeds but the command
+never returns, the phone's `sshd` has accepted the network connection without
+opening a session channel; treat that as unusable and recover `sshd` locally.
+Do not infer a cable fault from this symptom, and do not install a package over
+an unverified channel.
 
 Use the report together with the phone-side recovery procedure. A surviving
 ping or open TCP socket is not sufficient evidence to install packages,

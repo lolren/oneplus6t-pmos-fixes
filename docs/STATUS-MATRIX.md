@@ -32,12 +32,14 @@ Audit date: 2026-08-31.
 ## Transport evidence
 
 The host-side `scripts/check-device-transport` report is deliberately separate
-from phone runtime acceptance. On 2026-08-27 it confirmed the OnePlus as
+from phone runtime acceptance. On 2026-08-31 it confirmed the OnePlus as
 `ID_MODEL=OnePlus_6T` with a CDC-NCM interface, a working
-`172.16.42.2/16` host link and ping to `172.16.42.1`; the latest bounded probe
-completed TCP/22 and accepted the SSH banner. `fastboot devices` remains empty
-and ADB shows only the separately attached Pixel. The NCM/SSH session is usable
-for guarded userspace work, but it is not a bootloader or flashing session.
+`172.16.42.2/16` host link and ping to `172.16.42.1`; TCP/22 accepts a
+connection and sends an SSH banner. A key-authenticated `ssh user@172.16.42.1
+printf ready` then times out before the server confirms the session channel.
+`fastboot devices` remains empty and ADB shows only the separately attached
+Pixel. The NCM link is alive, but the SSH session is not currently usable for
+package or service changes and is not a bootloader or flashing session.
 
 ## Reproducibility entry points
 
@@ -71,7 +73,8 @@ The main procedures are:
 The current post-acceptance state is:
 
 ```text
-USB: postmarketOS CDC-NCM networking and SSH respond normally
+USB: postmarketOS CDC-NCM networking, ping, TCP/22 and SSH banner respond;
+     authenticated session channel currently stalls
 Fastboot/ADB: unavailable while the running phone exposes the pMOS USB gadget
 Kernel: r10 package booted as 7.1.0-rc1-sdm845
 Waydroid: r52 clean-Vanilla camera/r53 codec installed; r53-static10-focus provider overlay verified for manual/tap focus; Android 13 Vanilla verified; bridge property/quantum safeguards live; stopped cleanly with rootfs mounts 0
@@ -79,9 +82,10 @@ Cellular: registered/connected; cellular-only DNS and HTTPS pass; Wi-Fi restored
 Recovery: emergency reboot complete; D-state tasks 0; current I/O pressure 0
 ```
 
-The post-reboot health gate passes. Continue to require normal SSH, no Waydroid
-rootfs mounts, zero D-state tasks and zero current PSI I/O pressure before an
-overlay operation. Do not
+The post-reboot health gate passes, but the management gate is currently
+incomplete because the authenticated SSH channel stalls. Continue to require a
+working command channel, no Waydroid rootfs mounts, zero D-state tasks and zero
+current PSI I/O pressure before an overlay operation. Do not
 use fastboot/EDL or alter bootloader, slot or firmware state. The only reviewed
 boot-image write is the exact manifest-verified kernel APK trigger documented
 in [DISPLAY.md](DISPLAY.md).
