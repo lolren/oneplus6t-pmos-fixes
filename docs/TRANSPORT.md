@@ -104,24 +104,36 @@ sudo rc-update add sshd default
 ss -lnt | grep ':22 '
 ```
 
-If TCP/22 and the SSH banner work but the authenticated-session probe reports
-`authenticated-channel-stalled`, run the repair form from the phone's local
-terminal (not through the stalled SSH connection):
-
-```sh
-sudo pmos-enable-ssh --apply --restart
-```
-
-This explicitly restarts the existing `sshd` process after enabling it. It is
-not the default because restarting SSH interrupts current sessions. Verify
-with `scripts/check-device-session` from the host before installing packages.
-
 For a systemd image, use the equivalent:
 
 ```sh
 sudo systemctl enable --now sshd.service
 ss -lnt | grep ':22 '
 ```
+
+If TCP/22 and the SSH banner work but the authenticated-session probe reports
+`authenticated-channel-stalled`, run a daemon restart from the phone's local
+terminal (not through the stalled SSH connection). With the current fixes
+package, use the reproducible form:
+
+```sh
+sudo pmos-enable-ssh --apply --restart
+```
+
+If that package revision is not installed yet, use the init-specific direct
+fallback instead:
+
+```sh
+# OpenRC
+sudo rc-service sshd restart
+
+# systemd
+sudo systemctl restart sshd.service
+```
+
+The restart is intentionally explicit because it interrupts current SSH
+sessions. Verify with `scripts/check-device-session` from the host before
+installing packages.
 
 If the service is missing, install the image's OpenSSH server package from its
 normal postmarketOS repository before retrying. Do not change firewall rules
