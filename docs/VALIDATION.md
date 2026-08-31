@@ -3,6 +3,46 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 Advanced Snapshot r38 and helper r49 deployment
+
+The fresh still-stream autofocus fix was built and published from Advanced
+Snapshot source commit
+`5e102b7d4b6bf6b4dcfeabe8f9040ffff8cc1ffd`. Its release assets were downloaded
+again and all four entries in `SHA256SUMS` passed. The release is
+[`r38-fresh-still-autofocus`](https://github.com/lolren/advanced-snapshot/releases/tag/r38-fresh-still-autofocus):
+
+```text
+advanced-snapshot-0.1.0-r38.apk       91d2c1c65d1eecbf7dca7e9f90eb69a78e60a123f9f66b662c48d5ebd81e27d5
+advanced-snapshot-lang-0.1.0-r38.apk  6ad6645feb9861c8d2305b19357b30c40d7572c4f957c0aa4985c92dfb568417
+public signing key                    c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6
+```
+
+The application pair was installed over SSH as an application-only upgrade:
+
+```text
+advanced-snapshot       0.1.0-r37 -> 0.1.0-r38
+advanced-snapshot-lang  0.1.0-r37 -> 0.1.0-r38
+reboot                  not required
+```
+
+The helper source was updated so its maintenance wrapper targets the same r38
+release. The local AArch64 package build passed `make test`, verified with the
+postmarketOS development key, and was installed without a reboot:
+
+```text
+package  oneplus6t-pmos-fixes-0.1.0_p20260831162331-r49.apk
+sha256   5f64915c0b99575730a3c31e401348c84ffd30fd90f9c5b7964812387de615d5
+wrapper  r38-fresh-still-autofocus
+```
+
+The installed wrapper was run in simulation mode. It downloaded the release,
+verified both APK signatures and all checksums, and completed the local APK
+transaction simulation with `result=simulation`. The native camera packages,
+kernel, firmware, boot slots, partitions and Waydroid image were unchanged.
+Waydroid remains stopped because the phone is currently at the greetd greeter;
+the persistent session unit remains disabled until a normal graphical user
+session owns Wayland and D-Bus.
+
 ## 2026-08-31 current Camera2 ID/profile audit
 
 After the r47 runtime and r37 Advanced Snapshot packages were installed, a
