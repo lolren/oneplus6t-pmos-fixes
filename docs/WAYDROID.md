@@ -8,10 +8,10 @@ blobs or firmware.
 The reference phone runs Waydroid 1.6.3 with the pinned Android 13 ARM64
 Vanilla/MAINLINE image pair in [WAYDROID-VANILLA.md](WAYDROID-VANILLA.md).
 The current r53 provider enumeration is stable for this phone: Camera2 ID 0 is
-the main rear module, ID 1 is the auxiliary rear module and ID 2 is the fixed-
-focus front module. The older r50/r51 checkpoints below were written before
-that provider ordering was corrected; their ID-specific recording notes are
-historical and are not the current safety policy.
+the main rear module, ID 1 is the fixed-focus front module and ID 2 is the
+auxiliary rear module. The older r50/r51 checkpoints below were written before
+the current provider ordering was accepted; their ID-specific recording notes
+are historical and are not the current safety policy.
 The r52 camera bundle is complete on a clean image: it carries the required
 32-bit legacy provider service and implementation in addition to the accepted
 r51/r50 Camera3 stack. It exposes three Android cameras and advertises
@@ -41,10 +41,11 @@ The native postmarketOS stack remains separate in [CAMERA.md](CAMERA.md).
 
 On 2026-08-31 the full protected Camera2 probe returned valid YUV and JPEG
 frames for IDs 0, 1 and 2, with zero JPEG row discontinuities. Rear IDs 0 and
-1 returned AF states `[3, 4]` and centre regions; fixed-focus front ID 2
-returned state `[0]` with no AF region. The safe encoder profiles then
-produced decodable 1280x720 H.264/AAC files for main rear ID 0 and front ID 2.
-Auxiliary rear ID 1 remains preview/YUV/JPEG-only because its two reproducible
+2 returned AF states `[3, 4]` and centre regions; fixed-focus front ID 1
+returned state `[0]` with no AF region. The recording-profile audit found the
+image-level files still advertised the old safe-ID arrangement; the checked-in
+profile correction now targets main rear ID 0 and front ID 1.
+Auxiliary rear ID 2 remains preview/YUV/JPEG-only because its two reproducible
 Venus teardown faults make ordinary encoding unsafe.
 
 The runner must be used while a single graphical Waydroid session is held
@@ -65,13 +66,13 @@ compositor.
 | --- | --- |
 | Clean-image provider bundle | Includes the reviewed 32-bit legacy provider service, implementation libraries and VINTF declaration, so a fresh ARM64 Vanilla image does not depend on leftovers from an older Waydroid generation. |
 | Three-camera enumeration | Android applications can open the main rear, secondary rear and front sensors instead of seeing no camera provider. |
-| Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path: rear IDs 0/1 and front ID 2. |
+| Camera location and rotation map | Camera2 receives the correct front/back role and display orientation for each stable media path: rear IDs 0/2 and front ID 1. |
 | minigbm plane parsing | The HAL reads Waydroid's real buffer offsets, strides and sizes, preventing corrupt mappings and one-plane assumptions. |
 | Software NV12 output | The mainline software ISP can fill Android YUV and private-preview buffers when a client needs a YUV-compatible stream, without a proprietary ISP HAL. |
 | EGL NV12 channel-order fix | Uses libyuv's ARGB entry point for the GPU's B,G,R,A readback, preventing the red/blue swap that makes front-camera skin tones purple. |
 | Multi-output software ISP | Debayers each Bayer input once, renders each configured output, emits every buffer completion and releases the input only after the request is complete. This supports preview plus video/JPEG/analysis streams. |
-| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 2; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 1 has only a non-recording high-speed sentinel because Android's parser requires contiguous IDs; ordinary auxiliary video remains blocked after a reproducible Venus teardown fault. |
-| Recording-profile synchronizer | Copies the checked-in, safe camera-ID mapping into both Android recording-profile filenames after a stopped-rootfs preflight. It backs up the exact previous files and supports a bounded rollback, fixing image-level files that still label ID 1 as the front camera while retaining the parser-safe ID 1 sentinel. |
+| Recording profiles and Codec2 | Supplies 480p/720p H.264/AAC profiles for main rear ID 0 and front ID 1; the validated Venus component ranks ahead of Android's still-present software fallback. Auxiliary rear ID 2 has only a non-recording high-speed sentinel because Android's parser requires contiguous IDs; ordinary auxiliary video remains blocked after a reproducible Venus teardown fault. |
+| Recording-profile synchronizer | Copies the checked-in, safe camera-ID mapping into both Android recording-profile filenames after a stopped-rootfs preflight. It backs up the exact previous files and supports a bounded rollback, fixing image-level files that advertise the stale ID arrangement while retaining the parser-safe ID 2 sentinel. |
 | Bounded software-codec policy | Adds only the five Mesa-observed syscalls needed by `media.swcodec`, preventing minijail from killing the H.264 encoder while retaining the rest of Android's sandbox. |
 | Venus hardware H.264 | Uses `/dev/video12` for encode. Codec2 r53 completes repeated rear H.264/AAC recordings and teardown; the current illuminated file still averages only 11.62 fps, so this is functional acceptance rather than performance parity. |
 | MMAP compressed-output bridge | Keeps camera input DMA-BUF zero-copy, but uses kernel-owned V4L2 capture buffers because Venus rejects Waydroid dma-heap linear output blocks with `EFAULT`; only the small encoded payload is copied into Codec2. |
@@ -138,8 +139,8 @@ camera UI by themselves; an Android camera application consumes them.
 - `config/waydroid/legacy-libcamera.xml` declares the provider's `legacy/0`
   HIDL instance to Android's framework compatibility matrix.
 - `config/waydroid/media_profiles.xml` declares conservative 480p/720p
-  H.264/AAC profiles for main rear ID 0 and front ID 2. It contains only a
-  high-speed CIF sentinel for auxiliary rear ID 1 because Android's
+  H.264/AAC profiles for main rear ID 0 and front ID 1. It contains only a
+  high-speed CIF sentinel for auxiliary rear ID 2 because Android's
   `MediaProfiles` required-profile table assumes contiguous IDs; no ordinary
   auxiliary profile is advertised until a non-Venus path or kernel/Codec2 fix
   is accepted.
@@ -160,13 +161,14 @@ camera UI by themselves; an Android camera application consumes them.
 - `scripts/sync-waydroid-camera-profiles` repairs only
   `vendor/etc/media_profiles.xml` and `vendor/etc/media_profiles_V1_0.xml`
   in the host overlay. It validates that the checked-in source advertises
-  only ordinary recording-capable IDs 0 and 2 plus the parser-only ID 1
+  only ordinary recording-capable IDs 0 and 1 plus the parser-only ID 2
   sentinel, refuses symlink/directory targets,
   requires an unmounted rootfs and zero storage-I/O PSI pressure, records a
   dated exact backup, and supports rollback. This is needed when an otherwise
   correct provider is paired with a stale image-level profile file: the live
-  provider order is 0 rear main, 1 auxiliary rear, 2 front, while the old
-  profile file can incorrectly describe 1 as front and omit 2. The sentinel is
+  provider order is 0 rear main, 1 front, 2 auxiliary rear, while the old
+  profile file can incorrectly advertise the auxiliary ID and omit front video.
+  The sentinel is
   deliberately high-speed-only and is not a supported ordinary video path.
 - `patches/android-v4l2-codec2/` carries the Qualcomm Venus queue-memory,
   single-plane layout/lifetime and metadata-only temporary-stride series
@@ -528,7 +530,7 @@ sudo pmos-sync-waydroid-camera-profiles
 The apply command copies the repository's mapping to both profile filenames,
 prints the backup directory and writes an SHA-256 manifest. It does not reboot
 the phone, alter a partition or touch the camera provider. Start the container
-and session again, then run the Camera2 `encode-720p` probe on IDs 0 and 2.
+and session again, then run the Camera2 `encode-720p` probe on IDs 0 and 1.
 To undo the exact change, use the printed backup path while Waydroid is
 stopped:
 
@@ -542,12 +544,12 @@ is intentionally explicit so a normal postmarketOS update cannot silently
 rewrite or partially apply a lower-layer overlay transaction; rerun it after
 an image/profile update and retain its printed backup for rollback.
 
-The ID 1 sentinel is required by the Android framework rather than by the
+The ID 2 sentinel is required by the Android framework rather than by the
 camera provider. AOSP's `MediaProfiles` code builds its required-profile table
 using the numeric camera ID as an array-like index; a sparse profile set such
-as 0 and 2 reaches its `CHECK` for a missing ID 1. The checked-in
+as 0 and 1 reaches its `CHECK` for a missing ID 2. The checked-in
 `highspeedcif` entry keeps that table contiguous, while the probe confirms that
-ID 1 has no ordinary low/high/480p/720p profile. Do not turn the sentinel into
+ID 2 has no ordinary low/high/480p/720p profile. Do not turn the sentinel into
 an ordinary encoder profile unless auxiliary Venus teardown has been repaired.
 See the corresponding
 [AOSP MediaProfiles implementation](https://android.googlesource.com/platform/frameworks/av/+/014a9ed60d/media/libmedia/MediaProfiles.cpp#714).
@@ -1253,14 +1255,14 @@ the Android image or native `/usr/lib`.
 The reproducible probe results were:
 
 ```text
-CAMERA id=0 valid=true profile=manual-focus privateFrames=12 manualFocusSupported=false manualFocusDistanceMax=0.000 manualFocusResult=[NaN,NaN] manualFocusDelta=NaN
-CAMERA id=1 valid=true profile=manual-focus privateFrames=24 manualFocusSupported=true manualFocusDistanceMax=2.000 manualFocusResult=[0.000,2.000] manualFocusDelta=2.000
+CAMERA id=0 valid=true profile=manual-focus privateFrames=24 manualFocusSupported=true manualFocusDistanceMax=2.000 manualFocusResult=[0.000,2.000] manualFocusDelta=2.000
+CAMERA id=1 valid=true profile=manual-focus privateFrames=12 manualFocusSupported=false manualFocusDistanceMax=0.000 manualFocusResult=[NaN,NaN] manualFocusDelta=NaN
 CAMERA id=2 valid=true profile=manual-focus privateFrames=24 manualFocusSupported=true manualFocusDistanceMax=2.000 manualFocusResult=[0.000,2.000] manualFocusDelta=2.000
 PROBE_DONE profile=manual-focus valid=3 total=3
 ```
 
 The matching `tap-focus` run returned terminal rear AF states `[3,4]` and
-non-empty center regions on IDs 1 and 2; the fixed-focus front remained
+non-empty center regions on IDs 0 and 2; the fixed-focus front ID 1 remained
 `afMode=0` with no region. These results prove Android request/result routing
 and actuator movement. They do not prove a factory-calibrated distance scale,
 vendor colour tuning or ordinary third-party camera-app acceptance.

@@ -390,7 +390,7 @@ public final class CameraProbeActivity extends Activity {
          * after encoder stop. Refuse that one destructive combination before
          * allocating a camera or codec; YUV/JPEG/preview profiles remain safe.
          */
-        if (needsEncodedVideo() && "1".equals(id)) {
+        if (needsEncodedVideo() && "2".equals(id)) {
             failCamera(token, id,
                     "auxiliary hardware encoding is disabled after a Venus teardown fault");
             return;

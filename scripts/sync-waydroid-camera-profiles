@@ -112,26 +112,26 @@ validate_source() {
 		exit 1
 	}
 	grep -q '<CamcorderProfiles cameraId="1">' "$source_path" || {
-		printf '%s\n' 'Camera profile source is missing the camera ID 1 framework sentinel.' >&2
+		printf '%s\n' 'Camera profile source is missing camera ID 1.' >&2
 		exit 1
 	}
 	grep -q 'quality="highspeedcif"' "$source_path" || {
-		printf '%s\n' 'Camera profile source is missing the ID 1 high-speed sentinel.' >&2
+		printf '%s\n' 'Camera profile source is missing the ID 2 high-speed sentinel.' >&2
 		exit 1
 	}
 	grep -q '<CamcorderProfiles cameraId="2">' "$source_path" || {
-		printf '%s\n' 'Camera profile source is missing camera ID 2.' >&2
+		printf '%s\n' 'Camera profile source is missing the camera ID 2 framework sentinel.' >&2
 		exit 1
 	}
 	if awk '
-		/<CamcorderProfiles cameraId="1">/ { in_sentinel = 1 }
+		/<CamcorderProfiles cameraId="2">/ { in_sentinel = 1 }
 		in_sentinel && /<EncoderProfile quality="/ && $0 !~ /quality="highspeedcif"/ {
 			unsafe = 1
 		}
 		in_sentinel && /<\/CamcorderProfiles>/ { in_sentinel = 0 }
 		END { exit unsafe ? 0 : 1 }
 	' "$source_path"; then
-		printf '%s\n' 'Refusing normal recording profiles for unsafe auxiliary camera ID 1.' >&2
+		printf '%s\n' 'Refusing normal recording profiles for unsafe auxiliary camera ID 2.' >&2
 		exit 1
 	fi
 }

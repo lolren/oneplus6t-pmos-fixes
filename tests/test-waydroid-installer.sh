@@ -156,7 +156,7 @@ for camera_id in 0 1 2; do
 done
 grep -q 'quality="highspeedcif"' "$ROOT/config/waydroid/media_profiles.xml"
 if awk '
-	/<CamcorderProfiles cameraId="1">/ { in_sentinel = 1 }
+	/<CamcorderProfiles cameraId="2">/ { in_sentinel = 1 }
 	in_sentinel && /<EncoderProfile quality="/ && $0 !~ /quality="highspeedcif"/ {
 		unsafe = 1
 	}
@@ -166,7 +166,7 @@ if awk '
 	printf '%s\n' 'unsafe ordinary auxiliary recording profile is still advertised' >&2
 	exit 1
 fi
-grep -q 'ID 1 therefore carries one' \
+grep -q 'ID 2 therefore carries one' \
 	"$ROOT/config/waydroid/media_profiles.xml"
 for frame_rate in 24; do
 	grep -q "frameRate=\"$frame_rate\"" \

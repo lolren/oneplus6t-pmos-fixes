@@ -3,6 +3,35 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 current Camera2 ID/profile audit
+
+After the r46 runtime and r37 Advanced Snapshot packages were installed, a
+freshly built Camera2 probe from the checked-in source was run against the
+existing r53 provider. Android reported the stable physical mapping as:
+
+```text
+ID 0  rear main       autofocus and manual-focus capable
+ID 1  front           fixed focus
+ID 2  rear auxiliary  autofocus and manual-focus capable
+```
+
+The protected preview, surface, tap-focus and full profiles completed with
+`PROBE_DONE` for all three IDs. The full run returned valid YUV, JPEG and
+private-preview data on every ID, zero repeated JPEG row discontinuities and
+visible -1/0/+1 EV movement. The manual-focus profile returned a 0.000 to
+2.000 dioptre result delta on IDs 0 and 2 and correctly reported ID 1 as fixed
+focus. Surface samples reached the Android `TextureView` on all three IDs and
+had full channel ranges.
+
+The same capability log showed the image-level recording files still exposed
+480p/720p profiles for IDs 0 and 2. Since ID 2 is the auxiliary rear module,
+that arrangement explains why the front camera reported no video mode and why
+the unsafe auxiliary path was exposed. The checked-in correction moves the
+ordinary H.264/AAC profiles to IDs 0 and 1 and retains the required
+`highspeedcif` parser sentinel at ID 2. The probe runner's encoder gate now
+refuses ID 2 as well. This XML-only correction is applied through the guarded
+stopped-rootfs synchronizer; it does not change the camera binaries.
+
 ## 2026-08-31 live r35/r36 green-cast acceptance
 
 The reference OnePlus 6T is now on the guarded `oneplus6t-r35-r36` generation:

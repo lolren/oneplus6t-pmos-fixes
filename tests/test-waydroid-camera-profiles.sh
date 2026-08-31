@@ -89,12 +89,12 @@ cmp "$ROOT/config/waydroid/media_profiles.xml" \
 	"$overlay/vendor/etc/media_profiles.xml"
 cmp "$ROOT/config/waydroid/media_profiles.xml" \
 	"$overlay/vendor/etc/media_profiles_V1_0.xml"
-grep -q '<CamcorderProfiles cameraId="1">' \
+grep -q '<CamcorderProfiles cameraId="2">' \
 	"$overlay/vendor/etc/media_profiles.xml"
 grep -q 'quality="highspeedcif"' \
 	"$overlay/vendor/etc/media_profiles.xml"
 if awk '
-	/<CamcorderProfiles cameraId="1">/ { in_sentinel = 1 }
+	/<CamcorderProfiles cameraId="2">/ { in_sentinel = 1 }
 	in_sentinel && /<EncoderProfile quality="/ && $0 !~ /quality="highspeedcif"/ {
 		unsafe = 1
 	}

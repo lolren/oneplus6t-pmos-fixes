@@ -167,7 +167,7 @@ waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
   --es profile record-yuv-720p
 
-# Real 720p H.264/AAC recording (main rear ID 0 or front ID 2 only)
+# Real 720p H.264/AAC recording (main rear ID 0 or front ID 1 only)
 waydroid shell -- am force-stop dev.lolren.waydroidcameraprobe
 waydroid shell -- am start -n \
   dev.lolren.waydroidcameraprobe/.CameraProbeActivity \
@@ -239,7 +239,7 @@ The runner refuses to overwrite either output. Keep captures private unless
 every person and object in view is safe to publish. The explicit allow flag is
 intentional: encoded diagnostics exercise camera, Codec2 and kernel teardown
 together and must run only after the Waydroid health and safety-monitor gates.
-Camera ID 1 (the auxiliary rear module) is hard-disabled for this profile: two bounded attempts with
+Camera ID 2 (the auxiliary rear module) is hard-disabled for this profile: two bounded attempts with
 different teardown ordering both caused a Venus recovery IRQ storm after stop.
 Its preview, YUV and JPEG profiles remain enabled; auxiliary video must use a
 non-Venus encoder until that kernel/Codec2 incompatibility is fixed.
