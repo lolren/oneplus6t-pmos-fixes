@@ -10,8 +10,10 @@ postmarketOS CDC-NCM device. The USB link, `172.16.42.1` ping, TCP/22 probe and
 SSH banner all pass. A fresh bounded key-authenticated session probe using the
 fixed read-only command `printf ready` returns status `255` after the server
 has authenticated but before it confirms the session channel, and is classified
-as `authenticated-channel-stalled`. PTY and SFTP channel attempts show the same
-boundary; no alternate service was found on the checked phone-network ports.
+as `authenticated-channel-stalled`. A bounded password-authenticated probe,
+PTY and SFTP channel attempts show the same boundary, so this is not specific
+to the public key or the requested command; no alternate service was found on
+the checked phone-network ports.
 
 The fixes tree now contains `scripts/check-device-session`, which separates
 this condition from a working command channel, and r42 adds the explicit local
