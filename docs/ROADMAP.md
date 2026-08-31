@@ -18,11 +18,12 @@ location and Android-container failures cannot obscure one another.
    Kernel r10 is installed with serialized Samsung brightness writes, bounded
    Venus error recovery and an exact r8 rollback; do not advertise fake HDR,
    flash behavior or uncalibrated manual values.
-3. Maintain the VibeMarketOS product layer: the signed r44 runtime, r35/r36
-   manifest, offline candidate/rollback repositories, compatibility checks,
-   health gates and retained generations are now published. The Advanced
-   Snapshot r37 app-only release is published separately and is not activated
-   by the default manifest until physical acceptance. Upstream
+3. Maintain the VibeMarketOS product layer: the signed r46 runtime, with its
+   r44 r35/r36 manifest, offline candidate/rollback repositories,
+   compatibility checks, health gates and retained generations are now
+   published. The Advanced Snapshot r37 app-only release is published
+   separately and is not activated by the default manifest until physical
+   acceptance. Upstream
    postmarketOS updates may be staged, but camera-critical replacements must
    not activate until the manifest rebases/builds/tests successfully. Keep the
    `pmos-safe-upgrade` wrapper and simulation-first managers in the documented

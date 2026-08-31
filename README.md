@@ -106,17 +106,17 @@ the wedged daemon. The recovery procedure and direct fallback commands are in
 [docs/TRANSPORT.md](docs/TRANSPORT.md).
 
 The current signed `noarch` runtime package is the
-[runtime-r45 Waydroid-session release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r45-waydroid-session).
+[runtime-r46 green-cast-installer release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r46-green-cast-installer).
 On a booted phone with normal postmarketOS repositories configured, download
-the r45 APK and `SHA256SUMS` from that release, verify the matching line, then
+the r46 APK and `SHA256SUMS` from that release, verify the matching line, then
 install the local package:
 
 ```sh
-gh release download runtime-r45-waydroid-session \
+gh release download runtime-r46-green-cast-installer \
   --repo lolren/oneplus6t-pmos-fixes \
-  --pattern 'oneplus6t-pmos-fixes-*-r45.apk' --pattern SHA256SUMS
+  --pattern 'oneplus6t-pmos-fixes-*-r46.apk' --pattern SHA256SUMS
 runtime_apk=$(find . -maxdepth 1 -type f \
-  -name 'oneplus6t-pmos-fixes-*-r45.apk' -print -quit)
+  -name 'oneplus6t-pmos-fixes-*-r46.apk' -print -quit)
 test -n "$runtime_apk"
 awk -v file="${runtime_apk#./}" '$2 == file' SHA256SUMS | sha256sum -c -
 sudo apk add --allow-untrusted "$runtime_apk"
