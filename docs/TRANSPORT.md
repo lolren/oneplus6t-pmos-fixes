@@ -40,7 +40,7 @@ combinations are:
 
 | Report | Meaning |
 | --- | --- |
-| `ping=pass`, `ssh_tcp=pass`, `ssh_banner=pass` | The network path and SSH service are usable. |
+| `ping=pass`, `ssh_tcp=pass`, `ssh_banner=pass` | The network path and SSH transport are usable; run the authenticated-session helper before changing the phone. |
 | `ping=pass`, `ssh_tcp=pass`, `ssh_banner=missing` | The kernel/network path is alive, but the phone-side SSH service or userspace is not speaking SSH. Do not infer that login works. |
 | `ping=pass`, `ssh_probe=timeout-or-filtered` | The phone answers ICMP but drops or does not answer TCP/22. Check the phone-side firewall and `sshd` state; this is not evidence of a cable fault. |
 | `ping=fail`, `ssh_tcp=fail` | No usable IP path was confirmed; check the USB gadget, cable, interface address and phone boot state. |

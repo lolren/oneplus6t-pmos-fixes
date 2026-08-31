@@ -31,7 +31,7 @@ grep -Fqx 'ssh_banner=pass' "$output"
 grep -Fqx 'adb_devices=1' "$output"
 grep -Fqx 'adb_oneplus=present' "$output"
 grep -Fqx 'fastboot_devices=0' "$output"
-grep -Fqx 'assessment=ssh-usable' "$output"
+grep -Fqx 'assessment=ssh-transport-usable' "$output"
 
 if env \
 	PMOS_TRANSPORT_SYSFS_ROOT="$TEST_DIR/sys" \

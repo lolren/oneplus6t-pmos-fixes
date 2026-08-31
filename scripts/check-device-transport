@@ -235,7 +235,7 @@ elif [ "$fastboot_devices" != unavailable ] && [ "$fastboot_devices" -gt 0 ]; th
 fi
 
 if [ "$ssh_banner" = pass ]; then
-	assessment=ssh-usable
+	assessment=ssh-transport-usable
 elif [ "$ping_result" = pass ] && [ "$ssh_tcp" = pass ]; then
 	assessment=network-up-ssh-not-speaking
 elif [ "$ping_result" = pass ] && [ "$ssh_probe" = timeout-or-filtered ]; then
