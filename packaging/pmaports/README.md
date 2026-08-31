@@ -57,7 +57,7 @@ while controls are changed; it does not provide Android's factory
 The integration patch cleanly applies to pmaports commit
 `875bddba6538818f2c3c9849e184f40688ad5140`.
 Its current SHA-256 is
-`ee4dbda47a119246bbef5832b29f1119df4f0084b0ee05e6edff0da7d2f221a6`.
+`dcfe71299dfd7dbd0c346dc13a6807fb2ce438f38b36480e784f698dbe51070a`.
 
 ```sh
 git checkout 875bddba6538818f2c3c9849e184f40688ad5140
