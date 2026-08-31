@@ -4,16 +4,16 @@ Work is intentionally serialized on the reference phone so camera, audio,
 location and Android-container failures cannot obscure one another.
 
 1. Preserve the live lower camera layer: native libcamera/IPA r35, PipeWire r8
-   and Advanced Snapshot r37 are installed, with the exact r34/r36/r8 stage as
+   and Advanced Snapshot r38 are installed, with the exact r34/r36/r8 stage as
    rollback. The r35 matrix is active on all three sensors; rear focus windows
    pass with zero restarts or lens requests and the fixed-focus front passes its
    120-frame stream. Keep this generation as the camera baseline while the
-   separately published r37 app-only correction is installed and awaits visual
-   saved-image acceptance.
+   separately published r38 app-only autofocus correction is installed and
+   awaits visual saved-image acceptance.
 2. Finish Advanced Snapshot acceptance as a separately named, GPL-compatible
    Snapshot fork with a polished photo/video interface, truthful focus state
-   and controls implemented by the lower stack. The r37 source/package and
-   offline release gates pass; the r37 green-cast Apply/Reset correction is
+   and controls implemented by the lower stack. The r38 source/package and
+   offline release gates pass; the r38 fresh still-stream autofocus fix is
    installed and awaits visual acceptance.
    Saved chart/photo, video, HDR and rear-flash acceptance remain.
    Kernel r10 is installed with serialized Samsung brightness writes, bounded
@@ -22,7 +22,7 @@ location and Android-container failures cannot obscure one another.
 3. Maintain the VibeMarketOS product layer: the signed r48 runtime, with its
    r44 r35/r36 manifest, offline candidate/rollback repositories,
    compatibility checks, health gates and retained generations are now
-   published. The Advanced Snapshot r37 app-only release is published
+   published. The Advanced Snapshot r38 app-only release is published
    separately and is not activated by the default manifest until physical
    acceptance. Upstream
    postmarketOS updates may be staged, but camera-critical replacements must

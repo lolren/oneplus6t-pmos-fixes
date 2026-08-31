@@ -1,16 +1,16 @@
 #!/bin/sh
 set -eu
 
-# Download and install the separately reviewed Advanced Snapshot r37 app pair.
+# Download and install the separately reviewed Advanced Snapshot r38 app pair.
 # This is intentionally separate from the native camera-generation manager:
-# r37 changes only the application-level green-cast preset and does not replace
+# r38 changes only the application-level autofocus path and does not replace
 # libcamera, PipeWire, the kernel or firmware.
 
 PROGRAM=${0##*/}
 REPOSITORY=lolren/advanced-snapshot
-RELEASE_TAG=r37-green-cast
-MAIN_APK=advanced-snapshot-0.1.0-r37.apk
-LANG_APK=advanced-snapshot-lang-0.1.0-r37.apk
+RELEASE_TAG=r38-fresh-still-autofocus
+MAIN_APK=advanced-snapshot-0.1.0-r38.apk
+LANG_APK=advanced-snapshot-lang-0.1.0-r38.apk
 SIGNING_KEY=pmos@local-6a92d930.rsa.pub
 SIGNING_KEY_SHA256=c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6
 CHECKSUMS=SHA256SUMS
@@ -26,9 +26,9 @@ usage() {
 	cat <<EOF
 Usage: $PROGRAM [options]
 
-Download the pinned Advanced Snapshot r37 application pair. The release
-contains the visible green-cast correction aligned with the OnePlus 6T native
-r35 matrix. The default is simulation-only; --apply is required to install it.
+Download the pinned Advanced Snapshot r38 application pair. The release
+contains the fresh still-stream autofocus fix. The default is simulation-only;
+--apply is required to install it.
 
 Options:
   --apply             install both AArch64 application APKs

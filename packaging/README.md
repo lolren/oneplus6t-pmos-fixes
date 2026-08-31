@@ -71,7 +71,7 @@ The signed package and its public verification key are published in the
 verify the release `SHA256SUMS` before installing it.
 
 The package also installs `pmos-install-advanced-snapshot`, a separate
-simulation-first wrapper for the published Advanced Snapshot r37 application
+simulation-first wrapper for the published Advanced Snapshot r38 application
 pair. It verifies the HTTPS release checksums, the pinned
 `pmos@local-6a92d930.rsa.pub` fingerprint and both APK signatures before an
 explicit `--apply` transaction. This app-only upgrade does not change the

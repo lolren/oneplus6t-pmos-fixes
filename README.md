@@ -136,14 +136,14 @@ apply the documented green-cast correction to IMX371, IMX376 and IMX519; the
 Advanced Snapshot action is available as **Image Controls → Green-cast
 correction → Apply** and is reversible with **Reset**.
 
-The follow-up Advanced Snapshot r37 app-only package aligns that visible
-correction preset with the native r35 matrix. It is published separately in
-the [r37 green-cast release](https://github.com/lolren/advanced-snapshot/releases/tag/r37-green-cast)
+The follow-up Advanced Snapshot r38 app-only package fixes the preview-to-photo
+autofocus gap while retaining the visible correction preset. It is published
+separately in the [r38 fresh-still-autofocus release](https://github.com/lolren/advanced-snapshot/releases/tag/r38-fresh-still-autofocus)
 with its verification key and portable checksums. The default r35/r36
-generation remains unchanged until the r37 pair is installed and accepted on
+generation remains unchanged until the r38 pair is installed and accepted on
 the reference phone.
 
-The checked-in app-only installer downloads both r37 APKs, verifies the
+The checked-in app-only installer downloads both r38 APKs, verifies the
 published checksum file and signing-key fingerprint, runs an APK signature
 check and simulates the upgrade by default:
 
@@ -189,13 +189,13 @@ authenticated-but-stalled SSH daemon. Build it from
 use the source checkout directly with `make install`.
 
 The clean r48 package, which corrects the Waydroid recording-profile mapping,
-installs the checksum-verified Advanced Snapshot r37 app-only installer, and
+installs the checksum-verified Advanced Snapshot r38 app-only installer, and
 binds the persistent graphical session to the actual postmarketOS user, is
 published in the
 [`runtime-r48-graphical-session` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r48-graphical-session).
 
 The clean r47 package, which corrected the Waydroid recording-profile mapping
-and includes the checksum-verified Advanced Snapshot r37 app-only installer,
+and includes the checksum-verified Advanced Snapshot r38 app-only installer,
 is published in the
 [`runtime-r47-video-profile-correction` release](https://github.com/lolren/oneplus6t-pmos-fixes/releases/tag/runtime-r47-video-profile-correction).
 

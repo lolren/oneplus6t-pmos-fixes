@@ -16,9 +16,9 @@ printf '%s\n' "$help" | grep -q -- '--work-dir'
 printf '%s\n' "$help" | grep -q 'simulation-only'
 
 grep -Fqx 'REPOSITORY=lolren/advanced-snapshot' "$INSTALLER"
-grep -Fqx 'RELEASE_TAG=r37-green-cast' "$INSTALLER"
-grep -Fqx 'MAIN_APK=advanced-snapshot-0.1.0-r37.apk' "$INSTALLER"
-grep -Fqx 'LANG_APK=advanced-snapshot-lang-0.1.0-r37.apk' "$INSTALLER"
+grep -Fqx 'RELEASE_TAG=r38-fresh-still-autofocus' "$INSTALLER"
+grep -Fqx 'MAIN_APK=advanced-snapshot-0.1.0-r38.apk' "$INSTALLER"
+grep -Fqx 'LANG_APK=advanced-snapshot-lang-0.1.0-r38.apk' "$INSTALLER"
 grep -Fqx 'SIGNING_KEY=pmos@local-6a92d930.rsa.pub' "$INSTALLER"
 grep -Fq -- 'SIGNING_KEY_SHA256=c1f8892b9576ce1807732a985243311d272ab422fc30958a2fb78d5bfc8d36a6' "$INSTALLER"
 if grep -Fq -- 'https://github.com/' "$INSTALLER" &&
