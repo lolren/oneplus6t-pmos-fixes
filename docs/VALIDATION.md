@@ -3,6 +3,34 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 Advanced Snapshot r36 live green-cast control checkpoint
+
+The separately maintained Advanced Snapshot source commit
+`df308e9d95ba9d90ac6866010db3b95ce9d11de4` completed the full optimized and
+auditable AArch64 build, including the workspace check phase. The source archive
+SHA-512 is:
+
+```text
+6af7616496de04c98f1eb985fb1beaca509ee506d6bfe79c735e497def95443a04599c8913e8e46787cc5624ce582529e372a753000c2f0d0acb8c9d9caea2a4
+```
+
+The package validator accepted the local pmbootstrap signature, ARM64
+executables, complete file manifest, language split, metadata, schema, resource
+namespace, stale-identifier scan and the visible live-control contract:
+
+```text
+advanced-snapshot-0.1.0-r36.apk: 8a0f08defead7406823b269f92a161963e754770e26e698ed508a1e3c631d37c
+advanced-snapshot-lang-0.1.0-r36.apk: 32a2893a5e2fa2a68c6a17a2f4581e9a5fa1c78b75cccbb4efd2f04dc5888a5e
+```
+
+r36 adds **Green-cast correction → Apply** directly to Image Controls. It uses
+the conservative row-sum-preserving OnePlus matrix for the selected camera,
+turns automatic white balance off so the standard matrix request is active, and
+is reversible with **Reset**. This is a repeatable starting point, not factory
+CCM or Android-vendor ISP calibration. The pair remains an offline artifact
+checkpoint: installation and live Apply/Reset capture acceptance are still open
+because the reference phone's SSH session stalls after authentication.
+
 ## 2026-08-31 Advanced Snapshot r35 package checkpoint
 
 The separately maintained Advanced Snapshot source commit

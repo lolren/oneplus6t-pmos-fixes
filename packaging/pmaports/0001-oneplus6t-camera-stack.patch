@@ -582,7 +582,7 @@ index d0a1016dd52d204d80c2ba2ff64531354f55b7f1..fd146ce28deb562739a575752ad3974f
  "
 diff --git a/temp/advanced-snapshot/APKBUILD b/temp/advanced-snapshot/APKBUILD
 new file mode 100644
-index 0000000000000000000000000000000000000000..de3e5bfbb7f4eeb2c25b21f7c4dbd063685235dd
+index 0000000000000000000000000000000000000000..268eecd57770b73ff3ee07ab35960dc0a1ccfb83
 --- /dev/null
 +++ b/temp/advanced-snapshot/APKBUILD
 @@ -0,0 +1,69 @@
@@ -590,8 +590,8 @@ index 0000000000000000000000000000000000000000..de3e5bfbb7f4eeb2c25b21f7c4dbd063
 +maintainer="Lolren <loren.bufanu@gmail.com>"
 +pkgname=advanced-snapshot
 +pkgver=0.1.0
-+pkgrel=35
-+_commit="d8eff869ffc98ca69b5d4c24d3537cd3660d2ece"
++pkgrel=36
++_commit="df308e9d95ba9d90ac6866010db3b95ce9d11de4"
 +pkgdesc="Mobile-first camera application with truthful manual controls and software HDR"
 +url="https://github.com/lolren/advanced-snapshot"
 +arch="all"
@@ -624,7 +624,7 @@ index 0000000000000000000000000000000000000000..de3e5bfbb7f4eeb2c25b21f7c4dbd063
 +	"
 +subpackages="$pkgname-lang"
 +source="
-+	$pkgname-$pkgver.tar.gz::https://github.com/lolren/advanced-snapshot/archive/$_commit.tar.gz
++	$pkgname-$pkgver-$_commit.tar.gz::https://github.com/lolren/advanced-snapshot/archive/$_commit.tar.gz
 +	cargo-auditable.patch
 +	"
 +options="net" # cargo vendor fetches locked Rust dependencies
@@ -652,7 +652,7 @@ index 0000000000000000000000000000000000000000..de3e5bfbb7f4eeb2c25b21f7c4dbd063
 +}
 +
 +sha512sums="
-+145723b788222c34fbae795e7a90bc36560fa048a69c9026ca930fa62c83b558f898b213d6bb27e5e7f8ded46caa65bd49a2b5a2afced1a5f56ec88232ca9801  advanced-snapshot-0.1.0.tar.gz
++6af7616496de04c98f1eb985fb1beaca509ee506d6bfe79c735e497def95443a04599c8913e8e46787cc5624ce582529e372a753000c2f0d0acb8c9d9caea2a4  advanced-snapshot-0.1.0-df308e9d95ba9d90ac6866010db3b95ce9d11de4.tar.gz
 +bacebc0605ab9360488f2e8a4b60db69e9bd936c411edd8754efe8aab5b07589a6ed423e0f7cadcea26a1823b117b3d5b2718b78bb1cc06efad6b199a053083d  cargo-auditable.patch
 +"
 diff --git a/temp/advanced-snapshot/cargo-auditable.patch b/temp/advanced-snapshot/cargo-auditable.patch

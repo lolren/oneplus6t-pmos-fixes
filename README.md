@@ -359,7 +359,7 @@ and through an open Camera3 HAL in Waydroid.
 | Automated probes | Makes regressions repeatable across all cameras instead of relying only on visual inspection. |
 
 The repository retains the earlier r8/r24/r7/r3 userspace camera baseline and
-publishes the newer libcamera r34 / Advanced Snapshot r35 / PipeWire r8 line. The
+publishes the newer libcamera r34 / Advanced Snapshot r36 / PipeWire r8 line. The
 reference phone is reachable over USB CDC-NCM/SSH. The installed Waydroid r52
 clean-Vanilla layer retains the exact r51/r50 camera binaries and r36 colour
 correction, adds the complete legacy provider, and includes reproducible
@@ -379,10 +379,10 @@ hardware encoding is deliberately disabled after two reproducible post-stop
 Venus IRQ storms; its preview and still-capture paths remain enabled.
 
 The current source line is libcamera/IPA r34, PipeWire SPA r8 and Advanced
-Snapshot r35; the reference phone is still running the accepted libcamera r33
-pair and the installed r34 app while the r34 colour follow-up and r35 app pair
+Snapshot r36; the reference phone is still running the accepted libcamera r33
+pair and the installed r34 app while the r34 colour follow-up and r36 app pair
 await phone installation. The app source is commit
-`d8eff869ffc98ca69b5d4c24d3537cd3660d2ece`; the exact AArch64 package pair is
+`df308e9d95ba9d90ac6866010db3b95ce9d11de4`; the exact AArch64 package pair is
 built and artifact-validated. The controls panel and calibration dialog now
 include automatic/manual white balance, per-sensor red/blue gains and a
 bounded 3×3 colour matrix. The r34 IPA selects the
@@ -401,10 +401,12 @@ Gamma, Zoom, Reset and an
 opt-in rear **Hardware flash** switch when the helper is installed. The Camera
 Calibration dialog can save those standard controls, including AWB mode,
 red/blue gains and the optional matrix, per physical sensor and
-optionally restore a deliberate manual focus position. The r35 camera-page
+optionally restore a deliberate manual focus position. The r36 camera-page
 overlay drawer keeps these controls alongside the live preview, and its
 Sensor default, Neutral, Natural, Vivid and Custom presets update the visible
-image without hiding the camera view. The lower-layer focus
+image without hiding the camera view. Its visible Green-cast correction action
+applies the conservative matrix to the selected camera and turns off automatic
+white balance; Reset restores the automatic path. The lower-layer focus
 instability is fixed: both rear cameras now use bounded progressive tap-focus
 and return to continuous monitoring without moving the lens. Advanced Snapshot
 additionally offers a manual rear-lens slider and explicitly returns to
@@ -595,7 +597,7 @@ camera to hold 0 (far) through 2 (near); tapping the preview replaces that
 lock with one-shot AF, and **Reset** restores continuous AF. The fixed-focus
 front camera has no focus gesture or manual slider.
 
-The sliders affect both preview and saved output. The Advanced Snapshot r35
+The sliders affect both preview and saved output. The Advanced Snapshot r36
 build also exposes opt-in Software HDR when its helper is installed; it
 uses three bracketed JPEG captures, confidence-gated global-translation
 alignment and a linear-light merge. This is not the same as Android-vendor HDR:
