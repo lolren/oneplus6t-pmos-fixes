@@ -41,7 +41,7 @@ grep -q "^+$libcamera_sha512  0022-ipa-simple-expose-manual-colour-correction-ma
 	"$MONOLITH" || fail 'libcamera patch checksum is not in pmaports'
 grep -q "^+$app_sha512  advanced-snapshot-0.1.0.tar.gz$" "$MONOLITH" ||
 	fail 'Advanced Snapshot archive checksum is not in pmaports'
-grep -q '^+pkgrel=33$' "$MONOLITH" || fail 'libcamera recipe is not r33'
+grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'libcamera recipe is not r34'
 grep -q '^+pkgrel=34$' "$MONOLITH" || fail 'Advanced Snapshot recipe is not r34'
 grep -q '^+_commit="0376f68c6808517fdc368d8e92ce67a0463ce960"$' "$MONOLITH" ||
 	fail 'Advanced Snapshot source pin is not the tested colour-calibration commit'

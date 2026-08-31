@@ -20,21 +20,33 @@ the temperature-interpolated tuned matrix. The applied matrix is returned in
 request metadata. Patch `0023` additionally exposes verified sensor test-pattern
 modes through the simple pipeline, allowing calibration to distinguish
 sensor/Bayer errors from scene white-balance errors. The OnePlus downstream
-profile package uses a conservative row-sum-preserving matrix on all three
-sensors to reduce the measured green excess without changing equal-channel
-grey. It is a scene-level correction, not a claim of factory or chart-derived
-Android calibration.
+profile package uses a moderate row-sum-preserving matrix on all three sensors
+to reduce the remaining green excess without changing equal-channel grey:
+
+```text
+0.95  0.05  0.00
+0.05  0.90  0.05
+0.00  0.05  0.95
+```
+
+It is a scene-level correction, not a claim of factory or chart-derived Android
+calibration.
 
 The complete series applies cleanly to libcamera v0.7.2. Its nineteen-patch
 predecessor passed a clean native GCC Meson suite with 46 passes, one expected
 failure, 30 skips and no unexpected failure. The complete profile/test-pattern
-build is r33 and contains twenty-one downstream patches.
-pmbootstrap AArch64 build produced and installed:
+build is r34 and contains twenty-one downstream patches.
+The pmbootstrap AArch64 build produced the following artifacts:
 
-- `libcamera-99990.7.2-r33.apk`, SHA-256
-  `76808314599b548a86c2924aaea82b98ce0a913a38967acfd32cd95b54684f6d`;
-- `libcamera-ipa-99990.7.2-r33.apk`, SHA-256
-  `b54c2ada1f1e2bd833c385247ee796cbd58a40077d7f74646e5d7b5e36c9c89e`.
+The updated AArch64 artifacts built successfully:
+
+- `libcamera-99990.7.2-r34.apk`, SHA-256
+  `7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3`;
+- `libcamera-ipa-99990.7.2-r34.apk`, SHA-256
+  `e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed`.
+
+Device installation and live chart acceptance remain pending. The previously
+accepted r33 package hashes remain in the project validation history.
 
 Patch `0019` has SHA-512
 `2c99d73fded811919b02806820a6ac4e82791f0e54ed5a485183049d4d2a0159b6a593f4da379e64285c0376e1dbba34fd5a674fe89f246f901c1f9fbc39d9e1`.

@@ -12,9 +12,9 @@ algorithms:
           # Keep equal RGB neutral while gently suppressing the measured
           # green-channel excess in ordinary scenes.  Every row sums to one,
           # so the deterministic equal-channel calibration frame remains grey.
-          ccm: [ 0.97, 0.03, 0.0,
-                 0.03, 0.94, 0.03,
-                 0.0, 0.03, 0.97 ]
+          ccm: [ 0.95, 0.05, 0.0,
+                 0.05, 0.90, 0.05,
+                 0.0, 0.05, 0.95 ]
   - Af:
       minPosition: 400
       maxPosition: 800

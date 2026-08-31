@@ -12,9 +12,9 @@ algorithms:
         # green-channel excess in ordinary scenes.  Every row sums to one,
         # so the deterministic equal-channel calibration frame remains grey.
         - ct: 6500
-          ccm: [ 0.97, 0.03, 0.0,
-                 0.03, 0.94, 0.03,
-                 0.0, 0.03, 0.97 ]
+          ccm: [ 0.95, 0.05, 0.0,
+                 0.05, 0.90, 0.05,
+                 0.0, 0.05, 0.95 ]
   - Adjust:
       gamma: 2.0
       contrast: 1.1

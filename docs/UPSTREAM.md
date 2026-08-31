@@ -126,9 +126,9 @@ Android HAL compiles on the host and the ARM provider passed the diagnostic
 reopen/full-probe checks; ordinary third-party-app soak and a focused
 framework test remain required before an upstream proposal.
 
-Do not upstream the OnePlus r33 sensor profiles as if they were measured,
+Do not upstream the OnePlus r34 sensor profiles as if they were measured,
 generic libcamera calibration. They are downstream numeric interoperability
-data and a conservative scene-level green-cast correction deliberately kept in
+data and a moderate scene-level green-cast correction deliberately kept in
 the OnePlus pmaports overlay. The generic patch series remains valid without
 the downstream profiles; the YAML applies the same row-sum-preserving matrix to
 the three sensors only for this phone. The values have no chart, illuminant or

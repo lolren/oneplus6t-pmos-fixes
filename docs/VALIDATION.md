@@ -3,6 +3,43 @@
 All values below are sanitized. No IMEI, IMSI, ICCID, telephone number, account
 credential, SSH key or device-unique serial is recorded.
 
+## 2026-08-31 native green-cast r34 source checkpoint
+
+The next lower-layer generation changes the three OnePlus profiles from the
+accepted r33 matrix to this moderate, row-sum-preserving correction:
+
+```text
+0.95  0.05  0.00
+0.05  0.90  0.05
+0.00  0.05  0.95
+```
+
+Equal RGB inputs still remain equal. In the available same-scene A/B analysis,
+the secondary-rear green-to-red/blue ratio moved from `1.365` to `1.336` and
+the front ratio from `1.060` to `1.052`. These are scene measurements rather
+than a factory calibration; the main-rear result and a controlled chart still
+need live r34 acceptance. The source change is therefore reproducible but not
+yet recorded as installed on the reference phone.
+
+The source profile SHA-512 values are:
+
+| Profile | SHA-512 |
+| --- | --- |
+| `imx371.yaml` | `bfa87b1c1fc3935e27c2775555100ec29199a1f2e9bb78cd9d9e85be35b432e7c9980c78b79992ebdb306468233534aeb9a0ddc3ba99c284ea1fb5adc1e985e8` |
+| `imx376.yaml` | `a76c0cdd1c08e5d9c736e19d10c7358af306ead1bfaec762620c8983469dc3efe09261b4ec3206d7b7916b43abbf650bd893e88e6a212a0bd862a2c3c7a21f9d` |
+| `imx519.yaml` | `6d5abe1db17d5f39f39cc5dc8a46ef9a497a19d1fba5aa36f9d60775adfc9585ab99a36be90bef2780687f5359973f333a140611833ac6cdd5356a33c3adccc5` |
+
+The corresponding AArch64 r34 packages built successfully:
+
+| Package | SHA-256 |
+| --- | --- |
+| `libcamera-99990.7.2-r34.apk` | `7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3` |
+| `libcamera-ipa-99990.7.2-r34.apk` | `e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed` |
+
+The packages have not yet been installed on the reference phone because its
+SSH service is currently not accepting sessions. The accepted r33 checkpoint
+immediately below remains the device rollback point.
+
 ## 2026-08-31 native green-cast r33 checkpoint
 
 The downstream profiles now use the same row-sum-preserving matrix on IMX371,

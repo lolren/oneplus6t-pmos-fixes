@@ -6,9 +6,9 @@ three tuning files, two PipeWire control/state-transport patches, six Snapshot p
 separately named Advanced Snapshot aport, checksums and package revision bumps.
 It contains no APK, boot image, firmware, vendor library, photograph or
 device-specific identifier. The current patch carries the r34 Advanced Snapshot
-source recipe and its verified AArch64 package pair, the libcamera r33 colour-
+source recipe and its verified AArch64 package pair, the libcamera r34 colour-
 matrix/white-balance/manual-focus/tone/test-pattern generation and PipeWire r8 float-array
-transport; r24, r25, r26 and r28 plus
+transport; r24, r25, r26, r28 and r33 plus
 the previously signed app generations remain available as rollback baselines.
 It also carries the Samsung panel brightness-serialization patch and bounded
 Qualcomm Venus firmware-error recovery as kernel r10, with kernel r8 retained
@@ -20,13 +20,16 @@ The reference phone has r33/r8/r3 userspace and the visible Image Controls
 Advanced Snapshot r34 build installed without reboot; the earlier r30 app,
 r28/r7 lower stack and r0/r1 app packages remain rollback baselines.
 
-The current r33/r34/r8 evidence is:
+The current source target is r34/r34/r8; the reference phone remains on the
+last accepted r33/r8/r3 line until the new colour package is built and
+installed. The current r33/r34/r8 evidence is:
 
 - libcamera/IPA r33 with normalized rear `LensPosition`, `AwbEnable`, two-
   element `ColourGains` and nine-element `ColourCorrectionMatrix` controls;
 - PipeWire SPA r8 with generic fixed-size float-array transport;
-- libcamera/IPA r33 with sensor-specific profiles and a conservative
+- libcamera/IPA r33 with sensor-specific profiles and the accepted conservative
   row-sum-preserving green-cast correction on all three sensors;
+- the r34 source target with a moderate row-sum-preserving follow-up matrix;
 - a verified IMX519 equal-channel sensor test pattern that remains neutral
   through the GPU processed path after AWB settles;
 - Advanced Snapshot commit `0376f68c6808517fdc368d8e92ce67a0463ce960`;
@@ -79,7 +82,7 @@ Applying the integration patch to the reviewed base produces:
 - `linux-postmarketos-qcom-sdm845-7.1_rc1-r10` (display brightness
   serialization plus bounded Venus firmware-error recovery; r8 remains the
   rollback package);
-- `libcamera-99990.7.2-r33` and `libcamera-ipa-99990.7.2-r33` (writable colour
+- `libcamera-99990.7.2-r34` and `libcamera-ipa-99990.7.2-r34` (writable colour
   matrix, white balance, manual-focus, stable-AF, conservative tone generation
   and downstream sensor-specific colour profiles; r24/r25/r26/r28/r29/r30/r31/r32 remain retained
   diagnostic and rollback candidates);
@@ -115,14 +118,16 @@ integration patch. A clean isolated release build passes, but no r6 APK hash
 is claimed until an AArch64 package build and phone acceptance are completed.
 Keep the signed r3 packages as the rollback baseline.
 
-The r33 libcamera revision and PipeWire r8 are source-, package- and
-runtime-validated. Their standalone patches and the full integration diff
-apply cleanly; the installed AArch64 packages expose the normalized rear
+The r34 libcamera revision and PipeWire r8 are source- and package-validated. Their
+standalone patches and the full integration diff apply cleanly; the accepted
+r33 AArch64 packages expose the normalized rear
 `LensPosition` range plus standard automatic/manual white balance and writable
 colour matrices on all three sensors, r33 exposes the verified sensor test
-pattern for calibration, and r33 installs the documented green-corrected
-sensor profiles. The correction preserves equal-channel grey and is not a
-factory colour calibration claim. Keep the signed r24/r25/r26/r28/r29/r30/r31/r32 and
+pattern for calibration, and r33 installs the documented conservative
+green-corrected sensor profiles. The r34 source retains equal-channel grey
+while applying the stronger moderate correction; its device installation and
+live chart acceptance are still pending.
+The correction is not a factory colour calibration claim. Keep the signed r24/r25/r26/r28/r29/r30/r31/r32/r33 and
 PipeWire r7 APKs for rollback.
 
 The complete opt-in userspace transition is described by
@@ -173,6 +178,8 @@ ISP processing. Review the complete candidate with:
 | `libcamera-ipa-99990.7.2-r32.apk` (sensor test-pattern diagnostic) | `b9fe95d95b751329d754ba05b78f8a71af625362523ad697dd1609ebcd070854` |
 | `libcamera-99990.7.2-r33.apk` (green-cast correction plus test pattern) | `76808314599b548a86c2924aaea82b98ce0a913a38967acfd32cd95b54684f6d` |
 | `libcamera-ipa-99990.7.2-r33.apk` (green-cast correction plus test pattern) | `b54c2ada1f1e2bd833c385247ee796cbd58a40077d7f74646e5d7b5e36c9c89e` |
+| `libcamera-99990.7.2-r34.apk` (moderate green-cast follow-up; built, not yet device-accepted) | `7e241928daaab4ed285160b1ea6d89d758f92783851093ec406d7c3590b450b3` |
+| `libcamera-ipa-99990.7.2-r34.apk` (moderate green-cast follow-up; built, not yet device-accepted) | `e4b4d96b1f3f391eb63bb72361380652594e956051ed0427aebd69eb9e444fed` |
 | `pipewire-spa-libcamera-1.6.8-r7.apk` | `c6e2f3dc9f27b89dc2ebef448e4242bfa3f40ae2606c146b291e5caa85e612d1` |
 | `pipewire-spa-libcamera-1.6.8-r8.apk` (installed float-array transport) | `ac9a89ca85e06b17f74ed8968e745f28bf77a4bf94c0fc318012e4d1d52b9d18` |
 | `snapshot-50.0-r3.apk` | `5a59c32a3d3ef451bc85b0f19cb8fce617aaa4c6baba83e3595ddb9892a324e7` |
